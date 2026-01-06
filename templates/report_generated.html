@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Session Ready</title><link rel="stylesheet" href="/static/css/style.css"></head>
+<body>
+  <h1>Session Created</h1>
+  <p>Session Key: <b>{{ session_key }}</b></p>
+  <a href="/">Back to dashboard</a>
+  <h3>Preview questions</h3>
+  <ol>
+    {% for q in mcqs %}
+      <li>{{ q.question }} <br>
+        <ul>
+          {% for lab,opt in q.options %}<li>{{ lab }}) {{ opt }}</li>{% endfor %}
+        </ul>
+      </li>
+    {% endfor %}
+  </ol>
+</body>
+</html>

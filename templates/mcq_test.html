@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Quiz</title><link rel="stylesheet" href="/static/css/style.css"></head>
+<body>
+  <h1>MCQ Test</h1>
+  <form action="/submit" method="post">
+    <label>Your name (optional): <input type="text" name="student_name"></label>
+    <ol>
+      {% for q in mcqs %}
+        <li>
+          <p>{{ q.question }}</p>
+          {% for opt in q.options %}
+            <div><label><input type="radio" name="q-{{ loop.index0 }}" value="{{ opt }}" required> {{ opt }}</label></div>
+          {% endfor %}
+        </li>
+      {% endfor %}
+    </ol>
+    <button type="submit">Submit</button>
+  </form>
+  <script src="/static/js/timer.js"></script>
+</body>
+</html>

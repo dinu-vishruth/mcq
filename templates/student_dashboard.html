@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Student</title><link rel="stylesheet" href="/static/css/style.css"></head>
+<body>
+  <h1>Enter Session Key</h1>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form action="/student_login" method="post">
+    <input type="text" name="session_key" placeholder="Session key" required>
+    <button type="submit">Start Test</button>
+  </form>
+</body>
+</html>

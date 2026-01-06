@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Result</title><link rel="stylesheet" href="/static/css/style.css"></head>
+<body>
+  <h1>Your Score: {{ score }} / {{ total }}</h1>
+  <h2>Details</h2>
+  <ol>
+  {% for d in details %}
+    <li>
+      <p>{{ d.question }}</p>
+      <p>Your Answer: {{ d.selected }} | Correct: {{ d.correct }} {% if d.is_correct %}<span style="color:green">✔</span>{% else %}<span style="color:red">✘</span>{% endif %}</p>
+    </li>
+  {% endfor %}
+  </ol>
+  <h3>Explanations</h3>
+  <ul>
+    {% for ex in explanations %}
+      <li>{{ ex }}</li>
+    {% endfor %}
+  </ul>
+</body>
+</html>

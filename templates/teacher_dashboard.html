@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Teacher</title><link rel="stylesheet" href="/static/css/style.css"></head>
+<body>
+  <nav><a href="/">Home</a> | Logged in as: {{ session.username }}</nav>
+  <h1>Teacher Dashboard</h1>
+  <a href="/upload">Create new MCQ set</a>
+  <h3>Your sessions</h3>
+  <ul>
+    {% for s in sessions %}
+      <li>{{ s['session_key'] }} - {{ s['created_at'] }} - diff: {{ s['difficulty'] }} - timer: {{ s['timer'] }} 
+        - <a href="/download_report/{{ s['session_key'] }}">Download PDF</a>
+      </li>
+    {% endfor %}
+  </ul>
+</body>
+</html>
