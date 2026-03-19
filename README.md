@@ -41,7 +41,7 @@ Clone the repository and install the required dependencies:
 ```bash
 # Clone the repository
 git clone https://github.com/dinu-vishruth/mcq.git
-cd mcq/mcq-main
+cd mcq
 
 # Install dependencies
 pip install -r requirements.txt
