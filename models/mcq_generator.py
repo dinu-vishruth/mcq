@@ -22,11 +22,17 @@ from nltk.tree import Tree
 from utils.text_cleaner import clean_text
 
 # ---- NLTK resources ----
+nltk_dir = "/tmp/nltk_data" if os.environ.get("VERCEL") else nltk.data.path[0]
+if os.environ.get("VERCEL"):
+    os.makedirs(nltk_dir, exist_ok=True)
+    if nltk_dir not in nltk.data.path:
+        nltk.data.path.append(nltk_dir)
+
 for _res in ["punkt", "punkt_tab", "averaged_perceptron_tagger",
              "averaged_perceptron_tagger_eng", "maxent_ne_chunker",
              "maxent_ne_chunker_tab", "words", "wordnet",
              "omw-1.4", "stopwords"]:
-    nltk.download(_res, quiet=True)
+    nltk.download(_res, download_dir=nltk_dir, quiet=True)
 
 _STOPWORDS = set(stopwords.words("english"))
 

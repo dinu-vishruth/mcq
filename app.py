@@ -17,7 +17,9 @@ from utils.text_cleaner import clean_text
 app = Flask(__name__, static_folder="static")
 app.secret_key = SECRET_KEY
 app.config["SESSION_TYPE"] = "filesystem"
+app.config["SESSION_FILE_DIR"] = "/tmp/flask_session" if os.environ.get("VERCEL") else "flask_session"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+os.makedirs(app.config["SESSION_FILE_DIR"], exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 Session(app)
 
@@ -28,8 +30,9 @@ def get_db():
     return conn
 
 def init_db():
-    if not os.path.exists("database"):
-        os.makedirs("database", exist_ok=True)
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
     conn = get_db()
     with open("database/schema.sql", "r") as f:
         conn.executescript(f.read())
