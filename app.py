@@ -41,11 +41,8 @@ def init_db():
 
 from werkzeug.security import generate_password_hash, check_password_hash
 
-import traceback
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    return f"<h1>Internal Server Error</h1><p>{str(e)}</p><pre>{traceback.format_exc()}</pre>", 500
+# Execute table creations automatically when app boots on Vercel
+init_db()
 
 # ---- Routes ----
 @app.route("/")
@@ -370,5 +367,4 @@ def download_report(session_key):
 
 # init & run
 if __name__ == "__main__":
-    init_db()
     app.run(debug=True)
