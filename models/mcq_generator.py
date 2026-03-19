@@ -60,25 +60,25 @@ def _load_t5_model():
             _t5_device = torch.device("cuda")
             _t5_model.to(_t5_device)
             gpu = torch.cuda.get_device_name(0)
-            print(f"  🚀 MCQ Model loaded on GPU: {gpu}")
+            print(f"  [GPU] MCQ Model loaded on GPU: {gpu}")
         else:
             _t5_device = torch.device("cpu")
             _t5_model.to(_t5_device)
-            print(f"  🖥️ MCQ Model loaded on CPU")
+            print(f"  [CPU] MCQ Model loaded on CPU")
 
         _t5_model.eval()
         return True
     except Exception as e:
-        print(f"  ⚠️ Could not load T5 model: {e}")
+        print(f"  [WARNING] Could not load T5 model: {e}")
         return False
 
 
 # Attempt to load on import
 _USE_T5 = _load_t5_model()
 if _USE_T5:
-    print("  ✅ Using fine-tuned Flan-T5 for MCQ generation")
+    print("  [SUCCESS] Using fine-tuned Flan-T5 for MCQ generation")
 else:
-    print("  ℹ️ Using NLTK NLP pipeline (train a model for better quality: python train/train_model.py)")
+    print("  [INFO] Using NLTK NLP pipeline (train a model for better quality: python train/train_model.py)")
 
 
 # =================================================================
