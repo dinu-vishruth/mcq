@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teacher Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+  <nav class="navbar">
+    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
+    <span class="nav-user">👨‍🏫 {{ session.username }} | <a href="/logout"
+        style="color: var(--danger); text-decoration: none;">Logout</a></span>
+  </nav>
+  <div class="container">
+    <div class="dashboard-header">
+      <h1>Teacher Dashboard</h1>
+      <a href="/upload" class="btn btn-primary">+ Create New MCQ Set</a>
+    </div>
+
+    <h3>Your Sessions</h3>
+    {% if sessions %}
+    <div class="sessions-grid">
+      {% for s in sessions %}
+      <div class="session-card glass-card">
+        <div class="session-top">
+          <code class="session-key">{{ s['session_key'] }}</code>
+          <span class="difficulty-badge diff-{{ s['difficulty'] }}">{{ s['difficulty'] }}</span>
+        </div>
+        <div class="session-meta">
+          <span>📅 {{ s['created_at'][:16] }}</span>
+          <span>⏱️ {{ s['timer'] }}s timer</span>
+        </div>
+        <a href="/download_report/{{ s['session_key'] }}" class="btn btn-sm btn-secondary">📄 Download PDF</a>
+        <a href="/session_report/{{ s['session_key'] }}" class="btn btn-sm btn-secondary">📊 View Results</a>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <p>No sessions yet. Create your first MCQ set!</p>
+    </div>
+    {% endif %}
+  </div>
+</body>
+
+</html>

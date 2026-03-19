@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Report</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="/" class="nav-brand">🧠 MCQ Generator</a>
+        <span class="nav-user">👨‍🏫 {{ session.username }} | <a href="/logout"
+                style="color: var(--danger); text-decoration: none;">Logout</a></span>
+    </nav>
+    <div class="container">
+        <div class="dashboard-header">
+            <h1>Session Report</h1>
+            <a href="/teacher" class="btn btn-secondary">← Back to Dashboard</a>
+        </div>
+
+        <div class="card glass-card">
+            <div class="session-top" style="justify-content: center; margin-bottom: 2rem;">
+                <code class="session-key" style="font-size: 2rem;">{{ session_key }}</code>
+            </div>
+
+            {% if results %}
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--border);">
+                            <th style="padding: 1rem;">Student Name</th>
+                            <th style="padding: 1rem;">Score</th>
+                            <th style="padding: 1rem;">Percentage</th>
+                            <th style="padding: 1rem;">Submitted At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in results %}
+                        <tr style="border-bottom: 1px solid var(--border);">
+                            <td style="padding: 1rem; font-weight: 500;">
+                                {% if r['student_name'] and r['student_name'].strip() %}
+                                {{ r['student_name'] }}
+                                {% else %}
+                                {{ r['registered_name'] or 'Unknown Student' }}
+                                {% endif %}
+                            </td>
+                            <td style="padding: 1rem;">
+                                <span
+                                    class="difficulty-badge result-badge {% if r['score']/r['total'] >= 0.7 %}correct{% else %}wrong{% endif %}">
+                                    {{ r['score'] }} / {{ r['total'] }}
+                                </span>
+                            </td>
+                            <td style="padding: 1rem;">{{ (r['score'] / r['total'] * 100) | round(1) }}%</td>
+                            <td style="padding: 1rem; color: var(--text-muted);">{{ r['submitted_at'][:16].replace('T',
+                                ' ') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No students have taken this quiz yet.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+
+</html>

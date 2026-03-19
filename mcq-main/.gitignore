@@ -1,0 +1,21 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+
+# Uploads
+uploads/
+
+# OS files
+.DS_Store
+
+# Large files and directories to ignore
+*.whl
+models/flan-t5-mcq/
+flask_session/
+database/*.db

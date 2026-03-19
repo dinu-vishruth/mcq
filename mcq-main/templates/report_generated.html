@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Session Created</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+  <nav class="navbar">
+    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
+    <span class="nav-user">{{ session.username }}</span>
+  </nav>
+  <div class="container">
+    <div class="card glass-card success-card">
+      <div class="success-icon">✅</div>
+      <h1>Session Created!</h1>
+      <div class="session-key-box">
+        <label>Session Key (share with students)</label>
+        <div class="key-display">
+          <code id="session-key">{{ session_key }}</code>
+          <button type="button" class="btn btn-sm" onclick="copyKey()" id="copy-btn">📋 Copy</button>
+        </div>
+      </div>
+      <div class="action-buttons">
+        <a href="/teacher" class="btn btn-secondary">← Back to Dashboard</a>
+
+        <form action="/student_login" method="post" style="display: inline;">
+          <input type="hidden" name="session_key" value="{{ session_key }}">
+          <button type="submit" class="btn btn-primary">🚀 Start Quiz Now</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card glass-card">
+      <h2>📋 Question Preview</h2>
+      <div class="preview-list">
+        {% for q in mcqs %}
+        <div class="preview-question">
+          <div class="question-header">
+            <span class="q-number">Q{{ loop.index }}</span>
+            <p class="q-text">{{ q.question }}</p>
+          </div>
+          <div class="preview-options">
+            {% for opt in q.options %}
+            <div class="preview-opt {% if opt.text == q.answer_text %}correct-answer{% endif %}">
+              <span class="option-badge">{{ opt.label }}</span> {{ opt.text }}
+              {% if opt.text == q.answer_text %}<span class="correct-marker">✔</span>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <script>
+    function copyKey() {
+      const key = document.getElementById('session-key').textContent;
+      navigator.clipboard.writeText(key).then(() => {
+        document.getElementById('copy-btn').textContent = '✅ Copied!';
+        setTimeout(() => { document.getElementById('copy-btn').textContent = '📋 Copy'; }, 2000);
+      });
+    }
+  </script>
+</body>
+
+</html>

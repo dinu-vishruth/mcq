@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+  <nav class="navbar">
+    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
+    <span class="nav-user">👨‍🎓 {{ session.username }} | <a href="/logout"
+        style="color: var(--danger); text-decoration: none;">Logout</a></span>
+  </nav>
+  <div class="container">
+    <div class="dashboard-header">
+      <h1>Student Dashboard</h1>
+    </div>
+
+    <div class="card glass-card">
+      <div class="logo-badge">👨‍🎓</div>
+      <h2>Join a Session</h2>
+      <p class="subtitle">Enter the session key provided by your teacher</p>
+      {% if error %}<div class="error-toast">{{ error }}</div>{% endif %}
+      <form action="/student_login" method="post">
+        <div class="input-group">
+          <input type="text" name="session_key" placeholder="Enter session key (e.g. a1b2c3d4)" required
+            id="session-key-input">
+        </div>
+        <button type="submit" class="btn btn-primary" id="start-test-btn" style="width: 100%;">🚀 Start Test</button>
+      </form>
+
+      <div class="divider">
+        <span>OR</span>
+      </div>
+
+      <div class="generate-section">
+        <p>Want to practice from your own notes?</p>
+        <a href="/upload" class="btn btn-secondary">✨ Generate New Quiz</a>
+      </div>
+    </div>
+
+    <h3>My History</h3>
+    {% if history %}
+    <div class="sessions-grid">
+      {% for h in history %}
+      <div class="session-card glass-card">
+        <div class="session-top">
+          <code class="session-key">{{ h['session_key'] }}</code>
+          <span
+            class="difficulty-badge result-badge {% if h['score']/h['total'] >= 0.7 %}correct{% else %}wrong{% endif %}">
+            Score: {{ h['score'] }} / {{ h['total'] }}
+          </span>
+        </div>
+        <div class="session-meta">
+          <span>📅 {{ h['submitted_at'][:16] }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <p>No past quizzes found. Join a session to get started!</p>
+    </div>
+    {% endif %}
+  </div>
+</body>
+
+</html>

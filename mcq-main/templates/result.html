@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Results</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+  <nav class="navbar">
+    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
+  </nav>
+  <div class="container">
+    <div class="card glass-card score-card">
+      <h1>Your Score</h1>
+      <div
+        class="score-circle {% if score / total >= 0.7 %}score-good{% elif score / total >= 0.4 %}score-mid{% else %}score-low{% endif %}">
+        <span class="score-num">{{ score }}</span>
+        <span class="score-sep">/</span>
+        <span class="score-total">{{ total }}</span>
+      </div>
+      <p class="score-percent">{{ ((score / total) * 100) | round(1) }}%</p>
+    </div>
+
+    <div class="card glass-card">
+      <h2>📝 Detailed Results</h2>
+      {% for d in details %}
+      <div class="result-item {% if d.is_correct %}result-correct{% else %}result-wrong{% endif %}">
+        <div class="result-header">
+          <span class="q-number">Q{{ loop.index }}</span>
+          {% if d.is_correct %}
+          <span class="result-badge correct">✔ Correct</span>
+          {% else %}
+          <span class="result-badge wrong">✘ Wrong</span>
+          {% endif %}
+        </div>
+        <p class="q-text">{{ d.question }}</p>
+        <div class="result-answers">
+          <p><strong>Your answer:</strong> {{ d.selected or 'Not answered' }}</p>
+          {% if not d.is_correct %}
+          <p><strong>Correct answer:</strong> {{ d.correct }}</p>
+          {% endif %}
+        </div>
+        {% if explanations[loop.index0] %}
+        <div class="explanation-box">
+          <strong>💡 Explanation:</strong> {{ explanations[loop.index0] }}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div style="text-align: center; margin: 2rem 0;">
+      <a href="/" class="btn btn-primary">🏠 Back to Home</a>
+    </div>
+  </div>
+</body>
+
+</html>

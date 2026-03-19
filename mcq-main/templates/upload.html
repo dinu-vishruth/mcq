@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upload Document</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+  <nav class="navbar">
+    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
+    <span class="nav-user">{{ session.username }}</span>
+  </nav>
+  <div class="container">
+    <div class="card glass-card upload-card">
+      <h1>📤 Upload Document</h1>
+      <p class="subtitle">Upload a PDF, DOCX, PPTX, or TXT file to generate AI-powered MCQs</p>
+      {% if error %}<div class="error-toast">{{ error }}</div>{% endif %}
+      <form action="/upload" method="post" enctype="multipart/form-data" id="upload-form">
+        <div class="file-drop-zone" id="drop-zone">
+          <span class="drop-icon">📁</span>
+          <p>Drag & drop your file here or <label for="file-input" class="file-label">browse</label></p>
+          <input type="file" name="file" id="file-input" accept=".pdf,.docx,.pptx,.txt" required>
+          <p class="file-name" id="file-name-display"></p>
+        </div>
+
+        <div class="form-grid">
+          <div class="input-group">
+            <label for="num-questions">Number of Questions</label>
+            <input type="number" name="num_questions" id="num-questions" value="5" min="1" max="30">
+          </div>
+          <div class="input-group">
+            <label for="difficulty">Difficulty Level</label>
+            <select name="difficulty" id="difficulty">
+              <option value="easy">🟢 Easy — Recall & Definitions</option>
+              <option value="medium" selected>🟡 Medium — Understanding & Application</option>
+              <option value="hard">🔴 Hard — Analysis & Critical Thinking</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label for="timer">Timer (seconds)</label>
+            <input type="number" name="timer" id="timer" value="120" min="30" max="3600">
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg" id="generate-btn">
+          <span class="btn-text">⚡ Generate Questions</span>
+          <span class="btn-loading" style="display:none;">
+            <span class="spinner"></span> Generating with AI...
+          </span>
+        </button>
+      </form>
+    </div>
+  </div>
+  <script>
+    // File drop zone
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileNameDisplay = document.getElementById('file-name-display');
+    const form = document.getElementById('upload-form');
+    const generateBtn = document.getElementById('generate-btn');
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length > 0) {
+        fileNameDisplay.textContent = fileInput.files[0].name;
+        dropZone.classList.add('has-file');
+      }
+    });
+
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      fileInput.files = e.dataTransfer.files;
+      if (fileInput.files.length > 0) {
+        fileNameDisplay.textContent = fileInput.files[0].name;
+        dropZone.classList.add('has-file');
+      }
+    });
+
+    // Show loading spinner on submit
+    form.addEventListener('submit', () => {
+      generateBtn.querySelector('.btn-text').style.display = 'none';
+      generateBtn.querySelector('.btn-loading').style.display = 'inline-flex';
+      generateBtn.disabled = true;
+    });
+  </script>
+</body>
+
+</html>
