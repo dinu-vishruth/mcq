@@ -4,6 +4,7 @@ pdfplumber
 python-docx
 python-pptx
 reportlab
+google-generativeai
 nltk
 protobuf
 gunicorn
