@@ -41,6 +41,12 @@ def init_db():
 
 from werkzeug.security import generate_password_hash, check_password_hash
 
+import traceback
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    return f"<h1>Internal Server Error</h1><p>{str(e)}</p><pre>{traceback.format_exc()}</pre>", 500
+
 # ---- Routes ----
 @app.route("/")
 def home():
