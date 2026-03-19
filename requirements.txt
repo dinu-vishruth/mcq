@@ -5,9 +5,5 @@ python-docx
 python-pptx
 reportlab
 nltk
-torch
-transformers
-accelerate
-sentencepiece
 protobuf
 gunicorn
