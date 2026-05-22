@@ -36,7 +36,24 @@ def init_db():
     conn = get_db()
     with open("database/schema.sql", "r") as f:
         conn.executescript(f.read())
-    conn.commit()
+    
+    # Seed default user accounts so they work out-of-the-box on ephemeral Vercel containers
+    try:
+        from werkzeug.security import generate_password_hash
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM users")
+        count = cur.fetchone()[0]
+        if count == 0:
+            teacher_hash = generate_password_hash("teacher123")
+            student_hash = generate_password_hash("student123")
+            cur.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                        ("teacher", teacher_hash, "teacher"))
+            cur.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
+                        ("student", student_hash, "student"))
+            conn.commit()
+    except Exception as e:
+        print(f"[WARNING] Failed to seed default users: {e}")
+        
     conn.close()
 
 from werkzeug.security import generate_password_hash, check_password_hash
