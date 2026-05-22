@@ -8,8 +8,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <!-- PDF.js and Mammoth.js for client-side text extraction (avoids Vercel 4.5MB upload limit) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <script src="/static/js/pdf.min.js"></script>
+  <script src="/static/js/mammoth.browser.min.js"></script>
 </head>
 
 <body>
@@ -62,7 +62,7 @@
   </div>
   <script>
     // PDF.js worker setup
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/js/pdf.worker.min.js';
 
     // File drop zone and size validation
     const dropZone = document.getElementById('drop-zone');
@@ -206,24 +206,46 @@
           text = await extractTextFromFile(file);
         }
 
-        if (text) {
+        if (text && text.trim().length > 0) {
           document.getElementById('extracted-text-input').value = text;
           fileInput.removeAttribute('required');
           fileInput.value = "";
+          
+          spinnerText.textContent = "Generating questions with AI...";
+          setTimeout(() => {
+            form.submit();
+          }, 100);
+        } else {
+          // If no text extracted, and it's large, we cannot upload
+          if (file.size > MAX_UPLOAD_SIZE) {
+            showError("No readable text could be extracted from this file. Since it is larger than 4.5 MB, it cannot be uploaded directly to Vercel. Please try a text-based document.");
+            // Reset loading state
+            generateBtn.querySelector('.btn-text').style.display = 'inline-block';
+            generateBtn.querySelector('.btn-loading').style.display = 'none';
+            generateBtn.disabled = false;
+          } else {
+            // Smaller file, let the backend handle extraction/fallback
+            spinnerText.textContent = "Uploading file and generating...";
+            setTimeout(() => {
+              form.submit();
+            }, 100);
+          }
         }
 
-        spinnerText.textContent = "Generating questions with AI...";
-        
-        setTimeout(() => {
-          form.submit();
-        }, 100);
-
       } catch (err) {
-        console.error("Client-side text extraction failed, falling back to server-side upload:", err);
-        spinnerText.textContent = "Uploading file and generating...";
-        setTimeout(() => {
-          form.submit();
-        }, 100);
+        console.error("Client-side text extraction failed:", err);
+        if (file.size > MAX_UPLOAD_SIZE) {
+          showError("Could not extract text from this document: " + err.message + ". Since the file is larger than 4.5 MB, it cannot be uploaded directly to Vercel. Please try another document or copy and paste the text.");
+          // Reset loading state
+          generateBtn.querySelector('.btn-text').style.display = 'inline-block';
+          generateBtn.querySelector('.btn-loading').style.display = 'none';
+          generateBtn.disabled = false;
+        } else {
+          spinnerText.textContent = "Uploading file and generating...";
+          setTimeout(() => {
+            form.submit();
+          }, 100);
+        }
       }
     });
   </script>
