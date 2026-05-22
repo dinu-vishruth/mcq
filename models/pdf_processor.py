@@ -55,15 +55,34 @@ def extract_text_from_docx(path):
 
 
 def extract_text_from_pptx(path):
-    """Extract text from PPTX slides including notes."""
+    """Extract text from PPTX slides including notes, tables, and group shapes."""
     prs = Presentation(path)
     parts = []
+
+    def extract_text_from_shape(shape):
+        text_parts = []
+        if shape.has_text_frame:
+            t = shape.text.strip()
+            if t:
+                text_parts.append(t)
+        elif shape.has_table:
+            for row in shape.table.rows:
+                row_text = []
+                for cell in row.cells:
+                    ct = cell.text.strip()
+                    if ct:
+                        row_text.append(ct)
+                if row_text:
+                    text_parts.append(" | ".join(row_text))
+        elif hasattr(shape, "shapes"):
+            for sub_shape in shape.shapes:
+                text_parts.extend(extract_text_from_shape(sub_shape))
+        return text_parts
 
     for slide_num, slide in enumerate(prs.slides, 1):
         slide_text = []
         for shape in slide.shapes:
-            if hasattr(shape, "text") and shape.text.strip():
-                slide_text.append(shape.text)
+            slide_text.extend(extract_text_from_shape(shape))
 
         # Also extract slide notes (often contain extra detail)
         if slide.has_notes_slide and slide.notes_slide.notes_text_frame:

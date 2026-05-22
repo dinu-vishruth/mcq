@@ -167,13 +167,19 @@ def upload():
         elif ext == "docx":
             path = os.path.join(UPLOAD_FOLDER, f"tmp_{uuid.uuid4().hex}.docx")
             f.save(path)
-            text = extract_text_from_docx(path)
-            os.remove(path)
+            try:
+                text = extract_text_from_docx(path)
+            finally:
+                if os.path.exists(path):
+                    os.remove(path)
         elif ext == "pptx":
             path = os.path.join(UPLOAD_FOLDER, f"tmp_{uuid.uuid4().hex}.pptx")
             f.save(path)
-            text = extract_text_from_pptx(path)
-            os.remove(path)
+            try:
+                text = extract_text_from_pptx(path)
+            finally:
+                if os.path.exists(path):
+                    os.remove(path)
         else:
             text = f.read().decode("utf-8", errors="ignore")
 
