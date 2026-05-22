@@ -43,13 +43,21 @@ TEXT:
 \"\"\"
 """
 
+    # Auto-detect if using Groq (starts with gsk_) or xAI (Grok)
+    if GROK_API_KEY.startswith("gsk_"):
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        model = GROK_MODEL if "llama" in GROK_MODEL.lower() else "llama-3.3-70b-versatile"
+    else:
+        url = "https://api.xai.com/v1/chat/completions"
+        model = GROK_MODEL
+
     headers = {
         "Authorization": f"Bearer {GROK_API_KEY}",
         "Content-Type": "application/json"
     }
 
     payload = {
-        "model": GROK_MODEL,
+        "model": model,
         "messages": [
             {"role": "system", "content": "You are an expert exam creator that only outputs valid JSON objects."},
             {"role": "user", "content": prompt}
@@ -60,7 +68,7 @@ TEXT:
 
     try:
         response = requests.post(
-            "https://api.xai.com/v1/chat/completions",
+            url,
             headers=headers,
             json=payload,
             timeout=45

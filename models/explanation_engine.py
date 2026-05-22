@@ -39,13 +39,21 @@ def explain_answers(details):
             
     prompt += 'You MUST respond with a JSON object containing an "explanations" key, which holds a flat array of strings, in the exact same order as the questions above. Format exactly like this: {"explanations": ["Explanation for Q1", "Explanation for Q2"]}'
     
+    # Auto-detect if using Groq (starts with gsk_) or xAI (Grok)
+    if GROK_API_KEY.startswith("gsk_"):
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        model = GROK_MODEL if "llama" in GROK_MODEL.lower() else "llama-3.3-70b-versatile"
+    else:
+        url = "https://api.xai.com/v1/chat/completions"
+        model = GROK_MODEL
+
     headers = {
         "Authorization": f"Bearer {GROK_API_KEY}",
         "Content-Type": "application/json"
     }
 
     payload = {
-        "model": GROK_MODEL,
+        "model": model,
         "messages": [
             {"role": "system", "content": "You are a helpful teacher that only outputs valid JSON objects."},
             {"role": "user", "content": prompt}
@@ -56,7 +64,7 @@ def explain_answers(details):
 
     try:
         response = requests.post(
-            "https://api.xai.com/v1/chat/completions",
+            url,
             headers=headers,
             json=payload,
             timeout=30
