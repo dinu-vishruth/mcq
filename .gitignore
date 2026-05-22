@@ -19,3 +19,4 @@ uploads/
 models/flan-t5-mcq/
 flask_session/
 database/*.db
+reports/

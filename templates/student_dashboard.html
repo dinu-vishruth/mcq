@@ -4,28 +4,136 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Student Dashboard</title>
+  <title>Student Dashboard — MCQ Generator</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
+  <!-- Chart.js CDN for visual analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1.25rem;
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-top: 0.25rem;
+    }
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    .chart-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      min-height: 320px;
+    }
+    @media (max-width: 768px) {
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .charts-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 
 <body>
   <nav class="navbar">
     <a href="/" class="nav-brand">🧠 MCQ Generator</a>
-    <span class="nav-user">👨‍🎓 {{ session.username }} | <a href="/logout"
-        style="color: var(--danger); text-decoration: none;">Logout</a></span>
+    <span class="nav-user">👨‍Grad {{ session.username }} | 
+      <a href="/profile" style="color: var(--primary); text-decoration: none; margin-right: 10px;">Profile</a> | 
+      <a href="/logout" style="color: var(--danger); text-decoration: none;">Logout</a>
+    </span>
   </nav>
+
   <div class="container">
+    <!-- Flash message display -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="error-toast" style="background: rgba(16, 185, 129, 0.15); color: #a7f3d0; border: 1px solid rgba(16, 185, 129, 0.3);">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
     <div class="dashboard-header">
       <h1>Student Dashboard</h1>
     </div>
+
+    <!-- Practice Stats Cards -->
+    <div class="stats-grid">
+      <div class="stat-card glass-card">
+        <div class="stat-label">Total Quizzes</div>
+        <div class="stat-value">{{ total_quizzes }}</div>
+      </div>
+      <div class="stat-card glass-card">
+        <div class="stat-label">Average Score</div>
+        <div class="stat-value">{{ avg_score }}%</div>
+      </div>
+      <div class="stat-card glass-card">
+        <div class="stat-label">Best Score</div>
+        <div class="stat-value">{{ best_score }}%</div>
+      </div>
+      <div class="stat-card glass-card">
+        <div class="stat-label">Practice Time</div>
+        <div class="stat-value">
+          {% if total_time >= 60 %}
+            {{ total_time // 60 }}m
+          {% else %}
+            {{ total_time }}s
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Visual Analytics Charts -->
+    {% if total_quizzes > 0 %}
+    <div class="charts-row">
+      <div class="chart-container glass-card">
+        <h2>📈 Performance Trend</h2>
+        <p class="subtitle" style="margin-bottom: 1rem;">Scores over time (%)</p>
+        <canvas id="trendChart" style="max-height: 220px;"></canvas>
+      </div>
+      <div class="chart-container glass-card">
+        <h2>📊 Score by Difficulty</h2>
+        <p class="subtitle" style="margin-bottom: 1rem;">Average score per level (%)</p>
+        <canvas id="difficultyChart" style="max-height: 220px;"></canvas>
+      </div>
+    </div>
+    {% endif %}
 
     <div class="card glass-card">
       <div class="logo-badge">👨‍🎓</div>
       <h2>Join a Session</h2>
       <p class="subtitle">Enter the session key provided by your teacher</p>
       {% if error %}<div class="error-toast">{{ error }}</div>{% endif %}
+      
       <form action="/student_login" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="input-group">
           <input type="text" name="session_key" placeholder="Enter session key (e.g. a1b2c3d4)" required
             id="session-key-input">
@@ -56,7 +164,9 @@
           </span>
         </div>
         <div class="session-meta">
-          <span>📅 {{ h['submitted_at'][:16] }}</span>
+          <span>📅 {{ h['submitted_at'][:16].replace('T', ' ') }}</span>
+          <span>⏱️ {{ h['time_spent'] or 0 }}s spent</span>
+          <span class="difficulty-badge diff-{{ h['difficulty'] or 'medium' }}">{{ h['difficulty'] or 'Medium' }}</span>
         </div>
       </div>
       {% endfor %}
@@ -67,6 +177,93 @@
     </div>
     {% endif %}
   </div>
+
+  {% if total_quizzes > 0 %}
+  <script>
+    const chartDates = {{ chart_dates | tojson }};
+    const chartScores = {{ chart_scores | tojson }};
+    const diffAverages = {{ difficulty_averages | tojson }};
+
+    // Trend Chart (Line)
+    const ctxTrend = document.getElementById('trendChart').getContext('2d');
+    new Chart(ctxTrend, {
+      type: 'line',
+      data: {
+        labels: chartDates,
+        datasets: [{
+          label: 'Score %',
+          data: chartScores,
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99, 102, 241, 0.1)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.3,
+          pointBackgroundColor: '#6366f1',
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          y: {
+            min: 0,
+            max: 100,
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#94a3b8' }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }
+          }
+        }
+      }
+    });
+
+    // Difficulty Chart (Bar)
+    const ctxDiff = document.getElementById('difficultyChart').getContext('2d');
+    new Chart(ctxDiff, {
+      type: 'bar',
+      data: {
+        labels: ['Easy', 'Medium', 'Hard'],
+        datasets: [{
+          data: diffAverages,
+          backgroundColor: [
+            'rgba(16, 185, 129, 0.6)', // Green
+            'rgba(245, 158, 11, 0.6)', // Orange
+            'rgba(239, 68, 68, 0.6)'   // Red
+          ],
+          borderColor: [
+            '#10b981',
+            '#f59e0b',
+            '#ef4444'
+          ],
+          borderWidth: 1,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          y: {
+            min: 0,
+            max: 100,
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#94a3b8' }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: '#94a3b8' }
+          }
+        }
+      }
+    });
+  </script>
+  {% endif %}
 </body>
 
 </html>

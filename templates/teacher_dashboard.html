@@ -4,47 +4,184 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Teacher Dashboard</title>
+  <title>Teacher Dashboard — MCQ Generator</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    .tab-btn {
+      transition: all var(--transition);
+    }
+    .tab-btn:hover {
+      color: var(--primary) !important;
+    }
+    .session-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      flex-wrap: wrap;
+    }
+    .inline-form {
+      display: inline-block;
+      margin: 0;
+    }
+  </style>
 </head>
 
 <body>
   <nav class="navbar">
     <a href="/" class="nav-brand">🧠 MCQ Generator</a>
-    <span class="nav-user">👨‍🏫 {{ session.username }} | <a href="/logout"
-        style="color: var(--danger); text-decoration: none;">Logout</a></span>
+    <span class="nav-user">👨‍🏫 {{ session.username }} | 
+      <a href="/profile" style="color: var(--primary); text-decoration: none; margin-right: 10px;">Profile</a> | 
+      <a href="/logout" style="color: var(--danger); text-decoration: none;">Logout</a>
+    </span>
   </nav>
+
   <div class="container">
+    <!-- Flash message display -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="error-toast" style="background: rgba(16, 185, 129, 0.15); color: #a7f3d0; border: 1px solid rgba(16, 185, 129, 0.3);">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
     <div class="dashboard-header">
       <h1>Teacher Dashboard</h1>
       <a href="/upload" class="btn btn-primary">+ Create New MCQ Set</a>
     </div>
 
-    <h3>Your Sessions</h3>
+    <!-- Active vs Archived Tabs -->
+    <div class="tabs" style="display: flex; gap: 1rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem;">
+      <button class="tab-btn active" id="tab-active" onclick="switchTab('active')" style="background: none; border: none; color: var(--primary); font-size: 1rem; font-weight: 600; cursor: pointer; padding: 0.5rem 1rem; border-bottom: 2px solid var(--primary);">Active Quizzes</button>
+      <button class="tab-btn" id="tab-archived" onclick="switchTab('archived')" style="background: none; border: none; color: var(--text-muted); font-size: 1rem; font-weight: 600; cursor: pointer; padding: 0.5rem 1rem; border-bottom: 2px solid transparent;">Archived Quizzes</button>
+    </div>
+
     {% if sessions %}
-    <div class="sessions-grid">
-      {% for s in sessions %}
-      <div class="session-card glass-card">
-        <div class="session-top">
-          <code class="session-key">{{ s['session_key'] }}</code>
-          <span class="difficulty-badge diff-{{ s['difficulty'] }}">{{ s['difficulty'] }}</span>
-        </div>
-        <div class="session-meta">
-          <span>📅 {{ s['created_at'][:16] }}</span>
-          <span>⏱️ {{ s['timer'] }}s timer</span>
-        </div>
-        <a href="/download_report/{{ s['session_key'] }}" class="btn btn-sm btn-secondary">📄 Download PDF</a>
-        <a href="/session_report/{{ s['session_key'] }}" class="btn btn-sm btn-secondary">📊 View Results</a>
+      {% set ns_active = namespace(count=0) %}
+      {% set ns_archived = namespace(count=0) %}
+      
+      <div class="sessions-grid">
+        {% for s in sessions %}
+          {% if s['archived'] == 1 %}
+            {% set ns_archived.count = ns_archived.count + 1 %}
+            <div class="session-card glass-card session-archived" style="display: none;">
+              <div class="session-top">
+                <code class="session-key">{{ s['session_key'] }}</code>
+                <span class="difficulty-badge diff-{{ s['difficulty'] }}">{{ s['difficulty'] }}</span>
+              </div>
+              <div class="session-meta">
+                <span>📅 {{ s['created_at'][:16] }}</span>
+                <span>⏱️ {{ s['timer'] }}s timer</span>
+                <span style="color: var(--danger);">📦 Archived</span>
+              </div>
+              <div class="session-actions">
+                <a href="/download_report/{{ s['session_key'] }}" class="btn btn-sm btn-secondary">📄 Download PDF</a>
+                <a href="/session_report/{{ s['session_key'] }}" class="btn btn-sm btn-secondary">📊 View Results</a>
+                
+                <form action="/unarchive_session/{{ s['session_key'] }}" method="post" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-secondary">📦 Unarchive</button>
+                </form>
+                
+                <form action="/delete_session/{{ s['session_key'] }}" method="post" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this session? All student scores will be lost.');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-secondary" style="color: var(--danger); border-color: var(--danger); background: transparent;">🗑️ Delete</button>
+                </form>
+              </div>
+            </div>
+          {% else %}
+            {% set ns_active.count = ns_active.count + 1 %}
+            <div class="session-card glass-card session-active">
+              <div class="session-top">
+                <code class="session-key">{{ s['session_key'] }}</code>
+                <span class="difficulty-badge diff-{{ s['difficulty'] }}">{{ s['difficulty'] }}</span>
+              </div>
+              <div class="session-meta">
+                <span>📅 {{ s['created_at'][:16] }}</span>
+                <span>⏱️ {{ s['timer'] }}s timer</span>
+              </div>
+              <div class="session-actions">
+                <a href="/download_report/{{ s['session_key'] }}" class="btn btn-sm btn-secondary">📄 PDF</a>
+                <a href="/session_report/{{ s['session_key'] }}" class="btn btn-sm btn-secondary">📊 Results</a>
+                <a href="/edit_session/{{ s['session_key'] }}" class="btn btn-sm btn-secondary">✏️ Edit</a>
+                
+                <form action="/clone_session/{{ s['session_key'] }}" method="post" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-secondary">👥 Clone</button>
+                </form>
+                
+                <form action="/archive_session/{{ s['session_key'] }}" method="post" class="inline-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-secondary">📦 Archive</button>
+                </form>
+                
+                <form action="/delete_session/{{ s['session_key'] }}" method="post" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this session? All student scores will be lost.');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-secondary" style="color: var(--danger); border-color: var(--danger); background: transparent;">🗑️ Delete</button>
+                </form>
+              </div>
+            </div>
+          {% endif %}
+        {% endfor %}
       </div>
-      {% endfor %}
-    </div>
+
+      <!-- Empty state elements for dynamic JS filtering -->
+      <div class="empty-state" id="empty-active" style="display: {% if ns_active.count == 0 %}block{% else %}none{% endif %};">
+        <p>No active sessions. Create or unarchive one!</p>
+      </div>
+      <div class="empty-state" id="empty-archived" style="display: {% if ns_archived.count == 0 %}block{% else %}none{% endif %};">
+        <p>No archived sessions.</p>
+      </div>
+
     {% else %}
-    <div class="empty-state">
-      <p>No sessions yet. Create your first MCQ set!</p>
-    </div>
+      <div class="empty-state">
+        <p>No sessions yet. Create your first MCQ set!</p>
+      </div>
     {% endif %}
   </div>
+
+  <script>
+    function switchTab(type) {
+      const activeTab = document.getElementById('tab-active');
+      const archivedTab = document.getElementById('tab-archived');
+      const activeCards = document.querySelectorAll('.session-active');
+      const archivedCards = document.querySelectorAll('.session-archived');
+      const emptyActive = document.getElementById('empty-active');
+      const emptyArchived = document.getElementById('empty-archived');
+      
+      if (type === 'active') {
+        activeTab.style.color = 'var(--primary)';
+        activeTab.style.borderBottomColor = 'var(--primary)';
+        archivedTab.style.color = 'var(--text-muted)';
+        archivedTab.style.borderBottomColor = 'transparent';
+        
+        activeCards.forEach(c => c.style.display = 'block');
+        archivedCards.forEach(c => c.style.display = 'none');
+        
+        if (emptyActive) emptyActive.style.display = activeCards.length === 0 ? 'block' : 'none';
+        if (emptyArchived) emptyArchived.style.display = 'none';
+      } else {
+        archivedTab.style.color = 'var(--primary)';
+        archivedTab.style.borderBottomColor = 'var(--primary)';
+        activeTab.style.color = 'var(--text-muted)';
+        activeTab.style.borderBottomColor = 'transparent';
+        
+        activeCards.forEach(c => c.style.display = 'none');
+        archivedCards.forEach(c => c.style.display = 'block');
+        
+        if (emptyArchived) emptyArchived.style.display = archivedCards.length === 0 ? 'block' : 'none';
+        if (emptyActive) emptyActive.style.display = 'none';
+      }
+    }
+
+    // Initialize to show active tab on load
+    document.addEventListener('DOMContentLoaded', () => {
+      switchTab('active');
+    });
+  </script>
 </body>
 
 </html>

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Profile — MCQ Generator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+  <nav class="navbar">
+    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
+    <span class="nav-user">
+      {% if session.role == 'teacher' %}👨‍🏫{% else %}👨‍🎓{% endif %} {{ session.username }} | 
+      <a href="/" style="color: var(--primary); text-decoration: none; margin-right: 10px;">Dashboard</a> | 
+      <a href="/logout" style="color: var(--danger); text-decoration: none;">Logout</a>
+    </span>
+  </nav>
+
+  <div class="container">
+    <div class="dashboard-header">
+      <h1>My Profile</h1>
+    </div>
+
+    <!-- Flash message display -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="error-toast" style="background: rgba(16, 185, 129, 0.15); color: #a7f3d0; border: 1px solid rgba(16, 185, 129, 0.3);">
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% if error %}
+      <div class="error-toast">
+        {{ error }}
+      </div>
+    {% endif %}
+
+    <div class="card glass-card" style="text-align: left;">
+      <h2>Edit Account Details</h2>
+      <p class="subtitle">Keep your username, email, and password up to date</p>
+      
+      <form action="/profile" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        
+        <div class="input-group">
+          <label for="username">Username</label>
+          <input type="text" name="username" id="username" value="{{ user['username'] }}" required>
+        </div>
+
+        <div class="input-group">
+          <label for="email">Email Address</label>
+          <input type="email" name="email" id="email" value="{{ user['email'] or '' }}" placeholder="name@example.com"
+            style="width: 100%; padding: 0.75rem 1rem; border-radius: 0.5rem; border: 1px solid rgba(148, 163, 184, 0.15); background: rgba(15, 23, 42, 0.6); color: #e2e8f0; font-family: inherit;">
+        </div>
+
+        <div class="input-group">
+          <label for="password">New Password (leave blank to keep current)</label>
+          <input type="password" name="password" id="password" placeholder="At least 8 characters"
+            style="width: 100%; padding: 0.75rem 1rem; border-radius: 0.5rem; border: 1px solid rgba(148, 163, 184, 0.15); background: rgba(15, 23, 42, 0.6); color: #e2e8f0; font-family: inherit;">
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">💾 Save Changes</button>
+      </form>
+    </div>
+
+    <div class="card glass-card" style="text-align: left; border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.05);">
+      <h2 style="color: var(--danger);">⚠️ Danger Zone</h2>
+      <p class="subtitle" style="color: #fca5a5;">Deleting your account is permanent. It will delete all your data, quizzes, and results.</p>
+      
+      <form action="/delete_account" method="post" onsubmit="return confirm('Are you absolutely sure you want to delete your account? This action is permanent and cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-secondary" style="color: var(--danger); border-color: var(--danger); background: transparent;">
+          🗑️ Delete My Account
+        </button>
+      </form>
+    </div>
+  </div>
+</body>
+
+</html>

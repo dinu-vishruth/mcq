@@ -17,6 +17,7 @@
             <p class="subtitle">Join to create or take quizzes</p>
             {% if error %}<div class="error-toast">{{ error }}</div>{% endif %}
             <form action="/signup" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="input-group">
                     <input type="text" name="username" placeholder="Choose a username" required>
                 </div>

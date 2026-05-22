@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit MCQ Session — MCQ Generator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    .edit-question-block {
+      background: rgba(30, 41, 59, 0.4);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .edit-question-block h4 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .options-edit-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 600px) {
+      .options-edit-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    textarea.question-textarea {
+      width: 100%;
+      min-height: 80px;
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.6);
+      color: var(--text);
+      font-size: 1rem;
+      font-family: inherit;
+      resize: vertical;
+      margin-bottom: 1rem;
+    }
+    textarea.question-textarea:focus {
+      border-color: var(--primary);
+      outline: none;
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+  </style>
+</head>
+
+<body>
+  <nav class="navbar">
+    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
+    <span class="nav-user">👨‍🏫 {{ session.username }} | 
+      <a href="/" style="color: var(--primary); text-decoration: none; margin-right: 10px;">Dashboard</a> | 
+      <a href="/logout" style="color: var(--danger); text-decoration: none;">Logout</a>
+    </span>
+  </nav>
+
+  <div class="container">
+    <div class="dashboard-header">
+      <h1>Edit MCQ Session</h1>
+      <span class="session-key" style="font-size: 1.2rem;">Code: {{ session_key }}</span>
+    </div>
+
+    {% if error %}
+      <div class="error-toast">{{ error }}</div>
+    {% endif %}
+
+    <form action="/edit_session/{{ session_key }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <!-- Global Settings -->
+      <div class="card glass-card" style="text-align: left;">
+        <h2>Global Settings</h2>
+        <div class="form-grid">
+          <div class="input-group">
+            <label for="difficulty">Difficulty Level</label>
+            <select name="difficulty" id="difficulty" required>
+              <option value="easy" {% if difficulty == 'easy' %}selected{% endif %}>🟢 Easy — Recall & Definitions</option>
+              <option value="medium" {% if difficulty == 'medium' %}selected{% endif %}>🟡 Medium — Understanding & Application</option>
+              <option value="hard" {% if difficulty == 'hard' %}selected{% endif %}>🔴 Hard — Analysis & Critical Thinking</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label for="timer">Timer (seconds)</label>
+            <input type="number" name="timer" id="timer" value="{{ timer }}" min="10" max="3600" required>
+          </div>
+        </div>
+      </div>
+
+      <!-- Question List -->
+      <div class="card glass-card" style="text-align: left;">
+        <h2>Questions & Answers</h2>
+        <p class="subtitle" style="margin-bottom: 2rem;">Modify questions, option choices, and specify the correct option.</p>
+
+        {% for mcq in mcqs %}
+          {% set idx = loop.index0 %}
+          <div class="edit-question-block">
+            <h4>❓ Question {{ idx + 1 }}</h4>
+            
+            <div class="input-group">
+              <label for="q_{{ idx }}_text">Question Prompt</label>
+              <textarea name="q_{{ idx }}_text" id="q_{{ idx }}_text" class="question-textarea" required>{{ mcq['question'] }}</textarea>
+            </div>
+
+            <div class="options-edit-grid">
+              {% for opt in mcq['options'] %}
+                {% set label = opt['label'] %}
+                <div class="input-group">
+                  <label for="q_{{ idx }}_opt_{{ label }}">Option {{ label }}</label>
+                  <input type="text" name="q_{{ idx }}_opt_{{ label }}" id="q_{{ idx }}_opt_{{ label }}" value="{{ opt['text'] }}" required>
+                </div>
+              {% endfor %}
+            </div>
+
+            <div class="input-group" style="max-width: 300px;">
+              <label for="q_{{ idx }}_answer">Correct Option</label>
+              <select name="q_{{ idx }}_answer" id="q_{{ idx }}_answer" required>
+                {% for opt in mcq['options'] %}
+                  {% set is_selected = (opt['text'] == mcq['answer_text'] or opt['label'] == mcq['answer_text']) %}
+                  <option value="{{ opt['label'] }}" {% if is_selected %}selected{% endif %}>
+                    Option {{ opt['label'] }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        {% endfor %}
+
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+          <button type="submit" class="btn btn-primary">💾 Save MCQ Set</button>
+          <a href="/" class="btn btn-secondary">Cancel</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</body>
+
+</html>

@@ -4,6 +4,10 @@ import requests
 from config import GROK_API_KEY, GROK_MODEL
 from utils.text_cleaner import clean_text
 
+class MCQGenerationError(Exception):
+    """Custom exception raised when MCQ generation fails."""
+    pass
+
 def generate_mcqs(text, num_questions=5, difficulty="medium"):
     """
     Generate high-quality MCQs using xAI Grok API.
@@ -11,9 +15,10 @@ def generate_mcqs(text, num_questions=5, difficulty="medium"):
     Returns a list of MCQ dictionaries.
     """
     text = clean_text(text)
-    if not text or not GROK_API_KEY:
-        print("[WARNING] Missing text or GROK_API_KEY.")
-        return []
+    if not GROK_API_KEY:
+        raise MCQGenerationError("API Key is missing. Please set the GROK_API_KEY environment variable in your .env file.")
+    if not text:
+        raise MCQGenerationError("No text found. Please upload a valid document or provide some text.")
 
     # Limit text length to prevent token limit issues
     max_chars = 150000 
@@ -73,34 +78,51 @@ TEXT:
             json=payload,
             timeout=45
         )
-        response.raise_for_status()
-        result = response.json()
-        
-        content = result["choices"][0]["message"]["content"].strip()
-        data = json.loads(content)
-        
-        if "questions" in data:
-            mcqs = data["questions"]
-        elif isinstance(data, list):
-            mcqs = data
-        else:
-            mcqs = []
+        if response.status_code == 401:
+            raise MCQGenerationError("Invalid API key! Please check the GROK_API_KEY in your .env file.")
+        elif response.status_code == 429:
+            raise MCQGenerationError("API rate limit exceeded! Please wait a moment and try again.")
+        elif response.status_code != 200:
+            raise MCQGenerationError(f"API request failed with status code {response.status_code}: {response.text}")
             
-        # Validate structure to prevent errors
-        valid_mcqs = []
-        for q in mcqs:
-            if "question" in q and "options" in q and "answer_text" in q:
-                if len(q["options"]) == 4:
-                    options_valid = True
-                    for o in q["options"]:
-                        if not isinstance(o, dict) or "label" not in o or "text" not in o:
-                            options_valid = False
-                            break
-                    if options_valid:
-                        valid_mcqs.append(q)
-                        
-        return valid_mcqs[:num_questions]
+        result = response.json()
+        content = result["choices"][0]["message"]["content"].strip()
         
+    except requests.exceptions.Timeout:
+        raise MCQGenerationError("The request to the AI API timed out. Please try again with a shorter text.")
+    except requests.exceptions.RequestException as re:
+        raise MCQGenerationError(f"Network error when connecting to the AI API: {str(re)}")
     except Exception as e:
-        print(f"[ERROR] Failed to generate MCQs with Grok API: {e}")
-        return []
+        if not isinstance(e, MCQGenerationError):
+            raise MCQGenerationError(f"Unexpected error: {str(e)}")
+        raise e
+
+    try:
+        data = json.loads(content)
+    except json.JSONDecodeError:
+        raise MCQGenerationError("The AI service returned an invalid JSON response. Please try again.")
+
+    if "questions" in data:
+        mcqs = data["questions"]
+    elif isinstance(data, list):
+        mcqs = data
+    else:
+        raise MCQGenerationError("JSON structure is missing 'questions' array key.")
+        
+    # Validate structure to prevent errors
+    valid_mcqs = []
+    for q in mcqs:
+        if "question" in q and "options" in q and "answer_text" in q:
+            if len(q["options"]) == 4:
+                options_valid = True
+                for o in q["options"]:
+                    if not isinstance(o, dict) or "label" not in o or "text" not in o:
+                        options_valid = False
+                        break
+                if options_valid:
+                    valid_mcqs.append(q)
+                    
+    if not valid_mcqs:
+        raise MCQGenerationError("No valid questions could be structured from the AI response. Please retry.")
+
+    return valid_mcqs[:num_questions]

@@ -29,6 +29,7 @@
         <a href="/teacher" class="btn btn-secondary">← Back to Dashboard</a>
 
         <form action="/student_login" method="post" style="display: inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="session_key" value="{{ session_key }}">
           <button type="submit" class="btn btn-primary">🚀 Start Quiz Now</button>
         </form>

@@ -19,7 +19,9 @@
   </nav>
   <div class="container quiz-container">
     <form action="/submit" method="post" id="quiz-form" data-timer="{{ timer }}" data-total="{{ mcqs|length }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="student_name" value="{{ session.username }}">
+      <input type="hidden" name="time_spent" id="time-spent-input" value="0">
       <div class="quiz-progress">
         <div class="progress-bar" id="progress-bar">
           <div class="progress-fill"></div>
@@ -67,6 +69,7 @@
       if (remaining <= 0) {
         clearInterval(timerInterval);
         timerDisplay.textContent = "TIME'S UP!";
+        document.getElementById('time-spent-input').value = timerSeconds;
         quizForm.submit();
         return;
       }
@@ -75,6 +78,12 @@
 
     updateTimer();
     const timerInterval = setInterval(updateTimer, 1000);
+
+    // Calculate time spent on submit
+    quizForm.addEventListener('submit', () => {
+      const spent = Math.max(0, timerSeconds - remaining);
+      document.getElementById('time-spent-input').value = spent;
+    });
 
     // Track progress
     const totalQuestions = parseInt(document.getElementById('quiz-form').dataset.total, 10);

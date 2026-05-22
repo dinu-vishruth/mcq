@@ -17,6 +17,7 @@
       <p class="subtitle">AI-Powered Question Generation</p>
       {% if error %}<div class="error-toast">{{ error }}</div>{% endif %}
       <form action="/login" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="input-group">
           <input type="text" name="username" placeholder="Username" required id="username-input">
         </div>
