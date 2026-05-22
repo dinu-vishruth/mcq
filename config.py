@@ -1,5 +1,10 @@
 # config.py
 import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 SECRET_KEY = os.getenv("SECRET_KEY", "replace_this_with_secure_random_string")
 GROK_API_KEY = os.getenv("GROK_API_KEY", "")
