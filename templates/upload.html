@@ -174,6 +174,53 @@
       return null;
     }
 
+    // Sample/truncate text to avoid Vercel 4.5 MB payload limits while preserving document coverage
+    function sampleText(text, maxChars = 150000) {
+      if (text.length <= maxChars) {
+        return text;
+      }
+      
+      const numSections = 30;
+      const charsPerSection = Math.floor(maxChars / numSections);
+      const sectionSize = text.length / numSections;
+      let sampledChunks = [];
+      
+      for (let i = 0; i < numSections; i++) {
+        const startIdx = Math.floor(i * sectionSize);
+        // Find the next space or newline to avoid cutting a word in half
+        let adjustedStart = text.indexOf('\n', startIdx);
+        if (adjustedStart === -1 || adjustedStart > startIdx + 1000) {
+          adjustedStart = text.indexOf(' ', startIdx);
+        }
+        if (adjustedStart === -1 || adjustedStart >= text.length) {
+          adjustedStart = startIdx;
+        } else {
+          adjustedStart += 1; // Skip the delimiter
+        }
+        
+        let endIdx = adjustedStart + charsPerSection;
+        if (endIdx > text.length) {
+          endIdx = text.length;
+        }
+        
+        // Find the next space or newline for the end boundary
+        let adjustedEnd = text.indexOf('\n', endIdx);
+        if (adjustedEnd === -1 || adjustedEnd > endIdx + 1000) {
+          adjustedEnd = text.indexOf(' ', endIdx);
+        }
+        if (adjustedEnd === -1 || adjustedEnd > text.length) {
+          adjustedEnd = endIdx;
+        }
+        
+        const chunk = text.substring(adjustedStart, adjustedEnd).trim();
+        if (chunk.length > 0) {
+          sampledChunks.push(chunk);
+        }
+      }
+      
+      return sampledChunks.join("\n\n... [section transition] ...\n\n");
+    }
+
     // Intercept form submission and perform text extraction
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -207,7 +254,8 @@
         }
 
         if (text && text.trim().length > 0) {
-          document.getElementById('extracted-text-input').value = text;
+          const sampledText = sampleText(text, 150000);
+          document.getElementById('extracted-text-input').value = sampledText;
           fileInput.removeAttribute('required');
           fileInput.value = "";
           

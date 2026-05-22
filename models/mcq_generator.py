@@ -16,7 +16,7 @@ def generate_mcqs(text, num_questions=5, difficulty="medium"):
         return []
 
     # Limit text length to prevent token limit issues
-    max_chars = 100000 
+    max_chars = 150000 
     if len(text) > max_chars:
         text = text[:max_chars]
 
