@@ -7,19 +7,24 @@
   <title>Upload Document</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
+  <!-- PDF.js and Mammoth.js for client-side text extraction (avoids Vercel 4.5MB upload limit) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
 
 <body>
   <nav class="navbar">
-    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
+    <span class="nav-brand">🧠 MCQ Generator</span>
     <span class="nav-user">{{ session.username }}</span>
   </nav>
   <div class="container">
     <div class="card glass-card upload-card">
       <h1>📤 Upload Document</h1>
       <p class="subtitle">Upload a PDF, DOCX, PPTX, or TXT file to generate AI-powered MCQs</p>
+      <div class="error-toast" id="client-error-toast" style="display: none;"></div>
       {% if error %}<div class="error-toast">{{ error }}</div>{% endif %}
       <form action="/upload" method="post" enctype="multipart/form-data" id="upload-form">
+        <input type="hidden" name="extracted_text" id="extracted-text-input">
         <div class="file-drop-zone" id="drop-zone">
           <span class="drop-icon">📁</span>
           <p>Drag & drop your file here or <label for="file-input" class="file-label">browse</label></p>
@@ -49,24 +54,69 @@
         <button type="submit" class="btn btn-primary btn-lg" id="generate-btn">
           <span class="btn-text">⚡ Generate Questions</span>
           <span class="btn-loading" style="display:none;">
-            <span class="spinner"></span> Generating with AI...
+            <span class="spinner"></span> <span id="spinner-text">Generating with AI...</span>
           </span>
         </button>
       </form>
     </div>
   </div>
   <script>
-    // File drop zone
+    // PDF.js worker setup
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+    // File drop zone and size validation
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
     const fileNameDisplay = document.getElementById('file-name-display');
     const form = document.getElementById('upload-form');
     const generateBtn = document.getElementById('generate-btn');
+    const spinnerText = document.getElementById('spinner-text');
+    const clientErrorToast = document.getElementById('client-error-toast');
+
+    const MAX_UPLOAD_SIZE = 4.5 * 1024 * 1024; // 4.5 MB for PPTX (server-side)
+    const MAX_EXTRACT_SIZE = 50 * 1024 * 1024; // 50 MB for PDF/DOCX/TXT (client-side)
+
+    function showError(message) {
+      clientErrorToast.textContent = message;
+      clientErrorToast.style.display = 'block';
+      clientErrorToast.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function clearError() {
+      clientErrorToast.style.display = 'none';
+      clientErrorToast.textContent = '';
+    }
+
+    function handleFile(file) {
+      clearError();
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext === 'pptx') {
+        if (file.size > MAX_UPLOAD_SIZE) {
+          showError("PowerPoint (.pptx) files are limited to 4.5 MB because they must be processed on the server. Please convert your PowerPoint to PDF or compress it to upload.");
+          resetFile();
+          return false;
+        }
+      } else {
+        if (file.size > MAX_EXTRACT_SIZE) {
+          showError("File is too large! Maximum supported size is 50 MB.");
+          resetFile();
+          return false;
+        }
+      }
+      fileNameDisplay.textContent = file.name;
+      dropZone.classList.add('has-file');
+      return true;
+    }
+
+    function resetFile() {
+      fileInput.value = "";
+      fileNameDisplay.textContent = "";
+      dropZone.classList.remove('has-file');
+    }
 
     fileInput.addEventListener('change', () => {
       if (fileInput.files.length > 0) {
-        fileNameDisplay.textContent = fileInput.files[0].name;
-        dropZone.classList.add('has-file');
+        handleFile(fileInput.files[0]);
       }
     });
 
@@ -75,18 +125,106 @@
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       dropZone.classList.remove('drag-over');
-      fileInput.files = e.dataTransfer.files;
-      if (fileInput.files.length > 0) {
-        fileNameDisplay.textContent = fileInput.files[0].name;
-        dropZone.classList.add('has-file');
+      if (e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        if (handleFile(file)) {
+          fileInput.files = e.dataTransfer.files;
+        }
       }
     });
 
-    // Show loading spinner on submit
-    form.addEventListener('submit', () => {
+    // Client-side text extractors
+    async function extractTextFromTXT(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(e);
+        reader.readAsText(file);
+      });
+    }
+
+    async function extractTextFromPDF(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let text = "";
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(" ");
+        text += pageText + "\n";
+      }
+      return text;
+    }
+
+    async function extractTextFromDOCX(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+      return result.value;
+    }
+
+    async function extractTextFromFile(file) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext === 'txt') {
+        return await extractTextFromTXT(file);
+      } else if (ext === 'pdf') {
+        return await extractTextFromPDF(file);
+      } else if (ext === 'docx') {
+        return await extractTextFromDOCX(file);
+      }
+      return null;
+    }
+
+    // Intercept form submission and perform text extraction
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const file = fileInput.files[0];
+      if (!file) {
+        showError("Please select or drop a file first.");
+        return;
+      }
+
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext === 'pptx' && file.size > MAX_UPLOAD_SIZE) {
+        showError("PowerPoint (.pptx) files are limited to 4.5 MB. Please convert to PDF.");
+        return;
+      }
+      if (file.size > MAX_EXTRACT_SIZE) {
+        showError("File exceeds the maximum size limit of 50 MB.");
+        return;
+      }
+
+      // Update button state to loading
       generateBtn.querySelector('.btn-text').style.display = 'none';
       generateBtn.querySelector('.btn-loading').style.display = 'inline-flex';
       generateBtn.disabled = true;
+
+      try {
+        let text = "";
+        if (['pdf', 'docx', 'txt'].includes(ext)) {
+          spinnerText.textContent = "Extracting text from document...";
+          text = await extractTextFromFile(file);
+        }
+
+        if (text) {
+          document.getElementById('extracted-text-input').value = text;
+          fileInput.removeAttribute('required');
+          fileInput.value = "";
+        }
+
+        spinnerText.textContent = "Generating questions with AI...";
+        
+        setTimeout(() => {
+          form.submit();
+        }, 100);
+
+      } catch (err) {
+        console.error("Client-side text extraction failed, falling back to server-side upload:", err);
+        spinnerText.textContent = "Uploading file and generating...";
+        setTimeout(() => {
+          form.submit();
+        }, 100);
+      }
     });
   </script>
 </body>

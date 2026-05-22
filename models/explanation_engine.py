@@ -1,20 +1,16 @@
 # models/explanation_engine.py
 import json
-import re
-import google.generativeai as genai
-from config import GEMINI_API_KEY
-
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+import requests
+from config import GROK_API_KEY, GROK_MODEL
 
 def explain_answers(details):
     """
-    Generate highly-personalized explanations for incorrect student answers using Gemini API.
+    Generate highly-personalized explanations for incorrect student answers using Grok API.
     
     details: list of dicts with question, selected, correct, is_correct
     Returns a list of explanation strings.
     """
-    if not GEMINI_API_KEY:
+    if not GROK_API_KEY:
         return [
             f"✅ Correct!" if d["is_correct"] else f"❌ Incorrect. The answer is '{d['correct']}'."
             for d in details
@@ -22,7 +18,7 @@ def explain_answers(details):
 
     explanations = []
     
-    # We only want to ask Gemini to explain the questions the student got WRONG
+    # We only want to ask Grok to explain the questions the student got WRONG
     ai_questions = []
     for idx, d in enumerate(details):
         if not d["is_correct"] and d["selected"]:
@@ -41,18 +37,42 @@ def explain_answers(details):
     for _, d in ai_questions:
         prompt += f"Question: {d['question']}\nStudent Answer: {d['selected']}\nCorrect Answer: {d['correct']}\n\n"
             
-    prompt += "Return your response as a pure JSON flat array of strings, in the exact same order as the questions above. Format exactly like this: [\"Explanation for Q1\", \"Explanation for Q2\"]\nDo not use a JSON wrapper, just return the raw array."
+    prompt += 'You MUST respond with a JSON object containing an "explanations" key, which holds a flat array of strings, in the exact same order as the questions above. Format exactly like this: {"explanations": ["Explanation for Q1", "Explanation for Q2"]}'
     
+    headers = {
+        "Authorization": f"Bearer {GROK_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": GROK_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a helpful teacher that only outputs valid JSON objects."},
+            {"role": "user", "content": prompt}
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.3
+    }
+
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(prompt)
-        raw = response.text.strip()
+        response = requests.post(
+            "https://api.xai.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        response.raise_for_status()
+        result = response.json()
         
-        if raw.startswith("```"):
-            raw = re.sub(r'^```[\w]*\s*', '', raw)
-            raw = re.sub(r'\s*```$', '', raw)
-            
-        ai_explanations = json.loads(raw)
+        content = result["choices"][0]["message"]["content"].strip()
+        data = json.loads(content)
+        
+        if isinstance(data, dict) and "explanations" in data:
+            ai_explanations = data["explanations"]
+        elif isinstance(data, list):
+            ai_explanations = data
+        else:
+            ai_explanations = []
         
         # Merge them back together in order
         ai_idx = 0

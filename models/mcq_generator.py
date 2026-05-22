@@ -1,80 +1,98 @@
 # models/mcq_generator.py
 import json
-import re
-import google.generativeai as genai
-from config import GEMINI_API_KEY
+import requests
+from config import GROK_API_KEY, GROK_MODEL
 from utils.text_cleaner import clean_text
-
-# Configure Gemini AI
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 def generate_mcqs(text, num_questions=5, difficulty="medium"):
     """
-    Generate high-quality MCQs using Google Gemini AI.
+    Generate high-quality MCQs using xAI Grok API.
     Difficulty: easy / medium / hard
     Returns a list of MCQ dictionaries.
     """
     text = clean_text(text)
-    if not text or not GEMINI_API_KEY:
+    if not text or not GROK_API_KEY:
+        print("[WARNING] Missing text or GROK_API_KEY.")
         return []
 
-    # Trim text to prevent token limit overflows for massive PDFs
-    # Gemini 1.5 Flash has a very large context window, but we limit for speed/safety
+    # Limit text length to prevent token limit issues
     max_chars = 100000 
     if len(text) > max_chars:
         text = text[:max_chars]
 
-    prompt = f"""
-    You are an expert exam creator. create {num_questions} Multiple Choice Questions from the text below.
-    The difficulty must be exactly: {difficulty.upper()}.
-    Make the distractors highly plausible and challenging (unless difficulty is 'easy').
-    
-    You MUST respond with a perfectly valid JSON array containing exactly {num_questions} objects in the following format:
-    [
-      {{
-        "question": "What is...",
-        "options": [
-          {{"label": "A", "text": "Option 1"}},
-          {{"label": "B", "text": "Option 2"}},
-          {{"label": "C", "text": "Option 3"}},
-          {{"label": "D", "text": "Option 4"}}
+    prompt = f"""You are an expert exam creator. Create {num_questions} Multiple Choice Questions from the text below.
+The difficulty must be exactly: {difficulty.upper()}.
+Make the distractors highly plausible and challenging (unless difficulty is 'easy').
+
+You MUST respond with a JSON object containing a "questions" key, which holds an array of exactly {num_questions} MCQ objects.
+Each MCQ object must have exactly the following structure:
+{{
+  "question": "The question text",
+  "options": [
+    {{"label": "A", "text": "Option A text"}},
+    {{"label": "B", "text": "Option B text"}},
+    {{"label": "C", "text": "Option C text"}},
+    {{"label": "D", "text": "Option D text"}}
+  ],
+  "answer_text": "The exact text of the correct option (must match one of the options' text)"
+}}
+
+TEXT:
+\"\"\"
+{text}
+\"\"\"
+"""
+
+    headers = {
+        "Authorization": f"Bearer {GROK_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": GROK_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are an expert exam creator that only outputs valid JSON objects."},
+            {"role": "user", "content": prompt}
         ],
-        "answer_text": "Option 2"
-      }}
-    ]
-    
-    Do NOT include markdown formatting wrappers like ```json at the beginning, just return the raw JSON array.
-    
-    TEXT:
-    \"\"\"
-    {text}
-    \"\"\"
-    """
+        "response_format": {"type": "json_object"},
+        "temperature": 0.3
+    }
 
     try:
-        # Use a fast, solid model suitable for JSON generation
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(prompt)
-        raw_output = response.text.strip()
+        response = requests.post(
+            "https://api.xai.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=45
+        )
+        response.raise_for_status()
+        result = response.json()
         
-        # Clean markdown code blocks if the model ignored our formatting instruction
-        if raw_output.startswith("```"):
-            # strip ```json and ```
-            raw_output = re.sub(r'^```[\w]*\s*', '', raw_output)
-            raw_output = re.sub(r'\s*```$', '', raw_output)
+        content = result["choices"][0]["message"]["content"].strip()
+        data = json.loads(content)
+        
+        if "questions" in data:
+            mcqs = data["questions"]
+        elif isinstance(data, list):
+            mcqs = data
+        else:
+            mcqs = []
             
-        mcqs = json.loads(raw_output)
-        
-        # Validate structure to prevent 500 crashes down the line
+        # Validate structure to prevent errors
         valid_mcqs = []
         for q in mcqs:
             if "question" in q and "options" in q and "answer_text" in q:
                 if len(q["options"]) == 4:
-                    valid_mcqs.append(q)
-                    
+                    options_valid = True
+                    for o in q["options"]:
+                        if not isinstance(o, dict) or "label" not in o or "text" not in o:
+                            options_valid = False
+                            break
+                    if options_valid:
+                        valid_mcqs.append(q)
+                        
         return valid_mcqs[:num_questions]
         
     except Exception as e:
-        print(f"[ERROR] Failed to generate MCQs with Gemini: {e}")
+        print(f"[ERROR] Failed to generate MCQs with Grok API: {e}")
         return []

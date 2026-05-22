@@ -142,28 +142,40 @@ def upload():
     if request.method == "GET":
         return render_template("upload.html")
 
-    f = request.files.get("file")
-    if not f or "." not in f.filename:
-        return render_template("upload.html", error="Upload a valid file.")
-    ext = f.filename.rsplit(".", 1)[1].lower()
-    if ext not in ALLOWED_EXT:
-        return render_template("upload.html", error="Unsupported file type.")
-
-    # Extract text from the uploaded file
-    if ext == "pdf":
-        text = extract_text_from_pdf(f)
-    elif ext == "docx":
-        path = os.path.join(UPLOAD_FOLDER, f"tmp_{uuid.uuid4().hex}.docx")
-        f.save(path)
-        text = extract_text_from_docx(path)
-        os.remove(path)
-    elif ext == "pptx":
-        path = os.path.join(UPLOAD_FOLDER, f"tmp_{uuid.uuid4().hex}.pptx")
-        f.save(path)
-        text = extract_text_from_pptx(path)
-        os.remove(path)
+    extracted_text = request.form.get("extracted_text", "").strip()
+    if extracted_text:
+        text = extracted_text
     else:
-        text = f.read().decode("utf-8", errors="ignore")
+        f = request.files.get("file")
+        if not f or "." not in f.filename:
+            return render_template("upload.html", error="Upload a valid file.")
+        
+        # Check file size to avoid Vercel gateway 413 Payload Too Large limits
+        f.seek(0, 2)
+        file_size = f.tell()
+        f.seek(0)
+        if file_size > 4.5 * 1024 * 1024:
+            return render_template("upload.html", error="File is too large! Vercel limits file uploads to 4.5 MB. Please compress or split your file.")
+
+        ext = f.filename.rsplit(".", 1)[1].lower()
+        if ext not in ALLOWED_EXT:
+            return render_template("upload.html", error="Unsupported file type.")
+
+        # Extract text from the uploaded file
+        if ext == "pdf":
+            text = extract_text_from_pdf(f)
+        elif ext == "docx":
+            path = os.path.join(UPLOAD_FOLDER, f"tmp_{uuid.uuid4().hex}.docx")
+            f.save(path)
+            text = extract_text_from_docx(path)
+            os.remove(path)
+        elif ext == "pptx":
+            path = os.path.join(UPLOAD_FOLDER, f"tmp_{uuid.uuid4().hex}.pptx")
+            f.save(path)
+            text = extract_text_from_pptx(path)
+            os.remove(path)
+        else:
+            text = f.read().decode("utf-8", errors="ignore")
 
     text = clean_text(text)
 
