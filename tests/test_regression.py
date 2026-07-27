@@ -68,9 +68,13 @@ class Base(unittest.TestCase):
         cls.flask = app_module.app
         cls.flask.config["TESTING"] = True
         cls.flask.config["WTF_CSRF_ENABLED"] = False
-        # Stub network functions everywhere they're referenced.
-        app_module.generate_mcqs = lambda text, num_questions=5, difficulty="medium": FIXED_MCQS[:num_questions] if num_questions <= len(FIXED_MCQS) else FIXED_MCQS
-        app_module.explain_answers = lambda details: [
+        # Stub the network-calling functions at their SOURCE modules. The
+        # blueprints import these modules (not the names), so patching the
+        # module attribute takes effect in the routes.
+        import models.mcq_generator as _mcq
+        import models.explanation_engine as _exp
+        _mcq.generate_mcqs = lambda text, num_questions=5, difficulty="medium": FIXED_MCQS[:num_questions] if num_questions <= len(FIXED_MCQS) else FIXED_MCQS
+        _exp.explain_answers = lambda details, document_id=None: [
             ("Correct" if d["is_correct"] else "Wrong: " + d["correct"]) for d in details
         ]
 
@@ -304,7 +308,8 @@ class TestDataContracts(Base):
             {"question": "Q", "selected": "4", "correct": "4", "is_correct": True},
             {"question": "Q2", "selected": "Berlin", "correct": "Paris", "is_correct": False},
         ]
-        result = app_module.explain_answers(details)
+        import models.explanation_engine as _exp
+        result = _exp.explain_answers(details)
         self.assertIsInstance(result, list)
         self.assertEqual(len(result), len(details))
         self.assertTrue(all(isinstance(x, str) for x in result))
