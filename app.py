@@ -314,6 +314,15 @@ def student_dashboard():
     avg_medium = round(difficulty_stats["medium"]["sum"] / difficulty_stats["medium"]["count"], 1) if difficulty_stats["medium"]["count"] > 0 else 0
     avg_hard = round(difficulty_stats["hard"]["sum"] / difficulty_stats["hard"]["count"], 1) if difficulty_stats["hard"]["count"] > 0 else 0
 
+    # Weak-topics (agentic learning intelligence). Best-effort: empty list on any
+    # failure, and the template only renders the card when the list is non-empty.
+    weak_topics = []
+    try:
+        from core.services.learning_service import get_weak_topics
+        weak_topics = get_weak_topics(session.get("user_id"), limit=5)
+    except Exception as e:
+        print(f"[WARNING] Weak-topics lookup skipped: {e}")
+
     return render_template(
         "student_dashboard.html",
         history=history,
@@ -323,7 +332,8 @@ def student_dashboard():
         total_time=total_time,
         chart_dates=chart_dates,
         chart_scores=chart_scores,
-        difficulty_averages=[avg_easy, avg_medium, avg_hard]
+        difficulty_averages=[avg_easy, avg_medium, avg_hard],
+        weak_topics=weak_topics
     )
 
 
@@ -574,6 +584,22 @@ def submit():
     )
     conn.commit()
     conn.close()
+
+    # Learning analysis (weak-concept detection). Best-effort: wrapped so any
+    # failure here can never affect the student's score or result page.
+    try:
+        conn2 = get_db()
+        difficulty = "medium"
+        drow = conn2.execute("SELECT difficulty FROM sessions WHERE session_key=?", (key,)).fetchone()
+        if drow and drow["difficulty"]:
+            difficulty = drow["difficulty"]
+        conn2.close()
+        from core.services.learning_service import analyse_submission
+        analyse_submission(details, user_id=session.get("user_id"),
+                           session_key=key, difficulty=difficulty)
+    except Exception as e:
+        print(f"[WARNING] Learning analysis skipped: {e}")
+
     return render_template(
         "result.html", score=score, total=total, details=details, explanations=explanations
     )

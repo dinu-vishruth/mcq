@@ -128,6 +128,27 @@
     </div>
     {% endif %}
 
+    <!-- Weak Topics (AI-detected areas to review). Only shown when detected. -->
+    {% if weak_topics %}
+    <div class="card glass-card" style="text-align: left; margin-bottom: 2rem;">
+      <h2>🎯 Topics to Review</h2>
+      <p class="subtitle" style="margin-bottom: 1rem;">Concepts where you've missed the most questions</p>
+      <div class="sessions-grid">
+        {% for w in weak_topics %}
+        <div class="session-card glass-card">
+          <div class="session-top">
+            <strong>{{ w.topic }}</strong>
+            <span class="difficulty-badge result-badge wrong">{{ w.wrong }}/{{ w.total }} missed</span>
+          </div>
+          <div class="progress-bar" style="margin-top: 0.75rem;">
+            <div class="progress-fill" style="width: {{ w.pct }}%; background: var(--danger);"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
     <div class="card glass-card">
       <div class="logo-badge">👨‍🎓</div>
       <h2>Join a Session</h2>
