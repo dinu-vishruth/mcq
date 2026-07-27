@@ -136,7 +136,17 @@ def init_db():
             conn.commit()
     except Exception as e:
         print(f"[WARNING] Failed to seed default users: {e}")
-        
+
+    # Additive agentic/RAG schema (documents, chunks, embeddings, chat_history,
+    # learning_history, weak_topics + sessions.document_id). Idempotent; never
+    # touches existing tables/columns. Wrapped so a failure here can never stop
+    # the app from booting with its legacy tables intact.
+    try:
+        from core.models.migrations import run_migrations
+        run_migrations(conn)
+    except Exception as e:
+        print(f"[WARNING] Agentic/RAG migrations skipped: {e}")
+
     conn.close()
 
 from werkzeug.security import generate_password_hash, check_password_hash
