@@ -75,6 +75,13 @@ class Base(unittest.TestCase):
         ]
 
     def setUp(self):
+        # Re-pin config in case another test module (e.g. test_rag) mutated these
+        # globals at import time. session_repo reads config.DB_PATH live, so this
+        # keeps route reads and repo writes pointed at the same DB.
+        config.DB_PATH = _DB
+        config.UPLOAD_FOLDER = _UP
+        app_module.DB_PATH = _DB
+        sm.DB_PATH = _DB
         # The login lockout is keyed by IP; all test clients share 127.0.0.1,
         # so clear attempts between tests to keep them isolated.
         conn = sqlite3.connect(_DB)
