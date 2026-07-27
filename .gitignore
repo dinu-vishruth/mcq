@@ -19,4 +19,9 @@ uploads/
 models/flan-t5-mcq/
 flask_session/
 database/*.db
+database/*.db.bak
 reports/
+
+# Vector store (Chroma default persistence dir)
+chroma_db/
+vector_store/

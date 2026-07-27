@@ -85,6 +85,8 @@
     </div>
 
     <!-- Practice Stats Cards -->
+    {% set total_quizzes = total_quizzes | default(0) %}
+    {% set total_time = total_time | default(0) %}
     <div class="stats-grid">
       <div class="stat-card glass-card">
         <div class="stat-label">Total Quizzes</div>
@@ -92,11 +94,11 @@
       </div>
       <div class="stat-card glass-card">
         <div class="stat-label">Average Score</div>
-        <div class="stat-value">{{ avg_score }}%</div>
+        <div class="stat-value">{{ avg_score | default(0) }}%</div>
       </div>
       <div class="stat-card glass-card">
         <div class="stat-label">Best Score</div>
-        <div class="stat-value">{{ best_score }}%</div>
+        <div class="stat-value">{{ best_score | default(0) }}%</div>
       </div>
       <div class="stat-card glass-card">
         <div class="stat-label">Practice Time</div>
