@@ -10,3 +10,14 @@ protobuf
 gunicorn
 python-dotenv
 flask-wtf
+# RAG: small, Vercel-safe. Used by the sqlite vector store + retriever.
+numpy
+
+# --- Optional / local-only (do NOT add to the Vercel deploy) --------------
+# These power the high-quality local embedding path. torch + sentence-
+# transformers exceed Vercel's 250 MB bundle limit, so they are intentionally
+# left out: on Vercel EMBEDDING_BACKEND auto-detect falls back to the pure-
+# Python hashing embedder + sqlite vector store (zero heavy deps). Install
+# locally for best retrieval quality:
+#   pip install sentence-transformers chromadb
+# FAISS (opt-in, VECTOR_STORE=faiss) needs a wheel matching your Python.
