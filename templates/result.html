@@ -4,59 +4,156 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Results</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Your Results — Cortex</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 
 <body>
-  <nav class="navbar">
-    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
-  </nav>
-  <div class="container">
-    <div class="card glass-card score-card">
-      <h1>Your Score</h1>
-      <div
-        class="score-circle {% if score / total >= 0.7 %}score-good{% elif score / total >= 0.4 %}score-mid{% else %}score-low{% endif %}">
-        <span class="score-num">{{ score }}</span>
-        <span class="score-sep">/</span>
-        <span class="score-total">{{ total }}</span>
-      </div>
-      <p class="score-percent">{{ ((score / total) * 100) | round(1) }}%</p>
+  {% from "partials/icons.html" import icon %}
+  {% set pct = ((score / total) * 100) if total > 0 else 0 %}
+  {% set wrong = total - score %}
+  {% set band = 'score-good' if pct >= 70 else ('score-mid' if pct >= 40 else 'score-low') %}
+
+  <div class="quiz-shell" style="max-width:800px">
+    <div class="quiz-topbar" style="justify-content:space-between">
+      <div class="row"><span class="brand-mark">{{ icon("brain") }}</span><span class="brand-name">Cortex</span></div>
+      <a href="/" class="btn btn-sm btn-secondary">{{ icon("home") }} Home</a>
     </div>
 
-    <div class="card glass-card">
-      <h2>📝 Detailed Results</h2>
-      {% for d in details %}
-      <div class="result-item {% if d.is_correct %}result-correct{% else %}result-wrong{% endif %}">
-        <div class="result-header">
-          <span class="q-number">Q{{ loop.index }}</span>
-          {% if d.is_correct %}
-          <span class="result-badge correct">✔ Correct</span>
-          {% else %}
-          <span class="result-badge wrong">✘ Wrong</span>
-          {% endif %}
+    <!-- Score hero -->
+    <div class="card score-hero {{ band }}" style="margin-top:1rem">
+      <p class="eyebrow">
+        {% if pct >= 70 %}Outstanding work{% elif pct >= 40 %}Good effort{% else %}Keep practicing{% endif %}
+      </p>
+      <div class="score-ring-wrap">
+        <svg width="200" height="200" viewBox="0 0 200 200">
+          <circle class="score-ring-track" cx="100" cy="100" r="88" fill="none" stroke-width="14"/>
+          <circle class="score-ring-fill" id="score-ring" cx="100" cy="100" r="88" fill="none" stroke-width="14"
+                  stroke-dasharray="552.92" stroke-dashoffset="552.92"/>
+        </svg>
+        <div class="score-ring-center">
+          <span class="score-ring-pct" id="score-pct">0%</span>
+          <span class="score-ring-frac">{{ score }} / {{ total }} correct</span>
         </div>
-        <p class="q-text">{{ d.question }}</p>
-        <div class="result-answers">
-          <p><strong>Your answer:</strong> {{ d.selected or 'Not answered' }}</p>
-          {% if not d.is_correct %}
-          <p><strong>Correct answer:</strong> {{ d.correct }}</p>
-          {% endif %}
+      </div>
+      <p class="muted" style="max-width:38ch;margin:0 auto">
+        {% if pct >= 70 %}You've clearly mastered most of this material. Push for a perfect run next.
+        {% elif pct >= 40 %}Solid foundation — review the misses below and you'll climb fast.
+        {% else %}Every expert starts here. Review the explanations and try again.{% endif %}
+      </p>
+    </div>
+
+    <!-- Summary stats -->
+    <div class="grid-3" style="margin:1.5rem 0">
+      <div class="stat-card">
+        <div class="stat-top">
+          <div><div class="stat-value" style="color:var(--success)">{{ score }}</div><div class="stat-label">Correct</div></div>
+          <span class="stat-icon emerald">{{ icon("check") }}</span>
         </div>
-        {% if explanations[loop.index0] %}
-        <div class="explanation-box">
-          <strong>💡 Explanation:</strong> {{ explanations[loop.index0] }}
+      </div>
+      <div class="stat-card">
+        <div class="stat-top">
+          <div><div class="stat-value" style="color:var(--danger)">{{ wrong }}</div><div class="stat-label">To Review</div></div>
+          <span class="stat-icon" style="background:var(--danger-soft);color:var(--danger)">{{ icon("x") }}</span>
         </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-top">
+          <div><div class="stat-value">{{ pct | round(0) | int }}%</div><div class="stat-label">Accuracy</div></div>
+          <span class="stat-icon violet">{{ icon("target") }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI insight -->
+    <div class="card" style="margin-bottom:1.5rem;border-color:var(--accent-ring);background:linear-gradient(150deg,var(--accent-soft),var(--card) 60%)">
+      <div class="row" style="align-items:flex-start;gap:0.85rem">
+        <span class="stat-icon violet" style="flex-shrink:0">{{ icon("spark") }}</span>
+        <div>
+          <h2 style="margin-bottom:0.35rem;font-size:1rem">AI Insight</h2>
+          <p class="muted" style="margin:0;font-size:0.9rem">
+            {% if pct >= 70 %}Strong recall across the set. Focus your next session on the {{ wrong }} missed concept{{ 's' if wrong != 1 }} to reach mastery.
+            {% elif pct >= 40 %}You're getting the core ideas. The explanations below target exactly where understanding slipped — a short revision will lift your score meaningfully.
+            {% else %}This topic needs another pass. Read each explanation, then regenerate a fresh quiz to reinforce what you learn.{% endif %}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detailed review -->
+    <div class="section-head"><h2>Question Review</h2></div>
+    {% for d in details %}
+    <div class="result-item {% if d.is_correct %}result-correct{% else %}result-wrong{% endif %}">
+      <div class="result-header">
+        <span class="q-number">Q{{ loop.index }}</span>
+        {% if d.is_correct %}
+        <span class="result-badge correct">{{ icon("check") }} Correct</span>
+        {% else %}
+        <span class="result-badge wrong">{{ icon("x") }} Incorrect</span>
         {% endif %}
       </div>
-      {% endfor %}
+      <p class="q-text" style="font-size:1.02rem">{{ d.question }}</p>
+      <div class="result-answers">
+        <p><strong>Your answer:</strong> {{ d.selected or 'Not answered' }}</p>
+        {% if not d.is_correct %}
+        <p><strong>Correct answer:</strong> <span style="color:var(--success)">{{ d.correct }}</span></p>
+        {% endif %}
+      </div>
+      {% if explanations[loop.index0] %}
+      <div class="explanation-box">
+        <strong>{{ icon("brain") }} Explanation</strong><br>{{ explanations[loop.index0] }}
+      </div>
+      {% endif %}
     </div>
+    {% endfor %}
 
-    <div style="text-align: center; margin: 2rem 0;">
-      <a href="/" class="btn btn-primary">🏠 Back to Home</a>
+    <div class="btn-row" style="justify-content:center;margin:2rem 0 1rem">
+      <a href="/upload" class="btn btn-primary">{{ icon("spark") }} Generate New Quiz</a>
+      <a href="/" class="btn btn-secondary">{{ icon("home") }} Back to Home</a>
     </div>
   </div>
+
+  <script>
+    // Animate the score ring + counter
+    (function () {
+      const pct = {{ pct | round(1) }};
+      const circumference = 552.92;
+      const ring = document.getElementById('score-ring');
+      const label = document.getElementById('score-pct');
+
+      requestAnimationFrame(() => {
+        ring.style.strokeDashoffset = circumference * (1 - pct / 100);
+      });
+
+      // count-up
+      const duration = 1100;
+      const start = performance.now();
+      function tick(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        label.textContent = Math.round(pct * eased) + '%';
+        if (t < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+
+      // confetti for high scores
+      if (pct >= 80) {
+        const colors = ['#3b82f6', '#60a5fa', '#10b981', '#a78bfa', '#f59e0b'];
+        for (let i = 0; i < 90; i++) {
+          const piece = document.createElement('div');
+          piece.className = 'confetti-piece';
+          piece.style.left = Math.random() * 100 + 'vw';
+          piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+          piece.style.animationDuration = (2.4 + Math.random() * 1.8) + 's';
+          piece.style.animationDelay = (Math.random() * 0.6) + 's';
+          piece.style.transform = 'rotate(' + (Math.random() * 360) + 'deg)';
+          document.body.appendChild(piece);
+          setTimeout(() => piece.remove(), 4800);
+        }
+      }
+    })();
+  </script>
 </body>
 
 </html>

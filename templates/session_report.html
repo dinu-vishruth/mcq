@@ -4,126 +4,120 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Session Report — MCQ Generator</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Session Report — Cortex</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
-  <!-- Chart.js CDN for teacher analytics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
-  <nav class="navbar">
-    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
-    <span class="nav-user">👨‍🏫 {{ session.username }} | 
-      <a href="/profile" style="color: var(--primary); text-decoration: none; margin-right: 10px;">Profile</a> | 
-      <a href="/logout" style="color: var(--danger); text-decoration: none;">Logout</a>
-    </span>
-  </nav>
+  {% from "partials/icons.html" import icon %}
+  <div class="app">
+    {% set active = 'library' %}
+    {% set crumb = 'Session Report' %}
+    {% include "partials/shell.html" with context %}
 
-  <div class="container">
-    <div class="dashboard-header">
-      <h1>Session Report</h1>
-      <div style="display: flex; gap: 0.75rem;">
-        {% if results %}
-          <a href="/export_results/{{ session_key }}" class="btn btn-primary">📥 Download CSV</a>
-        {% endif %}
-        <a href="/teacher" class="btn btn-secondary">← Back to Dashboard</a>
-      </div>
-    </div>
-
-    <!-- Session Overview -->
-    <div class="card glass-card" style="text-align: left; margin-bottom: 1.5rem;">
-      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <div class="page">
+      <div class="page-header">
         <div>
-          <span style="font-size: 0.85rem; color: var(--text-muted); display: block; text-transform: uppercase;">Session Code</span>
-          <code class="session-key" style="font-size: 2rem; display: inline-block; margin-top: 0.25rem;">{{ session_key }}</code>
+          <p class="eyebrow">Results</p>
+          <h1>Session Report</h1>
+          <p class="subtitle mb-0">Performance breakdown for <code class="session-key" style="font-size:1rem">{{ session_key }}</code></p>
         </div>
-        <div style="display: flex; gap: 1.5rem; text-align: right;">
-          <div>
-            <span style="font-size: 0.8rem; color: var(--text-muted); display: block;">STUDENTS SUBMITTED</span>
-            <span style="font-size: 1.5rem; font-weight: 700; color: var(--primary);">{{ results|length }}</span>
+        <div class="btn-row">
+          {% if results %}<a href="/export_results/{{ session_key }}" class="btn btn-primary">{{ icon("download") }} Export CSV</a>{% endif %}
+          <a href="/teacher" class="btn btn-secondary">{{ icon("arrow-left") }} Back</a>
+        </div>
+      </div>
+
+      <!-- Overview stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-top">
+            <div><div class="stat-value">{{ results|length }}</div><div class="stat-label">Submissions</div></div>
+            <span class="stat-icon">{{ icon("report") }}</span>
           </div>
-          {% if results %}
-            {% set total_score_pct = namespace(val=0) %}
-            {% for r in results %}
-              {% set pct = (r['score'] / r['total'] * 100) if r['total'] > 0 else 0 %}
-              {% set total_score_pct.val = total_score_pct.val + pct %}
-            {% endfor %}
-            {% set avg_pct = total_score_pct.val / results|length %}
-            <div>
-              <span style="font-size: 0.8rem; color: var(--text-muted); display: block;">AVERAGE SCORE</span>
-              <span style="font-size: 1.5rem; font-weight: 700; color: var(--success);">{{ avg_pct | round(1) }}%</span>
-            </div>
-          {% endif %}
         </div>
+        {% if results %}
+          {% set total_score_pct = namespace(val=0) %}
+          {% for r in results %}
+            {% set pct = (r['score'] / r['total'] * 100) if r['total'] > 0 else 0 %}
+            {% set total_score_pct.val = total_score_pct.val + pct %}
+          {% endfor %}
+          {% set avg_pct = total_score_pct.val / results|length %}
+          <div class="stat-card">
+            <div class="stat-top">
+              <div><div class="stat-value" style="color:var(--success)">{{ avg_pct | round(1) }}%</div><div class="stat-label">Average Score</div></div>
+              <span class="stat-icon emerald">{{ icon("target") }}</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-top">
+              <div><div class="stat-value">{{ results[0]['score'] }}/{{ results[0]['total'] }}</div><div class="stat-label">Top Score</div></div>
+              <span class="stat-icon amber">{{ icon("trophy") }}</span>
+            </div>
+          </div>
+        {% endif %}
       </div>
-    </div>
 
-    <!-- Distribution Chart -->
-    {% if results %}
-    <div class="card glass-card" style="text-align: left; margin-bottom: 1.5rem;">
-      <h2>📊 Score Distribution</h2>
-      <p class="subtitle" style="margin-bottom: 1rem;">Student performance breakdown</p>
-      <canvas id="distributionChart" style="max-height: 250px;"></canvas>
-    </div>
-    {% endif %}
-
-    <!-- Student Table -->
-    <div class="card glass-card" style="text-align: left;">
-      <h2>Student Submissions</h2>
       {% if results %}
-      <div style="overflow-x: auto; margin-top: 1rem;">
-        <table style="width: 100%; border-collapse: collapse; text-align: left;">
-          <thead>
-            <tr style="border-bottom: 2px solid var(--border);">
-              <th style="padding: 1rem; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase;">Student Name</th>
-              <th style="padding: 1rem; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase;">Score</th>
-              <th style="padding: 1rem; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase;">Percentage</th>
-              <th style="padding: 1rem; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase;">Time Spent</th>
-              <th style="padding: 1rem; color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase;">Submitted At</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for r in results %}
-            <tr style="border-bottom: 1px solid var(--border);">
-              <td style="padding: 1rem; font-weight: 500;">
-                {% if r['student_name'] and r['student_name'].strip() %}
-                  {{ r['student_name'] }}
-                {% else %}
-                  {{ r['registered_name'] or 'Unknown Student' }}
-                {% endif %}
-              </td>
-              <td style="padding: 1rem;">
-                <span class="difficulty-badge result-badge {% if r['score']/r['total'] >= 0.7 %}correct{% else %}wrong{% endif %}">
-                  {{ r['score'] }} / {{ r['total'] }}
-                </span>
-              </td>
-              <td style="padding: 1rem; font-weight: 600;">{{ ((r['score'] / r['total'] * 100) | round(1)) if r['total'] > 0 else 0 }}%</td>
-              <td style="padding: 1rem; color: var(--text-muted);">{{ r['time_spent'] or 0 }}s</td>
-              <td style="padding: 1rem; color: var(--text-muted);">{{ r['submitted_at'][:16].replace('T', ' ') }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <div class="empty-state" style="padding: 2rem 0;">
-        <p>No students have taken this quiz yet.</p>
+      <div class="card" style="margin-bottom:1.6rem">
+        <h2>{{ icon("progress") }} Score Distribution</h2>
+        <p class="subtitle" style="font-size:0.85rem">How students performed across score bands</p>
+        <canvas id="distributionChart" style="max-height:250px"></canvas>
       </div>
       {% endif %}
+
+      <div class="card">
+        <h2>Student Submissions</h2>
+        {% if results %}
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th><th>Student</th><th>Score</th><th>Percentage</th><th>Time</th><th>Submitted</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in results %}
+              <tr>
+                <td><span class="rank-pill {{ 'r1' if loop.index==1 else ('r2' if loop.index==2 else ('r3' if loop.index==3 else '')) }}">{{ loop.index }}</span></td>
+                <td style="font-weight:500">
+                  {% if r['student_name'] and r['student_name'].strip() %}{{ r['student_name'] }}
+                  {% else %}{{ r['registered_name'] or 'Unknown Student' }}{% endif %}
+                </td>
+                <td>
+                  <span class="result-badge {% if r['score']/r['total'] >= 0.7 %}correct{% else %}wrong{% endif %}">{{ r['score'] }} / {{ r['total'] }}</span>
+                </td>
+                <td style="font-weight:600">{{ ((r['score'] / r['total'] * 100) | round(1)) if r['total'] > 0 else 0 }}%</td>
+                <td class="muted">{{ r['time_spent'] or 0 }}s</td>
+                <td class="muted">{{ r['submitted_at'][:16].replace('T', ' ') }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="empty-state" style="border:none;padding:2.5rem 1rem">
+          <div class="empty-illustration">{{ icon("report") }}</div>
+          <h2>No submissions yet</h2>
+          <p>Once students complete this quiz, their results will appear here.</p>
+        </div>
+        {% endif %}
+      </div>
     </div>
+
+    {% include "partials/shell_end.html" %}
   </div>
 
   {% if results %}
   <script>
-    // Extract percentages from page dataset
     const percentages = [];
     {% for r in results %}
       percentages.push({{ ((r['score'] / r['total'] * 100) | round(1)) if r['total'] > 0 else 0 }});
     {% endfor %}
 
-    // Count distributions in buckets
-    const buckets = [0, 0, 0, 0, 0]; // 0-20, 21-40, 41-60, 61-80, 81-100
+    const buckets = [0, 0, 0, 0, 0];
     percentages.forEach(p => {
       if (p <= 20) buckets[0]++;
       else if (p <= 40) buckets[1]++;
@@ -138,32 +132,21 @@
       data: {
         labels: ['0-20%', '21-40%', '41-60%', '61-80%', '81-100%'],
         datasets: [{
-          label: 'Students Count',
+          label: 'Students',
           data: buckets,
-          backgroundColor: 'rgba(99, 102, 241, 0.6)',
-          borderColor: '#6366f1',
-          borderWidth: 1,
-          borderRadius: 4
+          backgroundColor: 'rgba(59,130,246,0.55)',
+          borderColor: '#3b82f6',
+          borderWidth: 1.5,
+          borderRadius: 8,
+          maxBarThickness: 72,
         }]
       },
       options: {
         responsive: true,
-        plugins: {
-          legend: { display: false }
-        },
+        plugins: { legend: { display: false } },
         scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { 
-              precision: 0,
-              color: '#94a3b8' 
-            },
-            grid: { color: 'rgba(255, 255, 255, 0.05)' }
-          },
-          x: {
-            ticks: { color: '#94a3b8' },
-            grid: { display: false }
-          }
+          y: { beginAtZero: true, ticks: { precision: 0, color: '#71717a' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          x: { ticks: { color: '#71717a' }, grid: { display: false } }
         }
       }
     });

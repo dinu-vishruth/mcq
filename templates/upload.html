@@ -4,8 +4,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Upload Document</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Build Your Knowledge Base — Cortex</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <!-- PDF.js and Mammoth.js for client-side text extraction (avoids Vercel 4.5MB upload limit) -->
   <script src="/static/js/pdf.min.js"></script>
@@ -13,54 +13,86 @@
 </head>
 
 <body>
-  <nav class="navbar">
-    <span class="nav-brand">🧠 MCQ Generator</span>
-    <span class="nav-user">{{ session.username }}</span>
-  </nav>
-  <div class="container">
-    <div class="card glass-card upload-card">
-      <h1>📤 Upload Document</h1>
-      <p class="subtitle">Upload a PDF, DOCX, PPTX, or TXT file to generate AI-powered MCQs</p>
-      <div class="error-toast" id="client-error-toast" style="display: none;"></div>
-      {% if error %}<div class="error-toast">{{ error }}</div>{% endif %}
-      <form action="/upload" method="post" enctype="multipart/form-data" id="upload-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="extracted_text" id="extracted-text-input">
-        <div class="file-drop-zone" id="drop-zone">
-          <span class="drop-icon">📁</span>
-          <p>Drag & drop your file here or <label for="file-input" class="file-label">browse</label></p>
-          <input type="file" name="file" id="file-input" accept=".pdf,.docx,.pptx,.txt" required>
-          <p class="file-name" id="file-name-display"></p>
-        </div>
+  {% from "partials/icons.html" import icon %}
+  <div class="app">
+    {% set active = 'upload' %}
+    {% set crumb = 'Knowledge Base' %}
+    {% include "partials/shell.html" with context %}
 
-        <div class="form-grid">
-          <div class="input-group">
-            <label for="num-questions">Number of Questions</label>
-            <input type="number" name="num_questions" id="num-questions" value="5" min="1" max="30">
-          </div>
-          <div class="input-group">
-            <label for="difficulty">Difficulty Level</label>
-            <select name="difficulty" id="difficulty">
-              <option value="easy">🟢 Easy — Recall & Definitions</option>
-              <option value="medium" selected>🟡 Medium — Understanding & Application</option>
-              <option value="hard">🔴 Hard — Analysis & Critical Thinking</option>
-            </select>
-          </div>
-          <div class="input-group">
-            <label for="timer">Timer (seconds)</label>
-            <input type="number" name="timer" id="timer" value="120" min="30" max="3600">
-          </div>
-        </div>
+    <div class="page" style="max-width:760px">
+      <div class="center" style="margin-bottom:1.8rem">
+        <p class="eyebrow">Ingest &amp; index</p>
+        <h1>Build Your Knowledge Base</h1>
+        <p class="subtitle">Drop in a document and Cortex will read, understand, and turn it into a tailored quiz.</p>
+      </div>
 
-        <button type="submit" class="btn btn-primary btn-lg" id="generate-btn">
-          <span class="btn-text">⚡ Generate Questions</span>
-          <span class="btn-loading" style="display:none;">
-            <span class="spinner"></span> <span id="spinner-text">Generating with AI...</span>
-          </span>
-        </button>
-      </form>
+      <div class="error-toast" id="client-error-toast" style="display:none"></div>
+      {% if error %}<div class="error-toast">{{ icon("x") }} {{ error }}</div>{% endif %}
+
+      <div class="card card-pad-lg">
+        <form action="/upload" method="post" enctype="multipart/form-data" id="upload-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="extracted_text" id="extracted-text-input">
+
+          <div class="file-drop-zone" id="drop-zone">
+            <span class="drop-icon">{{ icon("upload") }}</span>
+            <p><span class="file-label"><label for="file-input" class="file-label">Click to browse</label></span> or drag &amp; drop your file</p>
+            <p class="drop-hint">PDF, DOCX, PPTX or TXT · up to 50 MB</p>
+            <input type="file" name="file" id="file-input" accept=".pdf,.docx,.pptx,.txt" required>
+            <p class="file-name" id="file-name-display"></p>
+            <div class="process-track" id="process-track"><div class="pt-fill"></div></div>
+          </div>
+
+          <div class="form-grid">
+            <div class="input-group mb-0">
+              <label for="num-questions">Questions</label>
+              <input type="number" name="num_questions" id="num-questions" value="5" min="1" max="30">
+            </div>
+            <div class="input-group mb-0">
+              <label for="difficulty">Difficulty</label>
+              <select name="difficulty" id="difficulty">
+                <option value="easy">Easy — Recall &amp; Definitions</option>
+                <option value="medium" selected>Medium — Understanding &amp; Application</option>
+                <option value="hard">Hard — Analysis &amp; Critical Thinking</option>
+              </select>
+            </div>
+            <div class="input-group mb-0">
+              <label for="timer">Timer (seconds)</label>
+              <input type="number" name="timer" id="timer" value="120" min="30" max="3600">
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg" id="generate-btn" style="margin-top:1.5rem">
+            <span class="btn-text">{{ icon("spark") }} Generate Quiz</span>
+            <span class="btn-loading" style="display:none">
+              <span class="spinner"></span> <span id="spinner-text">Generating with AI…</span>
+            </span>
+          </button>
+        </form>
+      </div>
+
+      <div class="grid-3" style="margin-top:1.5rem">
+        <div class="card" style="padding:1.25rem">
+          <span class="stat-icon">{{ icon("doc") }}</span>
+          <h2 style="font-size:0.98rem;margin:0.75rem 0 0.3rem">1. Upload</h2>
+          <p class="muted" style="font-size:0.86rem;margin:0">Your document is read securely in your browser.</p>
+        </div>
+        <div class="card" style="padding:1.25rem">
+          <span class="stat-icon violet">{{ icon("brain") }}</span>
+          <h2 style="font-size:0.98rem;margin:0.75rem 0 0.3rem">2. Index</h2>
+          <p class="muted" style="font-size:0.86rem;margin:0">Cortex parses key concepts and context.</p>
+        </div>
+        <div class="card" style="padding:1.25rem">
+          <span class="stat-icon emerald">{{ icon("check") }}</span>
+          <h2 style="font-size:0.98rem;margin:0.75rem 0 0.3rem">3. Practice</h2>
+          <p class="muted" style="font-size:0.86rem;margin:0">Get a ready-to-share, tailored quiz set.</p>
+        </div>
+      </div>
     </div>
+
+    {% include "partials/shell_end.html" %}
   </div>
+
   <script>
     // PDF.js worker setup
     pdfjsLib.GlobalWorkerOptions.workerSrc = '/static/js/pdf.worker.min.js';
@@ -73,6 +105,7 @@
     const generateBtn = document.getElementById('generate-btn');
     const spinnerText = document.getElementById('spinner-text');
     const clientErrorToast = document.getElementById('client-error-toast');
+    const processTrack = document.getElementById('process-track');
 
     const MAX_UPLOAD_SIZE = 4.5 * 1024 * 1024; // 4.5 MB for PPTX (server-side)
     const MAX_EXTRACT_SIZE = 50 * 1024 * 1024; // 50 MB for PDF/DOCX/TXT (client-side)
@@ -180,12 +213,12 @@
       if (text.length <= maxChars) {
         return text;
       }
-      
+
       const numSections = 30;
       const charsPerSection = Math.floor(maxChars / numSections);
       const sectionSize = text.length / numSections;
       let sampledChunks = [];
-      
+
       for (let i = 0; i < numSections; i++) {
         const startIdx = Math.floor(i * sectionSize);
         // Find the next space or newline to avoid cutting a word in half
@@ -198,12 +231,12 @@
         } else {
           adjustedStart += 1; // Skip the delimiter
         }
-        
+
         let endIdx = adjustedStart + charsPerSection;
         if (endIdx > text.length) {
           endIdx = text.length;
         }
-        
+
         // Find the next space or newline for the end boundary
         let adjustedEnd = text.indexOf('\n', endIdx);
         if (adjustedEnd === -1 || adjustedEnd > endIdx + 1000) {
@@ -212,13 +245,13 @@
         if (adjustedEnd === -1 || adjustedEnd > text.length) {
           adjustedEnd = endIdx;
         }
-        
+
         const chunk = text.substring(adjustedStart, adjustedEnd).trim();
         if (chunk.length > 0) {
           sampledChunks.push(chunk);
         }
       }
-      
+
       return sampledChunks.join("\n\n... [section transition] ...\n\n");
     }
 
@@ -246,6 +279,7 @@
       generateBtn.querySelector('.btn-text').style.display = 'none';
       generateBtn.querySelector('.btn-loading').style.display = 'inline-flex';
       generateBtn.disabled = true;
+      if (processTrack) processTrack.style.display = 'block';
 
       try {
         let text = "";
@@ -259,7 +293,7 @@
           document.getElementById('extracted-text-input').value = sampledText;
           fileInput.removeAttribute('required');
           fileInput.value = "";
-          
+
           spinnerText.textContent = "Generating questions with AI...";
           setTimeout(() => {
             form.submit();
@@ -272,6 +306,7 @@
             generateBtn.querySelector('.btn-text').style.display = 'inline-block';
             generateBtn.querySelector('.btn-loading').style.display = 'none';
             generateBtn.disabled = false;
+            if (processTrack) processTrack.style.display = 'none';
           } else {
             // Smaller file, let the backend handle extraction/fallback
             spinnerText.textContent = "Uploading file and generating...";
@@ -289,6 +324,7 @@
           generateBtn.querySelector('.btn-text').style.display = 'inline-block';
           generateBtn.querySelector('.btn-loading').style.display = 'none';
           generateBtn.disabled = false;
+          if (processTrack) processTrack.style.display = 'none';
         } else {
           spinnerText.textContent = "Uploading file and generating...";
           setTimeout(() => {

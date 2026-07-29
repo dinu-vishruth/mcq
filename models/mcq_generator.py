@@ -1,128 +1,82 @@
 # models/mcq_generator.py
-import json
-import requests
-from config import GROK_API_KEY, GROK_MODEL
+"""
+MCQ generation entry point.
+
+This module keeps its historical public API — `generate_mcqs(text, num_questions,
+difficulty)` and `MCQGenerationError` — so app.py and test_mcq.py are unchanged.
+Internally it now delegates to the provider-agnostic LLM layer (core.llm) and the
+versioned prompt in core.prompts.mcq, which also fixes the old api.xai.com typo.
+
+When config.AI_PIPELINE == "rag" it routes to the retrieval pipeline instead
+(wired in Phase 4). Until then the behaviour is byte-for-byte the legacy path.
+"""
+import config
 from utils.text_cleaner import clean_text
+from core.llm import get_llm, LLMError
+from core.prompts import mcq as mcq_prompts
+
 
 class MCQGenerationError(Exception):
     """Custom exception raised when MCQ generation fails."""
     pass
 
+
+def _validate(mcqs, num_questions):
+    """Structural validation, identical rules to the original implementation."""
+    valid = []
+    for q in mcqs:
+        if "question" in q and "options" in q and "answer_text" in q:
+            if len(q["options"]) == 4:
+                if all(isinstance(o, dict) and "label" in o and "text" in o for o in q["options"]):
+                    valid.append(q)
+    if not valid:
+        raise MCQGenerationError("No valid questions could be structured from the AI response. Please retry.")
+    return valid[:num_questions]
+
+
 def generate_mcqs(text, num_questions=5, difficulty="medium"):
     """
-    Generate high-quality MCQs using xAI Grok API.
-    Difficulty: easy / medium / hard
-    Returns a list of MCQ dictionaries.
+    Generate high-quality MCQs. Difficulty: easy / medium / hard.
+    Returns a list of MCQ dicts: {question, options:[{label,text}*4], answer_text}.
     """
     text = clean_text(text)
-    if not GROK_API_KEY:
+    if not config.LLM_API_KEY:
         raise MCQGenerationError("API Key is missing. Please set the GROK_API_KEY environment variable in your .env file.")
     if not text:
         raise MCQGenerationError("No text found. Please upload a valid document or provide some text.")
 
-    # Limit text length to prevent token limit issues
-    max_chars = 150000 
+    # RAG path (Phase 4): delegate to the agent pipeline when enabled.
+    if config.AI_PIPELINE == "rag":
+        try:
+            from core.services.mcq_pipeline import generate_mcqs_rag
+        except ImportError:
+            pass  # Pipeline not present yet; fall through to legacy.
+        else:
+            return generate_mcqs_rag(text, num_questions=num_questions, difficulty=difficulty)
+
+    # Legacy single-shot path — same 150k truncation, same prompt wording.
+    max_chars = 150000
     if len(text) > max_chars:
         text = text[:max_chars]
 
-    prompt = f"""You are an expert exam creator. Create {num_questions} Multiple Choice Questions from the text below.
-The difficulty must be exactly: {difficulty.upper()}.
-Make the distractors highly plausible and challenging (unless difficulty is 'easy').
-
-You MUST respond with a JSON object containing a "questions" key, which holds an array of exactly {num_questions} MCQ objects.
-Each MCQ object must have exactly the following structure:
-{{
-  "question": "The question text",
-  "options": [
-    {{"label": "A", "text": "Option A text"}},
-    {{"label": "B", "text": "Option B text"}},
-    {{"label": "C", "text": "Option C text"}},
-    {{"label": "D", "text": "Option D text"}}
-  ],
-  "answer_text": "The exact text of the correct option (must match one of the options' text)"
-}}
-
-TEXT:
-\"\"\"
-{text}
-\"\"\"
-"""
-
-    # Auto-detect if using Groq (starts with gsk_) or xAI (Grok)
-    if GROK_API_KEY.startswith("gsk_"):
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        model = GROK_MODEL if "llama" in GROK_MODEL.lower() else "llama-3.3-70b-versatile"
-    else:
-        url = "https://api.xai.com/v1/chat/completions"
-        model = GROK_MODEL
-
-    headers = {
-        "Authorization": f"Bearer {GROK_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": "You are an expert exam creator that only outputs valid JSON objects."},
-            {"role": "user", "content": prompt}
-        ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.3
-    }
+    prompt = mcq_prompts.legacy_prompt(text, num_questions, difficulty)
+    messages = [
+        {"role": "system", "content": mcq_prompts.SYSTEM},
+        {"role": "user", "content": prompt},
+    ]
 
     try:
-        response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=45
-        )
-        if response.status_code == 401:
-            raise MCQGenerationError("Invalid API key! Please check the GROK_API_KEY in your .env file.")
-        elif response.status_code == 429:
-            raise MCQGenerationError("API rate limit exceeded! Please wait a moment and try again.")
-        elif response.status_code != 200:
-            raise MCQGenerationError(f"API request failed with status code {response.status_code}: {response.text}")
-            
-        result = response.json()
-        content = result["choices"][0]["message"]["content"].strip()
-        
-    except requests.exceptions.Timeout:
-        raise MCQGenerationError("The request to the AI API timed out. Please try again with a shorter text.")
-    except requests.exceptions.RequestException as re:
-        raise MCQGenerationError(f"Network error when connecting to the AI API: {str(re)}")
+        data = get_llm().complete_json(messages)
+    except LLMError as e:
+        raise MCQGenerationError(str(e))
     except Exception as e:
-        if not isinstance(e, MCQGenerationError):
-            raise MCQGenerationError(f"Unexpected error: {str(e)}")
-        raise e
+        raise MCQGenerationError(f"Unexpected error: {e}")
 
-    try:
-        data = json.loads(content)
-    except json.JSONDecodeError:
-        raise MCQGenerationError("The AI service returned an invalid JSON response. Please try again.")
-
-    if "questions" in data:
+    if isinstance(data, dict) and "questions" in data:
         mcqs = data["questions"]
     elif isinstance(data, list):
         mcqs = data
     else:
         raise MCQGenerationError("JSON structure is missing 'questions' array key.")
-        
-    # Validate structure to prevent errors
-    valid_mcqs = []
-    for q in mcqs:
-        if "question" in q and "options" in q and "answer_text" in q:
-            if len(q["options"]) == 4:
-                options_valid = True
-                for o in q["options"]:
-                    if not isinstance(o, dict) or "label" not in o or "text" not in o:
-                        options_valid = False
-                        break
-                if options_valid:
-                    valid_mcqs.append(q)
-                    
-    if not valid_mcqs:
-        raise MCQGenerationError("No valid questions could be structured from the AI response. Please retry.")
 
-    return valid_mcqs[:num_questions]
+    return _validate(mcqs, num_questions)

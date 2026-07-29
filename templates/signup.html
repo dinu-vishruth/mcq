@@ -2,44 +2,73 @@
 <html lang="en">
 
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MCQ Generator — Sign Up</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cortex — Create Account</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
 </head>
 
 <body>
-    <div class="login-container">
-        <div class="card glass-card">
-            <div class="logo-badge">📝</div>
-            <h2>Create Account</h2>
-            <p class="subtitle">Join to create or take quizzes</p>
-            {% if error %}<div class="error-toast">{{ error }}</div>{% endif %}
-            <form action="/signup" method="post">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="input-group">
-                    <input type="text" name="username" placeholder="Choose a username" required>
-                </div>
-                <div class="input-group">
-                    <input type="password" name="password" placeholder="Choose a password" required
-                        style="width: 100%; padding: 0.75rem 1rem; border-radius: 0.5rem; border: 1px solid rgba(148, 163, 184, 0.15); background: rgba(15, 23, 42, 0.6); color: #e2e8f0; font-family: inherit;">
-                </div>
-                <div class="input-group">
-                    <select name="role" required>
-                        <option value="">Select your role</option>
-                        <option value="teacher">👨‍🏫 Teacher</option>
-                        <option value="student">👨‍🎓 Student</option>
-                    </select>
-                </div>
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Sign Up</button>
-            </form>
-            <div class="divider">
-                <span>Already have an account?</span>
-            </div>
-            <a href="/" class="btn btn-secondary" style="width: 100%; justify-content: center;">Log In</a>
+  {% from "partials/icons.html" import icon %}
+  <div class="auth-shell">
+    <!-- Hero panel -->
+    <section class="auth-hero">
+      <div class="brand-row">
+        <span class="brand-mark">{{ icon("brain") }}</span>
+        <span class="brand-name">Cortex</span>
+      </div>
+
+      <div>
+        <p class="eyebrow" style="margin-bottom:1rem">Start free today</p>
+        <h2 class="auth-hero-tagline">Learn <span class="grad">smarter</span>, not harder.</h2>
+        <p class="auth-hero-sub">Join a community of learners who turn their study material into an intelligent, personalized practice engine.</p>
+
+        <div class="auth-hero-points">
+          <div class="auth-hero-point"><span class="chk">{{ icon("check") }}</span> Build your own knowledge base</div>
+          <div class="auth-hero-point"><span class="chk">{{ icon("check") }}</span> Practice with adaptive quizzes</div>
+          <div class="auth-hero-point"><span class="chk">{{ icon("check") }}</span> See exactly where to improve</div>
         </div>
-    </div>
+      </div>
+
+      <p class="muted" style="font-size:0.82rem">No credit card. Set up in seconds.</p>
+    </section>
+
+    <!-- Form panel -->
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div class="logo-badge">{{ icon("spark") }}</div>
+        <h1>Create your account</h1>
+        <p class="subtitle">Pick a role to get started</p>
+
+        {% if error %}<div class="error-toast">{{ icon("x") }} {{ error }}</div>{% endif %}
+
+        <form action="/signup" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="input-group">
+            <label for="su-username">Username</label>
+            <input type="text" name="username" id="su-username" placeholder="Choose a username" required autofocus>
+          </div>
+          <div class="input-group">
+            <label for="su-password">Password</label>
+            <input type="password" name="password" id="su-password" placeholder="At least 8 characters" required>
+          </div>
+          <div class="input-group">
+            <label for="su-role">I am a…</label>
+            <select name="role" id="su-role" required>
+              <option value="">Select your role</option>
+              <option value="teacher">Teacher — create & share quizzes</option>
+              <option value="student">Student — practice & learn</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg">Create account {{ icon("arrow-right") }}</button>
+        </form>
+
+        <div class="divider"><span>Already have an account?</span></div>
+        <a href="/" class="btn btn-secondary btn-lg">Sign in instead</a>
+      </div>
+    </section>
+  </div>
 </body>
 
 </html>

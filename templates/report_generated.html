@@ -4,66 +4,71 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Session Created</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Quiz Created — Cortex</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 
 <body>
-  <nav class="navbar">
-    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
-    <span class="nav-user">{{ session.username }}</span>
-  </nav>
-  <div class="container">
-    <div class="card glass-card success-card">
-      <div class="success-icon">✅</div>
-      <h1>Session Created!</h1>
-      <div class="session-key-box">
-        <label>Session Key (share with students)</label>
-        <div class="key-display">
-          <code id="session-key">{{ session_key }}</code>
-          <button type="button" class="btn btn-sm" onclick="copyKey()" id="copy-btn">📋 Copy</button>
-        </div>
-      </div>
-      <div class="action-buttons">
-        <a href="/teacher" class="btn btn-secondary">← Back to Dashboard</a>
+  {% from "partials/icons.html" import icon %}
+  <div class="app">
+    {% set active = 'upload' %}
+    {% set crumb = 'Quiz Created' %}
+    {% include "partials/shell.html" with context %}
 
-        <form action="/student_login" method="post" style="display: inline;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="session_key" value="{{ session_key }}">
-          <button type="submit" class="btn btn-primary">🚀 Start Quiz Now</button>
-        </form>
-      </div>
-    </div>
+    <div class="page" style="max-width:820px">
+      <div class="card card-pad-lg center">
+        <div class="success-icon">{{ icon("check") }}</div>
+        <h1>Quiz is ready</h1>
+        <p class="subtitle">Share this key with your students to give them access.</p>
 
-    <div class="card glass-card">
-      <h2>📋 Question Preview</h2>
-      <div class="preview-list">
-        {% for q in mcqs %}
-        <div class="preview-question">
-          <div class="question-header">
-            <span class="q-number">Q{{ loop.index }}</span>
-            <p class="q-text">{{ q.question }}</p>
-          </div>
-          <div class="preview-options">
-            {% for opt in q.options %}
-            <div class="preview-opt {% if opt.text == q.answer_text %}correct-answer{% endif %}">
-              <span class="option-badge">{{ opt.label }}</span> {{ opt.text }}
-              {% if opt.text == q.answer_text %}<span class="correct-marker">✔</span>{% endif %}
-            </div>
-            {% endfor %}
+        <div class="session-key-box">
+          <label>Session Key</label>
+          <div class="key-display">
+            <code id="session-key">{{ session_key }}</code>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyKey()" id="copy-btn">{{ icon("copy") }} Copy</button>
           </div>
         </div>
-        {% endfor %}
+
+        <div class="action-buttons" style="justify-content:center">
+          <form action="/student_login" method="post" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="session_key" value="{{ session_key }}">
+            <button type="submit" class="btn btn-primary">{{ icon("play") }} Start Quiz Now</button>
+          </form>
+          <a href="/teacher" class="btn btn-secondary">{{ icon("arrow-left") }} Back to Library</a>
+        </div>
       </div>
+
+      <div class="section-head"><h2>Question Preview</h2><span class="ai-badge">{{ mcqs|length }} questions</span></div>
+      {% for q in mcqs %}
+      <div class="preview-question">
+        <div class="question-header">
+          <span class="q-number">Q{{ loop.index }}</span>
+          <p class="q-text" style="font-size:1.05rem">{{ q.question }}</p>
+        </div>
+        <div class="preview-options">
+          {% for opt in q.options %}
+          <div class="preview-opt {% if opt.text == q.answer_text %}correct-answer{% endif %}">
+            <span class="option-badge">{{ opt.label }}</span> {{ opt.text }}
+            {% if opt.text == q.answer_text %}<span class="correct-marker">{{ icon("check") }}</span>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
     </div>
+
+    {% include "partials/shell_end.html" %}
   </div>
+
   <script>
     function copyKey() {
       const key = document.getElementById('session-key').textContent;
       navigator.clipboard.writeText(key).then(() => {
-        document.getElementById('copy-btn').textContent = '✅ Copied!';
-        setTimeout(() => { document.getElementById('copy-btn').textContent = '📋 Copy'; }, 2000);
+        const btn = document.getElementById('copy-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
       });
     }
   </script>

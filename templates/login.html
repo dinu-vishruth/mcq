@@ -4,43 +4,70 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MCQ Generator — Login</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Cortex — Sign In</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 
 <body>
-  <div class="login-container">
-    <div class="card glass-card">
-      <div class="logo-badge">🧠</div>
-      <h2>MCQ Generator</h2>
-      <p class="subtitle">AI-Powered Question Generation</p>
-      {% if error %}<div class="error-toast">{{ error }}</div>{% endif %}
-      <form action="/login" method="post">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="input-group">
-          <input type="text" name="username" placeholder="Username" required id="username-input">
-        </div>
-        <div class="input-group">
-          <input type="password" name="password" placeholder="Password" required id="password-input"
-            style="width: 100%; padding: 0.75rem 1rem; border-radius: 0.5rem; border: 1px solid rgba(148, 163, 184, 0.15); background: rgba(15, 23, 42, 0.6); color: #e2e8f0; font-family: inherit;">
-        </div>
-        <button type="submit" class="btn btn-primary" id="login-btn">Log In</button>
-      </form>
-      <div class="divider">
-        <span>OR</span>
+  {% from "partials/icons.html" import icon %}
+  <div class="auth-shell">
+    <!-- Hero panel -->
+    <section class="auth-hero">
+      <div class="brand-row">
+        <span class="brand-mark">{{ icon("brain") }}</span>
+        <span class="brand-name">Cortex</span>
       </div>
-      <a href="/signup" class="btn btn-secondary" style="width: 100%; justify-content: center;">Create Account</a>
-      
-      <!-- Demo Credentials Hint (useful for serverless environments where DB is ephemeral) -->
-      <div style="margin-top: 1.5rem; padding: 0.75rem; border-radius: 0.5rem; background: rgba(59, 130, 246, 0.1); border: 1px dashed rgba(59, 130, 246, 0.3); font-size: 0.8rem; text-align: center; line-height: 1.4;">
-        <span style="color: #93c5fd; font-weight: 600; display: block; margin-bottom: 0.25rem;">💡 Demo Credentials</span>
-        <div style="color: #cbd5e1;">
-          <strong>Teacher:</strong> <code style="background: rgba(15, 23, 42, 0.6); padding: 0.1rem 0.3rem; border-radius: 0.25rem;">teacher</code> / <code style="background: rgba(15, 23, 42, 0.6); padding: 0.1rem 0.3rem; border-radius: 0.25rem;">teacher123</code><br>
-          <strong>Student:</strong> <code style="background: rgba(15, 23, 42, 0.6); padding: 0.1rem 0.3rem; border-radius: 0.25rem;">student</code> / <code style="background: rgba(15, 23, 42, 0.6); padding: 0.1rem 0.3rem; border-radius: 0.25rem;">student123</code>
+
+      <div>
+        <p class="eyebrow" style="margin-bottom:1rem">Your AI learning companion</p>
+        <h2 class="auth-hero-tagline">Turn any document into <span class="grad">mastery</span>.</h2>
+        <p class="auth-hero-sub">Upload your notes and let Cortex build adaptive quizzes, track weak topics, and coach you to your goals.</p>
+
+        <div class="auth-hero-points">
+          <div class="auth-hero-point"><span class="chk">{{ icon("check") }}</span> AI-generated questions from your material</div>
+          <div class="auth-hero-point"><span class="chk">{{ icon("check") }}</span> Instant explanations and insights</div>
+          <div class="auth-hero-point"><span class="chk">{{ icon("check") }}</span> Streaks, XP, and progress tracking</div>
         </div>
       </div>
-    </div>
+
+      <p class="muted" style="font-size:0.82rem">Trusted by learners who take their time seriously.</p>
+    </section>
+
+    <!-- Form panel -->
+    <section class="auth-panel">
+      <div class="auth-card">
+        <div class="logo-badge">{{ icon("brain") }}</div>
+        <h1>Welcome back</h1>
+        <p class="subtitle">Sign in to continue learning</p>
+
+        {% if error %}<div class="error-toast">{{ icon("x") }} {{ error }}</div>{% endif %}
+
+        <form action="/login" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="input-group">
+            <label for="username-input">Username</label>
+            <input type="text" name="username" placeholder="Your username" required id="username-input" autofocus>
+          </div>
+          <div class="input-group">
+            <label for="password-input">Password</label>
+            <input type="password" name="password" placeholder="••••••••" required id="password-input">
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg" id="login-btn">Sign In {{ icon("arrow-right") }}</button>
+        </form>
+
+        <div class="divider"><span>New to Cortex?</span></div>
+        <a href="/signup" class="btn btn-secondary btn-lg">Create an account</a>
+
+        <div class="demo-hint">
+          <span class="dh-title">Demo credentials</span>
+          <div>
+            <strong>Teacher:</strong> <code>teacher</code> / <code>teacher123</code><br>
+            <strong>Student:</strong> <code>student</code> / <code>student123</code>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </body>
 
