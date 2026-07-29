@@ -40,6 +40,12 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "45"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.3"))
 
+# Wall-clock budget for the whole RAG MCQ pipeline. Must stay under the serverless
+# function limit (vercel.json maxDuration=60) so generation is never killed
+# mid-flight; the pipeline stops retrying once this budget (minus one LLM_TIMEOUT
+# of headroom) is exhausted and returns whatever it has collected.
+PIPELINE_DEADLINE_SECONDS = int(os.getenv("PIPELINE_DEADLINE_SECONDS", "55"))
+
 # --- AI pipeline selection ------------------------------------------------
 # "legacy"  -> single-shot generate_mcqs (current behaviour, the safe default)
 # "rag"     -> retrieval-augmented agent pipeline (enabled in Phase 4)

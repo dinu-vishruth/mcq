@@ -118,7 +118,7 @@ class TestPublicRoutes(Base):
     def test_home_shows_login_when_logged_out(self):
         r = self.client().get("/")
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"MCQ Generator", r.data)
+        self.assertIn(b"Cortex", r.data)
 
     def test_signup_get(self):
         self.assertEqual(self.client().get("/signup").status_code, 200)
@@ -162,7 +162,7 @@ class TestRoleGating(Base):
         self._login(c, "teach2", "password123")
         r = c.get("/teacher")
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"Teacher Dashboard", r.data)
+        self.assertIn(b"Quiz Library", r.data)
 
     def test_student_reaches_dashboard(self):
         c = self.client()
@@ -170,7 +170,7 @@ class TestRoleGating(Base):
         self._login(c, "stud2", "password123")
         r = c.get("/student")
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"Student Dashboard", r.data)
+        self.assertIn(b"Welcome back", r.data)
 
 
 class TestGenerationAndQuizFlow(Base):
@@ -187,7 +187,7 @@ class TestGenerationAndQuizFlow(Base):
         r = c.post("/upload", data={"extracted_text": "Some study material about math and geography.",
                                     "num_questions": "2", "difficulty": "medium", "timer": "120"})
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"Session Created", r.data)
+        self.assertIn(b"Quiz is ready", r.data)
 
     def test_full_student_quiz_scoring(self):
         c = self.client()
@@ -213,8 +213,8 @@ class TestGenerationAndQuizFlow(Base):
 
         r = c.post("/submit", data=form)
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"Your Score", r.data)
-        self.assertIn(b"2", r.data)  # 2/2
+        self.assertIn(b"correct", r.data)  # score hero: "{score} / {total} correct"
+        self.assertIn(b"2 / 2", r.data)  # 2/2
 
         # Result persisted with correct score
         conn = sqlite3.connect(_DB)
