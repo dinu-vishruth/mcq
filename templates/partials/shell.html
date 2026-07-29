@@ -1,0 +1,106 @@
+{#
+  App shell: sidebar + topbar. Included by every authenticated page.
+  Caller sets:
+    active      — nav key to highlight (home|library|upload|coach|progress|profile)
+    crumb       — current-page breadcrumb label
+  Uses only session.* which is globally available in Jinja.
+#}
+{% from "partials/icons.html" import icon %}
+{% set role = session.role %}
+{% set uname = session.username or 'User' %}
+{% set home_url = '/teacher' if role == 'teacher' else '/student' %}
+
+<aside class="sidebar" id="app-sidebar">
+  <a href="{{ home_url }}" class="sidebar-brand">
+    <span class="brand-mark">{{ icon("brain") }}</span>
+    <span class="brand-name">Cortex</span>
+  </a>
+
+  <div class="nav-section-label">Menu</div>
+
+  <a href="{{ home_url }}" class="nav-item {{ 'active' if active == 'home' }}">
+    {{ icon("home") }} <span>{{ 'Dashboard' if role == 'teacher' else 'Home' }}</span>
+  </a>
+
+  {% if role == 'teacher' %}
+  <a href="{{ home_url }}" class="nav-item {{ 'active' if active == 'library' }}">
+    {{ icon("library") }} <span>Quiz Library</span>
+  </a>
+  {% else %}
+  <a href="{{ home_url }}" class="nav-item {{ 'active' if active == 'progress' }}">
+    {{ icon("progress") }} <span>Progress</span>
+  </a>
+  {% endif %}
+
+  <a href="/upload" class="nav-item {{ 'active' if active == 'upload' }}">
+    {{ icon("upload") }} <span>{{ 'Create Quiz' if role == 'teacher' else 'Knowledge Base' }}</span>
+  </a>
+
+  {% if role == 'student' %}
+  <a href="{{ home_url }}#join" class="nav-item {{ 'active' if active == 'coach' }}">
+    {{ icon("coach") }} <span>AI Coach</span>
+    <span class="nav-badge">AI</span>
+  </a>
+  {% endif %}
+
+  <div class="sidebar-spacer"></div>
+
+  {% if role == 'student' %}
+  <div class="side-stat">
+    <span class="ss-icon">{{ icon("flame") }}</span>
+    <div>
+      <div class="ss-val">{{ session.streak | default(1) }} day streak</div>
+      <div class="ss-label">Keep it going</div>
+    </div>
+  </div>
+  <div class="side-stat">
+    <span class="ss-icon">{{ icon("spark") }}</span>
+    <div>
+      <div class="ss-val">{{ session.xp | default(0) }} XP</div>
+      <div class="ss-label">Level {{ (session.xp | default(0) // 100) + 1 }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="storage-meter">
+    <div class="row between" style="font-size:0.72rem;color:var(--text-3)">
+      <span>Storage</span><span>{{ session.storage_pct | default(18) }}%</span>
+    </div>
+    <div class="sm-track"><div class="sm-fill" style="width: {{ session.storage_pct | default(18) }}%"></div></div>
+  </div>
+
+  <a href="/profile" class="side-profile">
+    <span class="avatar">{{ uname[0] | upper }}</span>
+    <div>
+      <div class="sp-name">{{ uname }}</div>
+      <div class="sp-role">{{ role }}</div>
+    </div>
+  </a>
+</aside>
+
+<div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+<div class="main">
+  <header class="topbar">
+    <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle menu">{{ icon("menu") }}</button>
+    <nav class="breadcrumb">
+      <a href="{{ home_url }}" class="crumb-ancestor" style="text-decoration:none">Cortex</a>
+      <span class="crumb-sep crumb-ancestor">/</span>
+      <span class="crumb-current">{{ crumb | default('Dashboard') }}</span>
+    </nav>
+
+    <div class="topbar-search">
+      {{ icon("search") }}
+      <input type="text" placeholder="Search…" aria-label="Search">
+      <kbd>⌘K</kbd>
+    </div>
+
+    <a href="{{ home_url }}" class="icon-btn" aria-label="Notifications">
+      {{ icon("bell") }}<span class="dot"></span>
+    </a>
+    <a href="/profile" class="icon-btn" aria-label="Profile" style="padding:0">
+      <span class="avatar" style="width:38px;height:38px;border-radius:var(--r-sm)">{{ uname[0] | upper }}</span>
+    </a>
+    <a href="/logout" class="icon-btn" aria-label="Log out">{{ icon("logout") }}</a>
+  </header>
+{# main is left open — page closes it via partials/shell_end.html #}

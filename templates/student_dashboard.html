@@ -4,201 +4,192 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Student Dashboard — MCQ Generator</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Home — Cortex</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
-  <!-- Chart.js CDN for visual analytics -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 1rem;
-      margin-bottom: 2rem;
-    }
-    .stat-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 1.25rem;
-      text-align: center;
-    }
-    .stat-value {
-      font-size: 1.8rem;
-      font-weight: 700;
-      color: var(--primary);
-      margin-top: 0.25rem;
-    }
-    .stat-label {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .charts-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1.5rem;
-      margin-bottom: 2.5rem;
-    }
-    .chart-container {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.5rem;
-      min-height: 320px;
-    }
-    @media (max-width: 768px) {
-      .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-      .charts-row {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
 </head>
 
 <body>
-  <nav class="navbar">
-    <a href="/" class="nav-brand">🧠 MCQ Generator</a>
-    <span class="nav-user">👨‍Grad {{ session.username }} | 
-      <a href="/profile" style="color: var(--primary); text-decoration: none; margin-right: 10px;">Profile</a> | 
-      <a href="/logout" style="color: var(--danger); text-decoration: none;">Logout</a>
-    </span>
-  </nav>
+  {% from "partials/icons.html" import icon %}
+  {% set total_quizzes = total_quizzes | default(0) %}
+  {% set total_time = total_time | default(0) %}
+  <div class="app">
+    {% set active = 'home' %}
+    {% set crumb = 'Home' %}
+    {% include "partials/shell.html" with context %}
 
-  <div class="container">
-    <!-- Flash message display -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="error-toast" style="background: rgba(16, 185, 129, 0.15); color: #a7f3d0; border: 1px solid rgba(16, 185, 129, 0.3);">
-            {{ message }}
-          </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+    <div class="page">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-success">{{ icon("check") }} {{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
 
-    <div class="dashboard-header">
-      <h1>Student Dashboard</h1>
-    </div>
-
-    <!-- Practice Stats Cards -->
-    {% set total_quizzes = total_quizzes | default(0) %}
-    {% set total_time = total_time | default(0) %}
-    <div class="stats-grid">
-      <div class="stat-card glass-card">
-        <div class="stat-label">Total Quizzes</div>
-        <div class="stat-value">{{ total_quizzes }}</div>
-      </div>
-      <div class="stat-card glass-card">
-        <div class="stat-label">Average Score</div>
-        <div class="stat-value">{{ avg_score | default(0) }}%</div>
-      </div>
-      <div class="stat-card glass-card">
-        <div class="stat-label">Best Score</div>
-        <div class="stat-value">{{ best_score | default(0) }}%</div>
-      </div>
-      <div class="stat-card glass-card">
-        <div class="stat-label">Practice Time</div>
-        <div class="stat-value">
-          {% if total_time >= 60 %}
-            {{ total_time // 60 }}m
+      <!-- Hero -->
+      <div class="hero">
+        <p class="eyebrow">Your learning companion</p>
+        <h1>Welcome back, {{ session.username }} 👋</h1>
+        <p class="subtitle">
+          {% if total_quizzes > 0 %}
+            You've completed {{ total_quizzes }} quiz{{ 'zes' if total_quizzes != 1 else '' }} with a {{ avg_score | default(0) }}% average. Ready for the next one?
           {% else %}
-            {{ total_time }}s
+            Let's get started. Join a quiz with a session key, or turn your own notes into a practice set.
           {% endif %}
+        </p>
+        <div class="hero-actions">
+          <a href="#join" class="btn btn-primary">{{ icon("play") }} Continue Learning</a>
+          <a href="/upload" class="btn btn-secondary">{{ icon("spark") }} Generate a Quiz</a>
         </div>
       </div>
-    </div>
 
-    <!-- Visual Analytics Charts -->
-    {% if total_quizzes > 0 %}
-    <div class="charts-row">
-      <div class="chart-container glass-card">
-        <h2>📈 Performance Trend</h2>
-        <p class="subtitle" style="margin-bottom: 1rem;">Scores over time (%)</p>
-        <canvas id="trendChart" style="max-height: 220px;"></canvas>
-      </div>
-      <div class="chart-container glass-card">
-        <h2>📊 Score by Difficulty</h2>
-        <p class="subtitle" style="margin-bottom: 1rem;">Average score per level (%)</p>
-        <canvas id="difficultyChart" style="max-height: 220px;"></canvas>
-      </div>
-    </div>
-    {% endif %}
-
-    <!-- Weak Topics (AI-detected areas to review). Only shown when detected. -->
-    {% if weak_topics %}
-    <div class="card glass-card" style="text-align: left; margin-bottom: 2rem;">
-      <h2>🎯 Topics to Review</h2>
-      <p class="subtitle" style="margin-bottom: 1rem;">Concepts where you've missed the most questions</p>
-      <div class="sessions-grid">
-        {% for w in weak_topics %}
-        <div class="session-card glass-card">
-          <div class="session-top">
-            <strong>{{ w.topic }}</strong>
-            <span class="difficulty-badge result-badge wrong">{{ w.wrong }}/{{ w.total }} missed</span>
+      <!-- Stat cards -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-top">
+            <div><div class="stat-value">{{ total_quizzes }}</div><div class="stat-label">Quizzes Completed</div></div>
+            <span class="stat-icon">{{ icon("quiz") }}</span>
           </div>
-          <div class="progress-bar" style="margin-top: 0.75rem;">
-            <div class="progress-fill" style="width: {{ w.pct }}%; background: var(--danger);"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top">
+            <div><div class="stat-value">{{ avg_score | default(0) }}%</div><div class="stat-label">Average Score</div></div>
+            <span class="stat-icon emerald">{{ icon("target") }}</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top">
+            <div><div class="stat-value">{{ best_score | default(0) }}%</div><div class="stat-label">Best Score</div></div>
+            <span class="stat-icon amber">{{ icon("trophy") }}</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-top">
+            <div>
+              <div class="stat-value">{% if total_time >= 60 %}{{ total_time // 60 }}m{% else %}{{ total_time }}s{% endif %}</div>
+              <div class="stat-label">Study Time</div>
+            </div>
+            <span class="stat-icon violet">{{ icon("clock") }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Streak -->
+      <div class="card" style="margin-bottom:1.6rem">
+        <div class="row between">
+          <h2 class="mb-0">{{ icon("flame") }} Daily Streak</h2>
+          <span class="ai-badge">{{ session.streak | default(1) }} day{{ 's' if (session.streak | default(1)) != 1 }}</span>
+        </div>
+        <div class="streak-row">
+          {% for d in ['M','T','W','T','F','S','S'] %}
+          <div class="streak-day {{ 'done' if loop.index0 < (session.streak | default(1)) }}">{{ d }}</div>
+          {% endfor %}
+        </div>
+        <p class="muted" style="font-size:0.84rem;margin:0.75rem 0 0">Practice a little every day to keep your streak alive.</p>
+      </div>
+
+      {% if total_quizzes > 0 %}
+      <!-- Charts -->
+      <div class="grid-2">
+        <div class="card chart-container">
+          <h2>{{ icon("progress") }} Performance Trend</h2>
+          <p class="subtitle" style="font-size:0.85rem">Your scores over time (%)</p>
+          <canvas id="trendChart" style="max-height:220px"></canvas>
+        </div>
+        <div class="card chart-container">
+          <h2>{{ icon("target") }} Score by Difficulty</h2>
+          <p class="subtitle" style="font-size:0.85rem">Average per level (%)</p>
+          <canvas id="difficultyChart" style="max-height:220px"></canvas>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Weak topics -->
+      {% if weak_topics %}
+      <div class="card" style="margin-bottom:1.6rem">
+        <h2>{{ icon("target") }} Topics to Review</h2>
+        <p class="subtitle" style="font-size:0.85rem">Concepts where you've missed the most questions</p>
+        <div class="stack" style="gap:1rem">
+          {% for w in weak_topics %}
+          <div>
+            <div class="row between" style="margin-bottom:0.5rem">
+              <strong style="font-size:0.92rem">{{ w.topic }}</strong>
+              <span class="result-badge wrong">{{ w.wrong }}/{{ w.total }} missed</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: {{ w.pct }}%; background: linear-gradient(90deg,var(--danger),#f87171)"></div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Join session (AI Coach) -->
+      <div class="grid-2" id="join">
+        <div class="card" style="display:flex;flex-direction:column">
+          <h2>{{ icon("play") }} Join a Session</h2>
+          <p class="subtitle" style="font-size:0.88rem">Enter the session key from your teacher</p>
+          {% if error %}<div class="error-toast">{{ icon("x") }} {{ error }}</div>{% endif %}
+          <form action="/student_login" method="post" style="margin-top:auto">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="input-group">
+              <input type="text" name="session_key" placeholder="e.g. a1b2c3d4" required id="session-key-input">
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg" id="start-test-btn">{{ icon("arrow-right") }} Start Quiz</button>
+          </form>
+        </div>
+
+        <div class="card" style="background:linear-gradient(150deg,rgba(139,92,246,0.10),var(--card) 60%);border-color:var(--border-2)">
+          <div class="row" style="align-items:flex-start;gap:0.85rem">
+            <span class="stat-icon violet" style="flex-shrink:0">{{ icon("coach") }}</span>
+            <div>
+              <h2 style="margin-bottom:0.3rem">Your AI Coach</h2>
+              <p class="muted" style="font-size:0.88rem;margin:0 0 1rem">
+                {% if weak_topics %}Focus today on <strong>{{ weak_topics[0].topic }}</strong> — it's your biggest opportunity to improve.
+                {% elif total_quizzes > 0 %}You're doing great. Turn fresh notes into a quiz to keep the momentum going.
+                {% else %}Start by generating your first quiz — I'll track your progress and coach you from there.{% endif %}
+              </p>
+              <a href="/upload" class="btn btn-secondary btn-sm">{{ icon("spark") }} Practice from my notes</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="section-head"><h2>Recent Activity</h2></div>
+      {% if history %}
+      <div class="sessions-grid">
+        {% for h in history %}
+        <div class="session-card glass-card hover-card">
+          <div class="session-top">
+            <span class="card-icon">{{ icon("doc") }}</span>
+            <span class="difficulty-badge result-badge {% if h['score']/h['total'] >= 0.7 %}correct{% else %}wrong{% endif %}">
+              {{ h['score'] }} / {{ h['total'] }}
+            </span>
+          </div>
+          <code class="session-key" style="font-size:0.95rem">{{ h['session_key'] }}</code>
+          <div class="session-meta">
+            <span>{{ icon("calendar") }} {{ h['submitted_at'][:16].replace('T', ' ') }}</span>
+            <span>{{ icon("clock") }} {{ h['time_spent'] or 0 }}s</span>
+            <span class="difficulty-badge diff-{{ h['difficulty'] or 'medium' }}">{{ h['difficulty'] or 'medium' }}</span>
           </div>
         </div>
         {% endfor %}
       </div>
-    </div>
-    {% endif %}
-
-    <div class="card glass-card">
-      <div class="logo-badge">👨‍🎓</div>
-      <h2>Join a Session</h2>
-      <p class="subtitle">Enter the session key provided by your teacher</p>
-      {% if error %}<div class="error-toast">{{ error }}</div>{% endif %}
-      
-      <form action="/student_login" method="post">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="input-group">
-          <input type="text" name="session_key" placeholder="Enter session key (e.g. a1b2c3d4)" required
-            id="session-key-input">
-        </div>
-        <button type="submit" class="btn btn-primary" id="start-test-btn" style="width: 100%;">🚀 Start Test</button>
-      </form>
-
-      <div class="divider">
-        <span>OR</span>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-illustration">{{ icon("book") }}</div>
+        <h2>Your AI is waiting to learn</h2>
+        <p>Join a session or generate your first quiz to start building your learning history.</p>
+        <a href="/upload" class="btn btn-primary">{{ icon("spark") }} Generate a Quiz</a>
       </div>
-
-      <div class="generate-section">
-        <p>Want to practice from your own notes?</p>
-        <a href="/upload" class="btn btn-secondary">✨ Generate New Quiz</a>
-      </div>
+      {% endif %}
     </div>
 
-    <h3>My History</h3>
-    {% if history %}
-    <div class="sessions-grid">
-      {% for h in history %}
-      <div class="session-card glass-card">
-        <div class="session-top">
-          <code class="session-key">{{ h['session_key'] }}</code>
-          <span
-            class="difficulty-badge result-badge {% if h['score']/h['total'] >= 0.7 %}correct{% else %}wrong{% endif %}">
-            Score: {{ h['score'] }} / {{ h['total'] }}
-          </span>
-        </div>
-        <div class="session-meta">
-          <span>📅 {{ h['submitted_at'][:16].replace('T', ' ') }}</span>
-          <span>⏱️ {{ h['time_spent'] or 0 }}s spent</span>
-          <span class="difficulty-badge diff-{{ h['difficulty'] or 'medium' }}">{{ h['difficulty'] or 'Medium' }}</span>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty-state">
-      <p>No past quizzes found. Join a session to get started!</p>
-    </div>
-    {% endif %}
+    {% include "partials/shell_end.html" %}
   </div>
 
   {% if total_quizzes > 0 %}
@@ -207,8 +198,13 @@
     const chartScores = {{ chart_scores | tojson }};
     const diffAverages = {{ difficulty_averages | tojson }};
 
-    // Trend Chart (Line)
+    const gridColor = 'rgba(255,255,255,0.05)';
+    const tickColor = '#71717a';
+
     const ctxTrend = document.getElementById('trendChart').getContext('2d');
+    const grad = ctxTrend.createLinearGradient(0, 0, 0, 220);
+    grad.addColorStop(0, 'rgba(59,130,246,0.28)');
+    grad.addColorStop(1, 'rgba(59,130,246,0)');
     new Chart(ctxTrend, {
       type: 'line',
       data: {
@@ -216,35 +212,26 @@
         datasets: [{
           label: 'Score %',
           data: chartScores,
-          borderColor: '#6366f1',
-          backgroundColor: 'rgba(99, 102, 241, 0.1)',
-          borderWidth: 2,
+          borderColor: '#3b82f6',
+          backgroundColor: grad,
+          borderWidth: 2.5,
           fill: true,
-          tension: 0.3,
-          pointBackgroundColor: '#6366f1',
+          tension: 0.35,
+          pointBackgroundColor: '#3b82f6',
+          pointRadius: 3,
+          pointHoverRadius: 5,
         }]
       },
       options: {
         responsive: true,
-        plugins: {
-          legend: { display: false }
-        },
+        plugins: { legend: { display: false } },
         scales: {
-          y: {
-            min: 0,
-            max: 100,
-            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-            ticks: { color: '#94a3b8' }
-          },
-          x: {
-            grid: { display: false },
-            ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 45 }
-          }
+          y: { min: 0, max: 100, grid: { color: gridColor }, ticks: { color: tickColor } },
+          x: { grid: { display: false }, ticks: { color: tickColor, maxRotation: 45, minRotation: 45 } }
         }
       }
     });
 
-    // Difficulty Chart (Bar)
     const ctxDiff = document.getElementById('difficultyChart').getContext('2d');
     new Chart(ctxDiff, {
       type: 'bar',
@@ -252,36 +239,19 @@
         labels: ['Easy', 'Medium', 'Hard'],
         datasets: [{
           data: diffAverages,
-          backgroundColor: [
-            'rgba(16, 185, 129, 0.6)', // Green
-            'rgba(245, 158, 11, 0.6)', // Orange
-            'rgba(239, 68, 68, 0.6)'   // Red
-          ],
-          borderColor: [
-            '#10b981',
-            '#f59e0b',
-            '#ef4444'
-          ],
-          borderWidth: 1,
-          borderRadius: 4
+          backgroundColor: ['rgba(16,185,129,0.55)', 'rgba(245,158,11,0.55)', 'rgba(239,68,68,0.55)'],
+          borderColor: ['#10b981', '#f59e0b', '#ef4444'],
+          borderWidth: 1.5,
+          borderRadius: 8,
+          maxBarThickness: 64,
         }]
       },
       options: {
         responsive: true,
-        plugins: {
-          legend: { display: false }
-        },
+        plugins: { legend: { display: false } },
         scales: {
-          y: {
-            min: 0,
-            max: 100,
-            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-            ticks: { color: '#94a3b8' }
-          },
-          x: {
-            grid: { display: false },
-            ticks: { color: '#94a3b8' }
-          }
+          y: { min: 0, max: 100, grid: { color: gridColor }, ticks: { color: tickColor } },
+          x: { grid: { display: false }, ticks: { color: tickColor } }
         }
       }
     });

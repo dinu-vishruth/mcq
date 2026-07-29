@@ -4,30 +4,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MCQ Test</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Quiz — Cortex</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 
 <body>
-  <nav class="navbar">
-    <span class="nav-brand">🧠 MCQ Test</span>
-    <div class="timer-display" id="timer-display">
-      <span class="timer-icon">⏱️</span>
-      <span id="timer-value">--:--</span>
-    </div>
-  </nav>
-  <div class="container quiz-container">
-    <form action="/submit" method="post" id="quiz-form" data-timer="{{ timer }}" data-total="{{ mcqs|length }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="student_name" value="{{ session.username }}">
-      <input type="hidden" name="time_spent" id="time-spent-input" value="0">
+  {% from "partials/icons.html" import icon %}
+  <div class="quiz-shell">
+    <div class="quiz-topbar">
+      <span class="brand-mark">{{ icon("brain") }}</span>
       <div class="quiz-progress">
         <div class="progress-bar" id="progress-bar">
           <div class="progress-fill"></div>
         </div>
         <span class="progress-text" id="progress-text">0 / {{ mcqs|length }}</span>
       </div>
+      <div class="timer-display" id="timer-display">
+        {{ icon("clock") }}
+        <span id="timer-value">--:--</span>
+      </div>
+    </div>
+
+    <form action="/submit" method="post" id="quiz-form" data-timer="{{ timer }}" data-total="{{ mcqs|length }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="student_name" value="{{ session.username }}">
+      <input type="hidden" name="time_spent" id="time-spent-input" value="0">
 
       {% for q in mcqs %}
       {% set q_idx = loop.index0 %}
@@ -48,9 +50,12 @@
       </div>
       {% endfor %}
 
-      <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">📝 Submit Answers</button>
+      <button type="submit" class="btn btn-primary btn-lg" id="submit-btn" style="margin-top:0.5rem">
+        {{ icon("check") }} Submit Answers
+      </button>
     </form>
   </div>
+
   <script>
     // Timer functionality
     const timerSeconds = parseInt(document.getElementById('quiz-form').dataset.timer, 10);
