@@ -4,114 +4,29 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Quiz — Cortex</title>
+  <title>Quiz — MCQ Generator</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/dist/app.css">
 </head>
 
 <body>
-  {% from "partials/icons.html" import icon %}
-  <div class="quiz-shell">
-    <div class="quiz-topbar">
-      <span class="brand-mark">{{ icon("brain") }}</span>
-      <div class="quiz-progress">
-        <div class="progress-bar" id="progress-bar">
-          <div class="progress-fill"></div>
-        </div>
-        <span class="progress-text" id="progress-text">0 / {{ mcqs|length }}</span>
-      </div>
-      <div class="timer-display" id="timer-display">
-        {{ icon("clock") }}
-        <span id="timer-value">--:--</span>
-      </div>
-    </div>
+  {#
+    React mount shell for the quiz. The /mcq_test route (core/routes/student.py)
+    is UNCHANGED — it still shuffles options and passes `mcqs` + `timer`. React
+    renders the Duolingo-style one-question-at-a-time experience and submits the
+    exact legacy /submit form contract (csrf_token, student_name, time_spent,
+    q-{i}=selected option text).
+  #}
+  <div id="root"
+       data-page="quiz"
+       data-bootstrap='{{ {
+         "mcqs": mcqs,
+         "timer": timer,
+         "username": session.username or "Learner"
+       } | tojson }}'></div>
 
-    <form action="/submit" method="post" id="quiz-form" data-timer="{{ timer }}" data-total="{{ mcqs|length }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="student_name" value="{{ session.username }}">
-      <input type="hidden" name="time_spent" id="time-spent-input" value="0">
-
-      {% for q in mcqs %}
-      {% set q_idx = loop.index0 %}
-      <div class="question-card" id="question-{{ q_idx }}">
-        <div class="question-header">
-          <span class="q-number">Q{{ loop.index }}</span>
-          <p class="q-text">{{ q.question }}</p>
-        </div>
-        <div class="options-grid">
-          {% for opt in q.options %}
-          <label class="option-label" id="opt-{{ q_idx }}-{{ loop.index0 }}">
-            <input type="radio" name="q-{{ q_idx }}" value="{{ opt.text }}" required>
-            <span class="option-badge">{{ opt.label }}</span>
-            <span class="option-text">{{ opt.text }}</span>
-          </label>
-          {% endfor %}
-        </div>
-      </div>
-      {% endfor %}
-
-      <button type="submit" class="btn btn-primary btn-lg" id="submit-btn" style="margin-top:0.5rem">
-        {{ icon("check") }} Submit Answers
-      </button>
-    </form>
-  </div>
-
-  <script>
-    // Timer functionality
-    const timerSeconds = parseInt(document.getElementById('quiz-form').dataset.timer, 10);
-    const timerDisplay = document.getElementById('timer-value');
-    const quizForm = document.getElementById('quiz-form');
-    let remaining = timerSeconds;
-
-    function updateTimer() {
-      const mins = Math.floor(remaining / 60);
-      const secs = remaining % 60;
-      timerDisplay.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
-
-      if (remaining <= 30) {
-        document.getElementById('timer-display').classList.add('timer-warning');
-      }
-      if (remaining <= 0) {
-        clearInterval(timerInterval);
-        timerDisplay.textContent = "TIME'S UP!";
-        document.getElementById('time-spent-input').value = timerSeconds;
-        quizForm.submit();
-        return;
-      }
-      remaining--;
-    }
-
-    updateTimer();
-    const timerInterval = setInterval(updateTimer, 1000);
-
-    // Calculate time spent on submit
-    quizForm.addEventListener('submit', () => {
-      const spent = Math.max(0, timerSeconds - remaining);
-      document.getElementById('time-spent-input').value = spent;
-    });
-
-    // Track progress
-    const totalQuestions = parseInt(document.getElementById('quiz-form').dataset.total, 10);
-    const progressFill = document.querySelector('.progress-fill');
-    const progressText = document.getElementById('progress-text');
-
-    document.querySelectorAll('input[type="radio"]').forEach(radio => {
-      radio.addEventListener('change', () => {
-        const answered = new Set();
-        document.querySelectorAll('input[type="radio"]:checked').forEach(r => {
-          answered.add(r.name);
-        });
-        const count = answered.size;
-        progressFill.style.width = (count / totalQuestions * 100) + '%';
-        progressText.textContent = count + ' / ' + totalQuestions;
-
-        // Highlight selected option
-        const parent = radio.closest('.option-label');
-        parent.parentElement.querySelectorAll('.option-label').forEach(l => l.classList.remove('selected'));
-        parent.classList.add('selected');
-      });
-    });
-  </script>
+  <script type="module" src="/static/dist/app.js"></script>
 </body>
 
 </html>

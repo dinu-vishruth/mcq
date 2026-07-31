@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-bg text-text font-sans antialiased;
+    letter-spacing: -0.011em;
+  }
+  h1, h2, h3 {
+    @apply font-display tracking-tight;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-card border rounded-lg;
+    border-color: rgba(255, 255, 255, 0.07);
+  }
+}
+
+/* Ambient glow to match the server-rendered pages */
+.app-glow::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(900px 500px at 78% -10%, rgba(59, 130, 246, 0.1), transparent 60%),
+    radial-gradient(700px 420px at 10% 0%, rgba(139, 92, 246, 0.06), transparent 55%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -99,10 +99,26 @@ _ADD_COLUMNS = [
     ("sessions", "document_id", "INTEGER"),
 ]
 
+# Personalization prefs captured during first-login onboarding (goal, learning
+# style, daily study minutes). Additive: one row per user, created on demand.
+_PREFS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS user_prefs (
+    user_id       INTEGER PRIMARY KEY,
+    goal          TEXT DEFAULT '',
+    style         TEXT DEFAULT '',
+    daily_minutes INTEGER DEFAULT 30,
+    xp            INTEGER DEFAULT 0,
+    streak        INTEGER DEFAULT 0,
+    onboarded     INTEGER DEFAULT 0,
+    updated_at    TEXT DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 
 def run_migrations(conn: sqlite3.Connection) -> None:
     """Apply all additive migrations. Idempotent."""
     conn.executescript(SCHEMA)
+    conn.executescript(_PREFS_SCHEMA)
     for table, column, ddl in _ADD_COLUMNS:
         try:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")

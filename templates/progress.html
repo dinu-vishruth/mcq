@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Progress — MCQ Generator</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/dist/app.css">
+</head>
+
+<body>
+  {#
+    React mount shell for the Progress page. Served by the NEW additive
+    /progress route (core/routes/student.py). No existing route is touched.
+  #}
+  <div id="root"
+       data-page="progress"
+       data-bootstrap='{{ {
+         "username": session.username or "Learner",
+         "total_quizzes": total_quizzes | default(0),
+         "accuracy": accuracy | default(0),
+         "total_time": total_time | default(0),
+         "total_correct": total_correct | default(0),
+         "total_answered": total_answered | default(0),
+         "heatmap": heatmap | default({}),
+         "weekly": weekly | default([]),
+         "weak_topics": weak_topics | default([]),
+         "xp": xp | default(0),
+         "streak": streak | default(0)
+       } | tojson }}'></div>
+
+  <script type="module" src="/static/dist/app.js"></script>
+</body>
+
+</html>

@@ -16,6 +16,8 @@ fails, so enabling AI_PIPELINE=rag can never make generation worse than before.
 """
 from __future__ import annotations
 
+import time
+
 import config
 from core.agents.planner import PlannerAgent
 from core.agents.retriever import RetrieverAgent
@@ -66,8 +68,13 @@ def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medi
 
     collected: list[dict] = []
     attempts = 0
-    max_attempts = 3
+    max_attempts = 2 if config.IS_VERCEL else 3
+    # Stop retrying before the serverless function limit so we never get killed
+    # mid-generation. Leave headroom below Vercel's 60s cap for the final response.
+    deadline = time.monotonic() + (config.PIPELINE_DEADLINE_SECONDS - config.LLM_TIMEOUT)
     while len(collected) < num_questions and attempts < max_attempts:
+        if attempts >= 1 and time.monotonic() >= deadline:
+            break  # out of time budget; return what we have so far
         attempts += 1
         need = num_questions - len(collected)
         try:

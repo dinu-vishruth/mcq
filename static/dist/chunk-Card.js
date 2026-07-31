@@ -1,0 +1,1 @@
+import{j as s}from"./app.js";import{m as d,a as i}from"./chunk-cn.js";const m={sm:"p-4",md:"p-5",lg:"p-7"};function p({children:r,hover:o,pad:e="md",className:t,...a}){return s.jsx(d.div,{className:i("bg-card border rounded-lg relative","border-white/[0.07]",o&&"transition-colors duration-200 hover:bg-card-hover hover:border-white/[0.11]",m[e],t),...a,children:r})}export{p as C};

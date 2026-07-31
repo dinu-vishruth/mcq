@@ -4,77 +4,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Profile — Cortex</title>
+  <title>Settings — MCQ Generator</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/dist/app.css">
 </head>
 
 <body>
-  {% from "partials/icons.html" import icon %}
-  <div class="app">
-    {% set active = 'profile' %}
-    {% set crumb = 'Profile' %}
-    {% include "partials/shell.html" with context %}
+  {#
+    React mount shell for Settings. The /profile route (core/routes/auth.py) is
+    UNCHANGED — it still renders this with `user` and (on POST) `error`, and its
+    form still posts to /profile. flash() messages are surfaced via the payload.
+    Learning prefs/xp/streak read from the additive user_prefs table.
+  #}
+  {% set _flash = get_flashed_messages() %}
+  <div id="root"
+       data-page="settings"
+       data-bootstrap='{{ {
+         "username": user["username"],
+         "email": user["email"] or "",
+         "error": error | default(""),
+         "flash": (_flash[0] if _flash else "")
+       } | tojson }}'></div>
 
-    <div class="page" style="max-width:680px">
-      <div class="page-header">
-        <div>
-          <p class="eyebrow">Account</p>
-          <h1>My Profile</h1>
-        </div>
-      </div>
-
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          {% for category, message in messages %}
-            <div class="alert alert-success">{{ icon("check") }} {{ message }}</div>
-          {% endfor %}
-        {% endif %}
-      {% endwith %}
-      {% if error %}<div class="error-toast">{{ icon("x") }} {{ error }}</div>{% endif %}
-
-      <div class="card" style="margin-bottom:1.5rem">
-        <div class="row" style="gap:1rem;margin-bottom:1.5rem">
-          <span class="avatar" style="width:56px;height:56px;font-size:1.3rem;border-radius:16px">{{ (user['username'] or 'U')[0] | upper }}</span>
-          <div>
-            <div style="font-family:var(--font-display);font-weight:600;font-size:1.15rem">{{ user['username'] }}</div>
-            <div class="muted" style="font-size:0.85rem;text-transform:capitalize">{{ session.role }} account</div>
-          </div>
-        </div>
-
-        <h2>Edit Account Details</h2>
-        <p class="subtitle" style="font-size:0.88rem">Keep your username, email, and password up to date.</p>
-
-        <form action="/profile" method="post">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <div class="input-group">
-            <label for="username">Username</label>
-            <input type="text" name="username" id="username" value="{{ user['username'] }}" required>
-          </div>
-          <div class="input-group">
-            <label for="email">Email Address</label>
-            <input type="email" name="email" id="email" value="{{ user['email'] or '' }}" placeholder="name@example.com">
-          </div>
-          <div class="input-group">
-            <label for="password">New Password <span class="muted">(leave blank to keep current)</span></label>
-            <input type="password" name="password" id="password" placeholder="At least 8 characters">
-          </div>
-          <button type="submit" class="btn btn-primary" style="margin-top:0.5rem">{{ icon("check") }} Save Changes</button>
-        </form>
-      </div>
-
-      <div class="card danger-zone">
-        <h2>Danger Zone</h2>
-        <p class="subtitle" style="color:#fca5a5;font-size:0.88rem">Deleting your account is permanent. It removes all your data, quizzes, and results.</p>
-        <form action="/delete_account" method="post" onsubmit="return confirm('Are you absolutely sure you want to delete your account? This action is permanent and cannot be undone.');">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-danger">{{ icon("trash") }} Delete My Account</button>
-        </form>
-      </div>
-    </div>
-
-    {% include "partials/shell_end.html" %}
-  </div>
+  <script type="module" src="/static/dist/app.js"></script>
 </body>
 
 </html>

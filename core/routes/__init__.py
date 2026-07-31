@@ -12,6 +12,7 @@ from core.routes.auth import auth_bp
 from core.routes.teacher import teacher_bp
 from core.routes.student import student_bp
 from core.routes.documents import documents_bp
+from core.routes.api import api_bp
 
 
 def register_blueprints(app):
@@ -19,3 +20,4 @@ def register_blueprints(app):
     app.register_blueprint(teacher_bp)
     app.register_blueprint(student_bp)
     app.register_blueprint(documents_bp)
+    app.register_blueprint(api_bp)
