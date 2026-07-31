@@ -1,4 +1,4 @@
-# AI-Powered MCQ Generator
+# AAgentic RAG platform for AI-generated MCQs 
 
 An **agentic RAG** learning platform built on Flask. Teachers upload course material; the app ingests and indexes it, then uses a pipeline of specialized AI agents to generate high-quality Multiple Choice Questions, grade student performance, and produce grounded explanations and revision notes.
 
