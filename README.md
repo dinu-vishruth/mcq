@@ -4,6 +4,8 @@ An **agentic RAG** learning platform built on Flask. Teachers upload course mate
 
 The system ships with a safe **legacy single-shot** path (the historical behaviour) and an opt-in **retrieval-augmented (RAG) pipeline**. You switch between them with a single environment variable — no code changes.
 
+The interface is a premium **React island** frontend layered onto the untouched Flask backend: each page mounts a lazy-loaded React screen over the existing server-rendered shell, so cookie-session auth, CSRF, and the DB schema stay exactly as they were.
+
 ## Features
 
 ### For Teachers
@@ -15,14 +17,17 @@ The system ships with a safe **legacy single-shot** path (the historical behavio
 
 ### For Students
 - **Easy access**: join any active test with your name and the Session Key.
-- **Interactive test**: randomized questions and shuffled options within a configurable time limit.
-- **Instant results & explanations**: immediate scoring plus AI-driven, source-grounded explanations for each answer.
+- **Guided onboarding**: a first-run flow captures your learning goal, study style, and daily target, persisted to your profile.
+- **Interactive test**: a Duolingo-style quiz screen with randomized questions and shuffled options within a configurable time limit.
+- **Instant results & explanations**: animated score reveal with confetti, per-question review, plus AI-driven, source-grounded explanations for each answer.
 - **Learning intelligence**: post-submission analysis detects weak topics and surfaces them on your dashboard, with retrieval-grounded revision notes.
+- **Progress tracking**: a dedicated progress screen charts performance trends over time, with XP and streak tracking.
 - **History**: track past results and performance from your dashboard.
+- **Data control**: export all your own learning data as a JSON download from Settings.
 
 ## Architecture
 
-The application evolved in additive phases. Everything new lives under `core/` and is gated behind config flags with graceful fallbacks, so the original single-shot flow keeps working untouched.
+The application evolved in additive phases. Everything new lives under `core/` (and `frontend/`) and is gated behind config flags with graceful fallbacks, so the original single-shot flow keeps working untouched.
 
 ```
 app.py                     # thin Flask entry point (imported by Procfile & vercel.json)
@@ -37,12 +42,25 @@ core/
   prompts/                 # prompt builders per task
   repositories/            # data access (documents, sessions, learning history)
   models/                  # get_db() + additive, idempotent migrations
-  routes/                  # Flask blueprints (auth, teacher, student, documents)
+  routes/                  # Flask blueprints (auth, teacher, student, documents, api)
 models/                    # legacy generators used as the safe fallback path
 utils/                     # text cleaning, difficulty classifier, session manager
-templates/                 # Jinja2 templates (+ shared partials)
+frontend/                  # Vite + React + TS source for the UI (built into static/dist/)
+static/dist/               # committed built React assets (app.js/app.css + lazy chunks)
+templates/                 # Jinja2 mount shells (+ shared partials)
 database/                  # SQLite storage + schema
 ```
+
+### The React island frontend
+
+The UI is a set of **React islands** built with Vite and served as committed static assets — no Node build step at deploy time, so Vercel's Python-only build keeps working.
+
+- `frontend/` holds the Vite + React 18 + TypeScript + Tailwind source (Framer Motion for animation, lucide-react for icons, Recharts for charts). `npm run build` emits stable filenames into `static/dist/` (`app.js`, `app.css`, plus lazy `chunk-*.js`).
+- Each Jinja template is a thin mount shell: a `<div id="root" data-page="…" data-bootstrap='{{ …|tojson }}'>` plus a CSRF meta tag. `bootstrap.ts` reads them and `main.tsx` lazy-loads the screen keyed by `data-page`.
+- **Existing routes are not edited.** They still compute their variables and the shell serializes them to JSON. Data an existing route doesn't provide (onboarding, prefs) is fetched client-side from the additive `/api` endpoints.
+- New backend surface is additive only: the `api` blueprint (`core/routes/api.py`, `/api` prefix) exposes `GET/POST /api/prefs` and `GET /api/export`, backed by a new `user_prefs` table added idempotently in `core/models/migrations.py`.
+
+> Built assets in `static/dist/` are committed. After any change under `frontend/`, run `npm run build` so the deployed app isn't stale.
 
 ### The agent pipeline (RAG mode)
 
@@ -74,7 +92,7 @@ Beyond MCQs, `core/services/content_service.py` exposes a registry-driven spine 
 - **Vector stores**: SQLite + NumPy (portable default), ChromaDB, or FAISS
 - **Document parsing**: PDF, Word (`.docx`), and PowerPoint (`.pptx`)
 - **PDF/CSV export**: ReportLab
-- **Frontend**: HTML5, CSS3, vanilla JavaScript, Jinja2
+- **Frontend**: React 18 + TypeScript islands (Vite, Tailwind CSS, Framer Motion, Recharts, lucide-react), mounted on Jinja2 shells; built to committed static assets
 - **Security**: Werkzeug password hashing, login lockout, CSRF protection, randomized option shuffling
 - **Deployment**: Gunicorn (`Procfile`) and Vercel (`vercel.json`) ready
 
@@ -134,6 +152,16 @@ python app.py
 Open `http://127.0.0.1:5000/` in your browser.
 
 Default seeded accounts (for quick local/demo use): `teacher` and `student`.
+
+### 5. Frontend (only when changing the UI)
+The built React assets in `static/dist/` are committed, so running the app needs no Node tooling. You only need Node when editing the UI under `frontend/`:
+
+```bash
+cd frontend
+npm install
+npm run build     # rebuilds static/dist/ (run after any frontend change)
+npm run dev       # optional: Vite dev server with HMR
+```
 
 ## Environment Variables
 
