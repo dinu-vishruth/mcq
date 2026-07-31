@@ -71,4 +71,47 @@ class LLMProvider(abc.ABC):
                         return json.loads(text[start:end + 1])
                     except json.JSONDecodeError:
                         continue
+            # Output hit the provider's token cap and was cut mid-array. Recover
+            # the objects that did complete instead of discarding the whole batch;
+            # callers top up the shortfall with another request.
+            salvaged = LLMProvider._salvage_objects(text)
+            if salvaged:
+                return {"questions": salvaged}
             raise LLMError("The AI service returned an invalid JSON response. Please try again.")
+
+    @staticmethod
+    def _salvage_objects(text: str) -> list:
+        """Extract every complete top-level JSON object from a truncated array.
+
+        Scans with a brace-depth counter, skipping braces inside string literals,
+        and keeps only spans that parse cleanly. Returns [] when nothing survives.
+        """
+        objects: list = []
+        starts: list[int] = []  # positions of currently-open '{', innermost last
+        in_string = False
+        escaped = False
+        for i, ch in enumerate(text):
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                starts.append(i)
+            elif ch == "}" and starts:
+                # Objects appear at any depth (question objects sit inside the
+                # {"questions": [...]} wrapper), so test every closed span and
+                # keep the ones shaped like a question.
+                start = starts.pop()
+                try:
+                    obj = json.loads(text[start:i + 1])
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, dict) and "options" in obj:
+                    objects.append(obj)
+        return objects

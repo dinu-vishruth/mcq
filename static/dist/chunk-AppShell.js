@@ -1,4 +1,4 @@
-import{r as k,j as e}from"./app.js";import{c as a,a as r}from"./chunk-cn.js";import{X as g}from"./chunk-x.js";/**
+import{r as k,j as e}from"./app.js";import{c as a,a as r}from"./chunk-cn.js";import{X as g}from"./chunk-Card.js";/**
  * @license lucide-react v0.417.0 - ISC
  *
  * This source code is licensed under the ISC license.

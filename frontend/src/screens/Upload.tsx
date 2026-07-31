@@ -68,6 +68,14 @@ async function extractText(file: File): Promise<string | null> {
   return null;
 }
 
+// Keep a numeric input inside its allowed range. An empty or non-numeric field
+// falls back to `fallback` so the hidden inputs always carry a valid value.
+function clampInt(raw: string, min: number, max: number, fallback: number): number {
+  const n = parseInt(raw, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
 // Section-sampling truncation to stay under Vercel's payload cap while keeping
 // document-wide coverage. Ported verbatim from the legacy upload.html.
 function sampleText(text: string, maxChars = 150000): string {
@@ -99,6 +107,13 @@ export default function Upload({ data }: { data: UploadData }) {
   const [error, setError] = useState(data.error ?? "");
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState(0);
+  // Quiz config lives in state, not in the DOM. The visible inputs unmount when
+  // `busy` flips to show the pipeline, so the submitted values come from
+  // always-mounted hidden inputs below — otherwise the fields would be missing
+  // from the POST and the server would silently fall back to its defaults.
+  const [numQuestions, setNumQuestions] = useState(10);
+  const [difficulty, setDifficulty] = useState("medium");
+  const [timerMinutes, setTimerMinutes] = useState(10);
   const fileRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const extractedRef = useRef<HTMLInputElement>(null);
@@ -190,6 +205,10 @@ export default function Upload({ data }: { data: UploadData }) {
           <form ref={formRef} action="/upload" method="post" encType="multipart/form-data" onSubmit={onSubmit}>
             <input type="hidden" name="csrf_token" value={csrfToken()} />
             <input ref={extractedRef} type="hidden" name="extracted_text" />
+            {/* Always mounted so the config survives the switch to <Pipeline />. */}
+            <input type="hidden" name="num_questions" value={numQuestions} />
+            <input type="hidden" name="difficulty" value={difficulty} />
+            <input type="hidden" name="timer" value={timerMinutes} />
 
             {!busy ? (
               <>
@@ -229,13 +248,14 @@ export default function Upload({ data }: { data: UploadData }) {
 
                 <div className="grid sm:grid-cols-3 gap-4 mt-5">
                   <div>
-                    <label className="text-text-2 text-sm block mb-1.5">Questions</label>
-                    <input type="number" name="num_questions" defaultValue={5} min={1} max={30}
+                    <label htmlFor="num-questions" className="text-text-2 text-sm block mb-1.5">Questions</label>
+                    <input id="num-questions" type="number" min={1} max={30} value={numQuestions}
+                      onChange={(e) => setNumQuestions(clampInt(e.target.value, 1, 30, 10))}
                       className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
                   </div>
                   <div>
-                    <label className="text-text-2 text-sm block mb-1.5">Difficulty</label>
-                    <select name="difficulty" defaultValue="medium"
+                    <label htmlFor="difficulty" className="text-text-2 text-sm block mb-1.5">Difficulty</label>
+                    <select id="difficulty" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}
                       className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50">
                       <option value="easy">Easy</option>
                       <option value="medium">Medium</option>
@@ -243,8 +263,9 @@ export default function Upload({ data }: { data: UploadData }) {
                     </select>
                   </div>
                   <div>
-                    <label className="text-text-2 text-sm block mb-1.5">Timer (seconds)</label>
-                    <input type="number" name="timer" defaultValue={120} min={30} max={3600}
+                    <label htmlFor="timer" className="text-text-2 text-sm block mb-1.5">Time limit (minutes)</label>
+                    <input id="timer" type="number" min={1} max={180} value={timerMinutes}
+                      onChange={(e) => setTimerMinutes(clampInt(e.target.value, 1, 180, 10))}
                       className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
                   </div>
                 </div>

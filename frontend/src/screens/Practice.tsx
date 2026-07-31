@@ -12,12 +12,14 @@ import type { KnowledgeItem } from "@/types";
 interface PracticeData { username: string; document_id: number | null }
 
 const DIFFS = ["easy", "medium", "hard"] as const;
-const COUNTS = [5, 10, 15, 20];
+const COUNTS = [5, 10, 15, 20, 25, 30];
+// Total time limit in MINUTES for the whole set (converted to seconds on submit).
 const TIMERS = [
-  { label: "No timer", value: 3600 },
-  { label: "1 min/q", value: 60 },
-  { label: "1.5 min/q", value: 90 },
-  { label: "2 min/q", value: 120 },
+  { label: "5 min", value: 5 },
+  { label: "10 min", value: 10 },
+  { label: "20 min", value: 20 },
+  { label: "30 min", value: 30 },
+  { label: "60 min", value: 60 },
 ];
 const TYPES = ["Multiple choice"];
 
@@ -34,7 +36,7 @@ export default function Practice({ data }: { data: PracticeData }) {
   const [count, setCount] = useState<number>(Number(qs("count")) || 10);
   const [topic, setTopic] = useState("");
   const [adaptive, setAdaptive] = useState(true);
-  const [timer, setTimer] = useState<number>(90);
+  const [timerMinutes, setTimerMinutes] = useState<number>(10);
   const [qtype] = useState(TYPES[0]);
 
   const [generating, setGenerating] = useState(false);
@@ -61,7 +63,7 @@ export default function Practice({ data }: { data: PracticeData }) {
         num_questions: count,
         difficulty,
         topic: topic.trim() || undefined,
-        timer,
+        timer: timerMinutes * 60,  // API stores seconds
       });
       // Hand off to the existing quiz flow via the classic form POST it expects.
       const form = document.createElement("form");
@@ -121,9 +123,9 @@ export default function Practice({ data }: { data: PracticeData }) {
               value={count} onChange={(v) => setCount(v as number)} />
           </Setting>
 
-          <Setting icon={<Clock className="w-4 h-4 text-accent" />} label="Timer">
+          <Setting icon={<Clock className="w-4 h-4 text-accent" />} label="Time limit">
             <Segment options={TIMERS.map((t) => ({ label: t.label, value: t.value }))}
-              value={timer} onChange={(v) => setTimer(v as number)} />
+              value={timerMinutes} onChange={(v) => setTimerMinutes(v as number)} />
           </Setting>
 
           <Setting icon={<Type className="w-4 h-4 text-accent" />} label="Question type">

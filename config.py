@@ -40,6 +40,19 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "45"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.3"))
 
+# Output token budget for MCQ generation. Providers apply a modest default cap
+# (often ~1-4k) which truncates the JSON array mid-object on larger requests --
+# that's what silently turned "25 questions" into a handful. We request a budget
+# scaled to the batch size, floored so small batches still get room to breathe.
+# ~330 tokens covers one question with 4 options plus bloom/source_hint metadata.
+LLM_TOKENS_PER_QUESTION = int(os.getenv("LLM_TOKENS_PER_QUESTION", "330"))
+LLM_MAX_OUTPUT_TOKENS = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "16000"))
+
+
+def mcq_token_budget(num_questions: int) -> int:
+    """Output token ceiling for a batch of `num_questions` MCQs."""
+    return min(LLM_MAX_OUTPUT_TOKENS, max(1500, num_questions * LLM_TOKENS_PER_QUESTION + 400))
+
 # Wall-clock budget for the whole RAG MCQ pipeline. Must stay under the serverless
 # function limit (vercel.json maxDuration=60) so generation is never killed
 # mid-flight; the pipeline stops retrying once this budget (minus one LLM_TIMEOUT

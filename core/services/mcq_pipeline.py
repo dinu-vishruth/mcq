@@ -28,6 +28,17 @@ from core.agents.quality_assurance import QualityAssuranceAgent
 from core.services.ingestion_service import ingest_document
 
 
+def _max_attempts(num_questions: int) -> int:
+    """Retry budget for filling a batch.
+
+    Models under-deliver on large requests and the Difficulty agent discards
+    off-level questions, so a fixed 2-3 attempts left big sets short. Scale with
+    the request; the wall-clock deadline below is the real stop condition.
+    """
+    base = 2 if config.IS_VERCEL else 3
+    return base if num_questions <= 10 else base + 2
+
+
 def _retrieval_query(difficulty: str, topic: str | None) -> str:
     if topic:
         return f"Key concepts and facts about {topic} suitable for {difficulty} exam questions."
@@ -68,7 +79,7 @@ def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medi
 
     collected: list[dict] = []
     attempts = 0
-    max_attempts = 2 if config.IS_VERCEL else 3
+    max_attempts = _max_attempts(num_questions)
     # Stop retrying before the serverless function limit so we never get killed
     # mid-generation. Leave headroom below Vercel's 60s cap for the final response.
     deadline = time.monotonic() + (config.PIPELINE_DEADLINE_SECONDS - config.LLM_TIMEOUT)
@@ -125,7 +136,7 @@ def generate_from_document(document_id: int, num_questions: int = 5,
 
     collected: list[dict] = []
     attempts = 0
-    max_attempts = 2 if config.IS_VERCEL else 3
+    max_attempts = _max_attempts(num_questions)
     deadline = time.monotonic() + (config.PIPELINE_DEADLINE_SECONDS - config.LLM_TIMEOUT)
     while len(collected) < num_questions and attempts < max_attempts:
         if attempts >= 1 and time.monotonic() >= deadline:

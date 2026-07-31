@@ -10,6 +10,7 @@ three core keys) and are used by the Difficulty/QA agents.
 """
 from __future__ import annotations
 
+import config
 from core.agents.base import Agent
 from core.llm import get_llm, LLMError
 from core.prompts import mcq as mcq_prompts
@@ -24,7 +25,9 @@ class QuestionAgent(Agent):
             {"role": "system", "content": mcq_prompts.SYSTEM},
             {"role": "user", "content": prompt},
         ]
-        data = get_llm().complete_json(messages)
+        data = get_llm().complete_json(
+            messages, max_tokens=config.mcq_token_budget(num_questions)
+        )
         if isinstance(data, dict) and "questions" in data:
             mcqs = data["questions"]
         elif isinstance(data, list):

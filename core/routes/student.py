@@ -291,7 +291,9 @@ def mcq_test():
         return redirect(url_for("auth.home"))
 
     mcqs = session.get("mcqs")
-    timer = session.get("timer", 60)
+    # Fall back to a usable duration, not 60s: a missing value used to silently
+    # give every quiz a one-minute limit regardless of what was configured.
+    timer = session.get("timer") or 600
     key = session.get("session_key")
     if not mcqs or not key:
         return redirect(url_for("student.student_login"))

@@ -32,16 +32,19 @@ def upload():
         return render_template("upload.html")
 
     try:
-        num_questions = int(request.form.get("num_questions", 5))
-        timer = int(request.form.get("timer", 60))
+        num_questions = int(request.form.get("num_questions", 10))
+        # The form submits the time limit in MINUTES; sessions store seconds.
+        timer_minutes = int(request.form.get("timer", 10))
         difficulty = request.form.get("difficulty", "medium").strip().lower()
 
         if num_questions < 1 or num_questions > 30:
             raise ValueError("Number of questions must be between 1 and 30.")
-        if timer < 10 or timer > 3600:
-            raise ValueError("Timer must be between 10 and 3600 seconds.")
+        if timer_minutes < 1 or timer_minutes > 180:
+            raise ValueError("Time limit must be between 1 and 180 minutes.")
         if difficulty not in ("easy", "medium", "hard"):
             raise ValueError("Invalid difficulty level selected.")
+
+        timer_seconds = timer_minutes * 60
     except ValueError as ve:
         return render_template("upload.html", error=str(ve))
 
@@ -123,7 +126,11 @@ def upload():
     session_key = create_session_key(
         teacher=session.get("username"),
         difficulty=difficulty,
-        timer=timer,
+        timer=timer_seconds,
         mcqs=mcqs,
     )
-    return render_template("report_generated.html", session_key=session_key, mcqs=mcqs)
+    # Skip preview page - go directly to quiz
+    session["mcqs"] = mcqs
+    session["timer"] = timer_seconds
+    session["session_key"] = session_key
+    return redirect(url_for("student.mcq_test"))

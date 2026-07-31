@@ -363,9 +363,10 @@ def practice_generate():
         difficulty = "medium"
     topic = (data.get("topic") or "").strip() or None
     try:
-        timer = max(10, min(3600, int(data.get("timer", 120) or 120)))
+        # Seconds. Upper bound matches the 180-minute limit on /upload.
+        timer = max(30, min(10800, int(data.get("timer", 600) or 600)))
     except (TypeError, ValueError):
-        timer = 120
+        timer = 600
 
     # Ownership: only practice from your own knowledge.
     from core.repositories import document_repo

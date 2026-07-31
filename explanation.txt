@@ -1,0 +1,208 @@
+HOW RAG AND AGENTS WORK (Simple Explanation)
+=============================================
+
+Think of Examly like having a personal exam coach with a library and a team of specialists.
+
+
+PART 1: RAG (Retrieval-Augmented Generation)
+=============================================
+
+RAG is like having a smart librarian inside the AI.
+
+Without RAG (Traditional AI):
+- You ask the AI a question
+- It tries to answer from memory alone
+- It might make things up or be wrong (called "hallucination")
+- Like asking someone questions when they have no books to reference
+
+With RAG (What Examly Does):
+1. You upload study material (textbook chapters, notes, slides)
+2. The librarian (RAG system) reads and REMEMBERS everything
+   - It breaks the material into chunks (like bookmarks)
+   - It converts each chunk into a "fingerprint" (embedding)
+   - These fingerprints go into a database (vector store)
+
+3. When generating exam questions:
+   - The AI searches the database: "Find the most relevant study material for this question"
+   - The librarian finds the best matching chunks
+   - The AI ONLY uses those real chunks to generate questions
+   - It can't make things up because it only has real source material
+
+Think of it like this:
+- Without RAG: "Tell me about photosynthesis" → AI guesses from general knowledge
+- With RAG: "Tell me about photosynthesis using THIS textbook" → AI reads the textbook first, then answers
+
+Real-world analogy:
+- A student taking an exam from memory = no RAG
+- A student with their notes open = RAG (can only say what's in the notes)
+
+
+PART 2: AGENTS (AI Decision-Makers)
+====================================
+
+Agents are like having specialist team members who each have one job.
+
+How it works:
+
+1. PLANNER AGENT (The Coach)
+   - You ask: "Generate 10 medium-difficulty questions about Chapter 5"
+   - Planner reads your request and decides:
+     * How many questions? 10
+     * What difficulty? Medium
+     * What topic? Chapter 5
+   - Like a coach saying "Okay, let's do 30 pushups, moderate pace, focus on form"
+
+2. DOCUMENT PROCESSING AGENT (The Librarian)
+   - Takes your uploaded material (PDF, Word doc, slides)
+   - Cleans it up (removes garbage, fixes formatting)
+   - Breaks it into chunks (like making bookmarks in a book)
+   - Like organizing a messy library shelf into neat stacks
+
+3. EMBEDDING AGENT (The Fingerprinter)
+   - Takes each chunk and converts it into a "fingerprint"
+   - This fingerprint lets the AI search: "Which chunks are similar to this idea?"
+   - Like assigning ISBN numbers to books so you can find them fast
+
+4. RETRIEVER AGENT (The Search Expert)
+   - Your request: "Generate questions about photosynthesis"
+   - Retriever searches: "Which chunks mention photosynthesis?"
+   - Finds the top 12 most relevant chunks
+   - Like a librarian who knows exactly which shelves have what
+
+5. CONTEXT BUILDER AGENT (The Summarizer)
+   - Takes the 12 chunks and assembles them into one clear document
+   - Makes sure it fits the AI's memory limit (like writing a summary on 2 pages instead of 50)
+   - Like an assistant condensing a 300-page report into key talking points
+
+6. QUESTION GENERATOR AGENT (The Writer)
+   - Gets the summary and says: "Generate 10 exam questions from this material"
+   - Writes questions that:
+     * Are clearly answered in the material
+     * Cover different difficulty levels
+     * Follow exam format rules (4 options, A/B/C/D)
+   - Like a test writer who has the answer key
+
+7. QUALITY ASSURANCE AGENT (The Checker)
+   - Reads every question and checks:
+     * Does it have exactly 4 options?
+     * Are they labeled A, B, C, D?
+     * Is the correct answer actually one of the options?
+     * Are there any duplicate questions?
+   - Like a proofreader fixing typos
+
+8. DIFFICULTY AGENT (The Validator)
+   - Reads each question and checks: "Is this actually MEDIUM difficulty?"
+   - If not, it regenerates just that question
+   - Like a teacher saying "This test question is too easy for the level you asked for"
+
+9. EVALUATION AGENT (The Learning Coach - runs after you take a test)
+   - Reads your answers
+   - Checks which topics you got wrong
+   - Saves that info: "This student struggles with photosynthesis"
+   - Like a coach noticing you're weak at free throws
+
+10. EXPLANATION AGENT (The Tutor)
+    - For every question you got wrong
+    - Looks up the answer in the original material
+    - Writes a clear explanation using quotes from the material
+    - Like a tutor saying "Here's why the answer is B, from page 47..."
+
+11. REVISION AGENT (The Study Guide Writer)
+    - Looks at your weak topics
+    - Pulls the most important stuff about that topic
+    - Creates a mini study guide just for you
+    - Like a tutor giving you targeted flashcards
+
+
+HOW THEY ALL WORK TOGETHER
+===========================
+
+Step-by-step example: "Generate 10 medium questions about Chapter 5"
+
+1. PLANNER reads your request → "10 questions, medium difficulty, Chapter 5"
+
+2. DOCUMENT PROCESSOR takes Chapter 5 → breaks it into chunks, cleans it up
+
+3. EMBEDDING creates fingerprints for each chunk
+
+4. RETRIEVER searches → "Which chunks are from Chapter 5?" → finds 12 chunks
+
+5. CONTEXT BUILDER assembles the 12 chunks into one summary
+
+6. QUESTION GENERATOR writes 10 questions using only that summary
+
+7. QUALITY ASSURANCE checks all 10 questions → finds 1 bad one → marks it
+
+8. DIFFICULTY checks each question → finds 2 are too easy → regenerates them
+
+9. Result: 10 solid, medium-difficulty questions, all from Chapter 5
+
+Then you take the test...
+
+10. EVALUATION reads your answers → "You got 7/10 right. Weak on photosynthesis, strong on cellular biology"
+
+11. EXPLANATION for each wrong answer → "You picked C, but the correct answer is B because..."
+
+12. REVISION creates a study guide → "Top 5 things to review about photosynthesis"
+
+
+WHY THIS IS BETTER THAN A REGULAR AI
+=====================================
+
+Without RAG+Agents:
+- AI makes up facts (hallucination)
+- AI can't focus on your specific material
+- AI doesn't track your progress
+- AI generates random questions, not structured ones
+
+With RAG+Agents:
+- Everything comes from YOUR material (no made-up facts)
+- Questions perfectly match what you actually studied
+- System tracks your weak topics and recommends what to focus on
+- Each specialist agent does one job really well
+- Questions follow exam format rules automatically
+- You get explanations grounded in your actual textbook
+
+
+THE EXAM COACH ANALOGY
+======================
+
+Imagine a personal exam coach who:
+1. Reads your textbook (RAG - knows the material)
+2. Writes practice tests (Agents - specialized writers)
+3. Grades your practice test (Evaluation Agent)
+4. Explains why you got questions wrong (Explanation Agent)
+5. Tells you what to study next (Revision Agent)
+
+That's what RAG + Agents do. Each agent is like one specialized person on your coaching team.
+
+
+HOW EXAMLY USES THIS FOR YOU
+============================
+
+1. Upload a textbook chapter
+   → RAG indexes it, Agents prepare it
+
+2. You ask for "10 hard questions about mitochondria"
+   → Planner, Retriever, Generator, QA, and Difficulty agents all work together
+   → You get 10 actual hard questions from your actual textbook
+
+3. You take the quiz
+   → Evaluation Agent sees you missed 3 on mitochondria
+
+4. Click "Revise Weak Topics"
+   → Revision Agent creates a study guide just on mitochondria
+   → You study it
+
+5. Next practice test
+   → You're stronger on mitochondria because you studied the right thing
+
+
+SUMMARY
+=======
+
+RAG = A smart system that uses YOUR actual study material (never makes things up)
+Agents = Specialist AI team members who each do one job really well
+
+Together they = An exam coach who knows your material, generates real questions,
+                tracks what you're weak at, and helps you improve faster

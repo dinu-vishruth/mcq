@@ -195,13 +195,25 @@ class TestGenerationAndQuizFlow(Base):
         c = self.client()
         self._seed_user("uploader", "password123", "teacher")
         self._login(c, "uploader", "password123")
+        # `timer` is submitted in MINUTES and stored as seconds.
         r = c.post("/upload", data={"extracted_text": "Some study material about math and geography.",
-                                    "num_questions": "2", "difficulty": "medium", "timer": "120"})
+                                    "num_questions": "2", "difficulty": "medium", "timer": "10"})
+        # There is no answer-revealing preview any more: upload hands straight
+        # off to the quiz so the questions are never shown with their answers.
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/mcq_test", r.headers["Location"])
+        with c.session_transaction() as sess:
+            self.assertEqual(sess["timer"], 600)
+            self.assertTrue(sess["session_key"])
+
+    def test_upload_rejects_out_of_range_timer(self):
+        c = self.client()
+        self._seed_user("uploader2", "password123", "teacher")
+        self._login(c, "uploader2", "password123")
+        r = c.post("/upload", data={"extracted_text": "Some study material.",
+                                    "num_questions": "2", "difficulty": "medium", "timer": "999"})
         self.assertEqual(r.status_code, 200)
-        # "Quiz created" page is now a React island; the generated session_key
-        # and questions are carried in the bootstrap JSON payload.
-        self.assertIn(b'data-page="report"', r.data)
-        self.assertIn(b'"session_key"', r.data)
+        self.assertIn(b"between 1 and 180 minutes", r.data)
 
     def test_full_student_quiz_scoring(self):
         c = self.client()
@@ -330,6 +342,51 @@ class TestDataContracts(Base):
         self.assertIsInstance(result, list)
         self.assertEqual(len(result), len(details))
         self.assertTrue(all(isinstance(x, str) for x in result))
+
+
+class TestTruncatedJSONSalvage(unittest.TestCase):
+    """A large batch can exceed the provider's output cap and be cut mid-array.
+    The complete objects must survive so callers can top up the shortfall."""
+
+    def _parse(self, raw):
+        from core.llm.base import LLMProvider
+        return LLMProvider._parse_json(raw)
+
+    @staticmethod
+    def _q(n):
+        return (
+            '{"question": "Q%d?", "options": ['
+            '{"label": "A", "text": "a%d"}, {"label": "B", "text": "b%d"}, '
+            '{"label": "C", "text": "c%d"}, {"label": "D", "text": "d%d"}], '
+            '"answer_text": "a%d"}' % (n, n, n, n, n, n)
+        )
+
+    def test_complete_json_still_parses(self):
+        raw = '{"questions": [%s, %s]}' % (self._q(1), self._q(2))
+        self.assertEqual(len(self._parse(raw)["questions"]), 2)
+
+    def test_truncated_array_salvages_complete_objects(self):
+        # Two whole questions, then the response is cut off mid-third.
+        raw = ('{"questions": [' + self._q(1) + ', ' + self._q(2)
+               + ', {"question": "Q3?", "options": [{"label": "A", "tex')
+        got = self._parse(raw)["questions"]
+        self.assertEqual(len(got), 2)
+        self.assertEqual(got[0]["question"], "Q1?")
+        self.assertEqual(got[1]["answer_text"], "a2")
+
+    def test_braces_inside_strings_do_not_break_scanning(self):
+        raw = ('{"questions": [{"question": "Is {a: 1} a dict?", "options": ['
+               '{"label": "A", "text": "yes"}, {"label": "B", "text": "no"}, '
+               '{"label": "C", "text": "maybe"}, {"label": "D", "text": "n/a"}], '
+               '"answer_text": "yes"}, {"question": "cut off her')
+        got = self._parse(raw)["questions"]
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0]["question"], "Is {a: 1} a dict?")
+
+    def test_unsalvageable_response_still_raises(self):
+        from core.llm.base import LLMError
+        with self.assertRaises(LLMError):
+            self._parse("I'm sorry, I cannot help with that request.")
 
 
 if __name__ == "__main__":

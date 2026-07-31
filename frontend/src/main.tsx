@@ -14,7 +14,6 @@ const SCREENS: Record<string, React.LazyExoticComponent<React.ComponentType<{ da
   quiz: React.lazy(() => import("./screens/Quiz")),
   result: React.lazy(() => import("./screens/Result")),
   upload: React.lazy(() => import("./screens/Upload")),
-  report: React.lazy(() => import("./screens/ReportGenerated")),
   progress: React.lazy(() => import("./screens/Progress")),
   "weak-topics": React.lazy(() => import("./screens/WeakTopics")),
   achievements: React.lazy(() => import("./screens/Achievements")),

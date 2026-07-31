@@ -21,17 +21,34 @@ class MCQGenerationError(Exception):
     pass
 
 
-def _validate(mcqs, num_questions):
-    """Structural validation, identical rules to the original implementation."""
+def _structurally_valid(mcqs):
+    """Filter to well-formed MCQs. Same rules as the original implementation."""
     valid = []
     for q in mcqs:
+        if not isinstance(q, dict):
+            continue
         if "question" in q and "options" in q and "answer_text" in q:
-            if len(q["options"]) == 4:
+            if isinstance(q["options"], list) and len(q["options"]) == 4:
                 if all(isinstance(o, dict) and "label" in o and "text" in o for o in q["options"]):
                     valid.append(q)
+    return valid
+
+
+def _validate(mcqs, num_questions):
+    """Structural validation, identical rules to the original implementation."""
+    valid = _structurally_valid(mcqs)
     if not valid:
         raise MCQGenerationError("No valid questions could be structured from the AI response. Please retry.")
     return valid[:num_questions]
+
+
+def _extract_questions(data):
+    """Pull the question array out of either accepted response shape."""
+    if isinstance(data, dict) and "questions" in data:
+        return data["questions"]
+    if isinstance(data, list):
+        return data
+    raise MCQGenerationError("JSON structure is missing 'questions' array key.")
 
 
 def generate_mcqs(text, num_questions=5, difficulty="medium"):
@@ -59,24 +76,47 @@ def generate_mcqs(text, num_questions=5, difficulty="medium"):
     if len(text) > max_chars:
         text = text[:max_chars]
 
-    prompt = mcq_prompts.legacy_prompt(text, num_questions, difficulty)
-    messages = [
-        {"role": "system", "content": mcq_prompts.SYSTEM},
-        {"role": "user", "content": prompt},
-    ]
+    llm = get_llm()
+    collected: list[dict] = []
+    seen: set[str] = set()
+    # Ask for the shortfall repeatedly: a single call can under-deliver (models
+    # routinely return fewer items than asked on large batches, and long outputs
+    # can be truncated), which is why an explicit "25" used to yield a handful.
+    # Scale the attempt budget with the request so large sets can fill, and stop
+    # early once a round adds nothing new (a stalled model won't improve).
+    max_attempts = 3 if num_questions <= 10 else 6
+    for attempt in range(max_attempts):
+        need = num_questions - len(collected)
+        if need <= 0:
+            break
 
-    try:
-        data = get_llm().complete_json(messages)
-    except LLMError as e:
-        raise MCQGenerationError(str(e))
-    except Exception as e:
-        raise MCQGenerationError(f"Unexpected error: {e}")
+        prompt = mcq_prompts.legacy_prompt(text, need, difficulty)
+        messages = [
+            {"role": "system", "content": mcq_prompts.SYSTEM},
+            {"role": "user", "content": prompt},
+        ]
+        try:
+            data = llm.complete_json(messages, max_tokens=config.mcq_token_budget(need))
+        except LLMError as e:
+            if not collected:
+                raise MCQGenerationError(str(e))
+            break  # Keep what we already have rather than failing outright.
+        except Exception as e:
+            if not collected:
+                raise MCQGenerationError(f"Unexpected error: {e}")
+            break
 
-    if isinstance(data, dict) and "questions" in data:
-        mcqs = data["questions"]
-    elif isinstance(data, list):
-        mcqs = data
-    else:
-        raise MCQGenerationError("JSON structure is missing 'questions' array key.")
+        before = len(collected)
+        for q in _structurally_valid(_extract_questions(data)):
+            key = (q.get("question") or "").strip().lower()
+            if key and key not in seen:
+                seen.add(key)
+                collected.append(q)
 
-    return _validate(mcqs, num_questions)
+        if len(collected) == before:
+            break  # No new unique questions this round; another call won't help.
+
+    if not collected:
+        raise MCQGenerationError("No valid questions could be structured from the AI response. Please retry.")
+
+    return collected[:num_questions]
