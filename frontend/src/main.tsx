@@ -8,11 +8,16 @@ const { page, bootstrap } = readRoot();
 // Lazy-load each screen so the initial bundle only carries what a page needs.
 const SCREENS: Record<string, React.LazyExoticComponent<React.ComponentType<{ data: any }>>> = {
   dashboard: React.lazy(() => import("./screens/Dashboard")),
+  knowledge: React.lazy(() => import("./screens/Knowledge")),
+  journey: React.lazy(() => import("./screens/Journey")),
+  practice: React.lazy(() => import("./screens/Practice")),
   quiz: React.lazy(() => import("./screens/Quiz")),
   result: React.lazy(() => import("./screens/Result")),
   upload: React.lazy(() => import("./screens/Upload")),
   report: React.lazy(() => import("./screens/ReportGenerated")),
   progress: React.lazy(() => import("./screens/Progress")),
+  "weak-topics": React.lazy(() => import("./screens/WeakTopics")),
+  achievements: React.lazy(() => import("./screens/Achievements")),
   settings: React.lazy(() => import("./screens/Settings")),
 };
 

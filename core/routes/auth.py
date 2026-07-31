@@ -22,9 +22,7 @@ auth_bp = Blueprint("auth", __name__)
 @auth_bp.route("/")
 def home():
     if "user_id" in session:
-        if session.get("role") == "teacher":
-            return redirect(url_for("teacher.teacher_dashboard"))
-        return redirect(url_for("student.student_dashboard"))
+        return redirect(url_for("student.dashboard"))
     return render_template("login.html")
 
 
@@ -35,9 +33,8 @@ def signup():
 
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "").strip()
-    role = request.form.get("role")
 
-    if not username or not password or role not in ("teacher", "student"):
+    if not username or not password:
         return render_template("signup.html", error="All fields are required.")
 
     if len(password) < 8:
@@ -45,10 +42,12 @@ def signup():
 
     hashed_pw = generate_password_hash(password)
 
+    # Single unified "User" role. The DB role column has a legacy CHECK constraint
+    # (teacher|student); we write 'student' to satisfy it but never branch on it.
     conn = get_db()
     try:
         conn.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-                     (username, hashed_pw, role))
+                     (username, hashed_pw, "student"))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
@@ -85,12 +84,9 @@ def login():
 
         session["user_id"] = user["id"]
         session["username"] = user["username"]
-        session["role"] = user["role"]
         conn.close()
 
-        if user["role"] == "teacher":
-            return redirect(url_for("teacher.teacher_dashboard"))
-        return redirect(url_for("student.student_dashboard"))
+        return redirect(url_for("student.dashboard"))
 
     conn.execute("INSERT INTO login_attempts (ip, username, attempt_time, success) VALUES (?, ?, ?, 0)",
                  (ip, username, datetime.utcnow().isoformat()))
@@ -155,18 +151,19 @@ def profile():
 @auth_bp.route("/delete_account", methods=["POST"])
 def delete_account():
     user_id = session.get("user_id")
-    role = session.get("role")
     username = session.get("username")
     if not user_id:
         return redirect(url_for("auth.home"))
 
+    # A single user may own both generated sessions (by username) and quiz
+    # results (by user_id), plus learning data. Remove all of it.
     conn = get_db()
-    if role == "teacher":
-        conn.execute("DELETE FROM results WHERE session_key IN (SELECT session_key FROM sessions WHERE teacher=?)", (username,))
-        conn.execute("DELETE FROM sessions WHERE teacher=?", (username,))
-    else:
-        conn.execute("DELETE FROM results WHERE user_id=?", (user_id,))
-
+    conn.execute("DELETE FROM results WHERE session_key IN (SELECT session_key FROM sessions WHERE teacher=?)", (username,))
+    conn.execute("DELETE FROM sessions WHERE teacher=?", (username,))
+    conn.execute("DELETE FROM results WHERE user_id=?", (user_id,))
+    conn.execute("DELETE FROM learning_history WHERE user_id=?", (user_id,))
+    conn.execute("DELETE FROM weak_topics WHERE user_id=?", (user_id,))
+    conn.execute("DELETE FROM user_prefs WHERE user_id=?", (user_id,))
     conn.execute("DELETE FROM users WHERE id=?", (user_id,))
     conn.commit()
     conn.close()

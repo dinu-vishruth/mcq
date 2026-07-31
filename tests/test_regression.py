@@ -128,11 +128,13 @@ class TestPublicRoutes(Base):
         self.assertIn(b"at least 8 characters", r.data)
 
     def test_signup_then_login(self):
+        # Single unified "User" role: signup no longer takes a role and login
+        # always lands on the unified dashboard.
         c = self.client()
-        c.post("/signup", data={"username": "newteacher", "password": "password123", "role": "teacher"})
-        r = self._login(c, "newteacher", "password123")
+        c.post("/signup", data={"username": "newuser", "password": "password123"})
+        r = self._login(c, "newuser", "password123")
         self.assertEqual(r.status_code, 302)
-        self.assertIn("/teacher", r.headers["Location"])
+        self.assertIn("/dashboard", r.headers["Location"])
 
     def test_login_bad_credentials(self):
         r = self._login(self.client(), "nobody", "wrongpass")
@@ -147,31 +149,39 @@ class TestPublicRoutes(Base):
         self.assertIn(b"Too many failed login attempts", r.data)
 
 
-class TestRoleGating(Base):
-    def test_teacher_dashboard_requires_teacher(self):
-        r = self.client().get("/teacher")
+class TestAuthGating(Base):
+    """Single unified "User" role. Pages require a logged-in user (user_id),
+    not a specific role. The legacy /teacher path redirects to the dashboard."""
+
+    def test_dashboard_requires_login(self):
+        r = self.client().get("/dashboard")
         self.assertEqual(r.status_code, 302)  # redirected to home
 
-    def test_student_dashboard_requires_student(self):
+    def test_student_alias_requires_login(self):
         r = self.client().get("/student")
         self.assertEqual(r.status_code, 302)
 
-    def test_teacher_reaches_dashboard(self):
+    def test_legacy_teacher_path_redirects_to_dashboard(self):
         c = self.client()
-        self._seed_user("teach2", "password123", "teacher")
+        self._seed_user("teach2", "password123", "student")
         self._login(c, "teach2", "password123")
         r = c.get("/teacher")
-        self.assertEqual(r.status_code, 200)
-        self.assertIn(b"Quiz Library", r.data)
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/dashboard", r.headers["Location"])
 
-    def test_student_reaches_dashboard(self):
+    def test_user_reaches_dashboard(self):
         c = self.client()
         self._seed_user("stud2", "password123", "student")
         self._login(c, "stud2", "password123")
-        r = c.get("/student")
+        r = c.get("/dashboard")
         self.assertEqual(r.status_code, 200)
-        # Dashboard is now a React island; assert the mount shell is served.
+        # Dashboard is a React island; assert the mount shell is served.
         self.assertIn(b'data-page="dashboard"', r.data)
+
+    def test_new_pages_require_login(self):
+        for path in ("/knowledge", "/journey", "/practice", "/weak-topics", "/achievements"):
+            r = self.client().get(path)
+            self.assertEqual(r.status_code, 302, f"{path} should redirect when logged out")
 
 
 class TestGenerationAndQuizFlow(Base):

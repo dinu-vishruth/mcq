@@ -1,15 +1,24 @@
 import { useState, type ReactNode } from "react";
-import { Home, Library, TrendingUp, Settings, LogOut, Brain, Flame, Zap, Menu, X } from "lucide-react";
+import {
+  LayoutDashboard, Library, Compass, Dumbbell, TrendingUp, AlertTriangle,
+  Trophy, Settings, LogOut, GraduationCap, Flame, Zap, Menu, X,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 
-interface NavItem { href: string; label: string; icon: typeof Home; key: string; }
+interface NavItem { href: string; label: string; icon: typeof LayoutDashboard; key: string; }
 
 const NAV: NavItem[] = [
-  { href: "/student", label: "Home", icon: Home, key: "home" },
-  { href: "/upload", label: "Knowledge", icon: Library, key: "knowledge" },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, key: "dashboard" },
+  { href: "/knowledge", label: "Knowledge", icon: Library, key: "knowledge" },
+  { href: "/journey", label: "Learning Journey", icon: Compass, key: "journey" },
+  { href: "/practice", label: "Practice", icon: Dumbbell, key: "practice" },
   { href: "/progress", label: "Progress", icon: TrendingUp, key: "progress" },
+  { href: "/weak-topics", label: "Weak Topics", icon: AlertTriangle, key: "weak-topics" },
+  { href: "/achievements", label: "Achievements", icon: Trophy, key: "achievements" },
   { href: "/profile", label: "Settings", icon: Settings, key: "settings" },
 ];
+
+const BRAND = "Examly";
 
 interface Props {
   active: string;
@@ -31,7 +40,7 @@ export function AppShell({ active, children, username, streak = 0, xp = 0 }: Pro
           <Menu className="w-6 h-6" />
         </button>
         <span className="flex items-center gap-2 font-display font-semibold">
-          <Brain className="w-5 h-5 text-accent" /> MCQ Generator
+          <GraduationCap className="w-5 h-5 text-accent" /> {BRAND}
         </span>
       </div>
 
@@ -46,9 +55,9 @@ export function AppShell({ active, children, username, streak = 0, xp = 0 }: Pro
         )}
       >
         <div className="flex items-center justify-between mb-6">
-          <a href="/student" className="flex items-center gap-2.5 font-display font-semibold text-[1.05rem]">
-            <span className="grid place-items-center w-9 h-9 rounded-md bg-accent/10 text-accent"><Brain className="w-5 h-5" /></span>
-            MCQ Generator
+          <a href="/dashboard" className="flex items-center gap-2.5 font-display font-semibold text-[1.05rem]">
+            <span className="grid place-items-center w-9 h-9 rounded-md bg-accent/10 text-accent"><GraduationCap className="w-5 h-5" /></span>
+            {BRAND}
           </a>
           <button onClick={() => setOpen(false)} className="lg:hidden text-text-3" aria-label="Close menu">
             <X className="w-5 h-5" />
@@ -100,7 +109,7 @@ export function AppShell({ active, children, username, streak = 0, xp = 0 }: Pro
             <span className="grid place-items-center w-9 h-9 rounded-md bg-accent/15 text-accent font-semibold shrink-0">{initial}</span>
             <div className="min-w-0">
               <div className="text-sm font-medium truncate">{username}</div>
-              <div className="text-text-3 text-xs">Learner</div>
+              <div className="text-text-3 text-xs">View profile</div>
             </div>
           </a>
           <a href="/logout" aria-label="Log out" className="text-text-3 hover:text-danger transition-colors p-2">

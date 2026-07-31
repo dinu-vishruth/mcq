@@ -26,7 +26,7 @@ documents_bp = Blueprint("documents", __name__)
 
 @documents_bp.route("/upload", methods=["GET", "POST"])
 def upload():
-    if session.get("role") not in ("teacher", "student"):
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
     if request.method == "GET":
         return render_template("upload.html")

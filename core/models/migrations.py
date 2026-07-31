@@ -97,6 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_weak_user         ON weak_topics(user_id);
 # Additive columns on existing tables: (table, column, definition).
 _ADD_COLUMNS = [
     ("sessions", "document_id", "INTEGER"),
+    ("user_prefs", "last_active_date", "TEXT"),  # YYYY-MM-DD of last study day (streak calc)
 ]
 
 # Personalization prefs captured during first-login onboarding (goal, learning

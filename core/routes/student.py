@@ -21,9 +21,14 @@ import models.explanation_engine as explanation_engine
 student_bp = Blueprint("student", __name__)
 
 
-@student_bp.route("/student")
+@student_bp.route("/student")  # legacy alias -> canonical /dashboard
 def student_dashboard():
-    if session.get("role") != "student":
+    return redirect(url_for("student.dashboard"))
+
+
+@student_bp.route("/dashboard")
+def dashboard():
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
 
     conn = get_db()
@@ -104,7 +109,7 @@ def progress():
     """Learning-progress page (React island). Additive read-only aggregation of
     the learner's existing results + weak topics + prefs. Does not touch or
     change any existing route; renders the progress.html mount shell."""
-    if session.get("role") not in ("student", "teacher"):
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
 
     user_id = session.get("user_id")
@@ -185,9 +190,68 @@ def progress():
     )
 
 
+@student_bp.route("/knowledge")
+def knowledge():
+    """Knowledge page (React island). Manages the user's uploaded study
+    resources. Data is fetched client-side from /api/knowledge."""
+    if not session.get("user_id"):
+        return redirect(url_for("auth.home"))
+    return render_template("knowledge.html")
+
+
+@student_bp.route("/journey")
+def journey():
+    """Learning Journey (React island). After opening a knowledge source, asks
+    'What would you like to achieve today?' and launches a guided workflow.
+    Optional ?doc=<id> preselects a knowledge source."""
+    if not session.get("user_id"):
+        return redirect(url_for("auth.home"))
+    document_id = request.args.get("doc")
+    title = ""
+    if document_id:
+        try:
+            from core.repositories import document_repo
+            doc = document_repo.get(int(document_id))
+            if doc and doc["owner"] == session.get("username"):
+                title = doc["title"] or ""
+            else:
+                document_id = None
+        except (ValueError, TypeError):
+            document_id = None
+    return render_template("journey.html", document_id=document_id, title=title)
+
+
+@student_bp.route("/practice")
+def practice():
+    """Practice configuration (React island). Configure difficulty, count,
+    topic, adaptive mode, timer, question type, then generate via
+    /api/practice/generate. Optional ?doc=<id> preselects a source."""
+    if not session.get("user_id"):
+        return redirect(url_for("auth.home"))
+    return render_template("practice.html", document_id=request.args.get("doc"))
+
+
+@student_bp.route("/weak-topics")
+def weak_topics():
+    """Weak Topics (React island). AI-tracked weak concepts with revision and
+    adaptive-practice recommendations. Data from /api/weak-topics."""
+    if not session.get("user_id"):
+        return redirect(url_for("auth.home"))
+    return render_template("weak_topics.html")
+
+
+@student_bp.route("/achievements")
+def achievements():
+    """Achievements (React island). Streak, XP, badges, milestones. Data from
+    /api/achievements."""
+    if not session.get("user_id"):
+        return redirect(url_for("auth.home"))
+    return render_template("achievements.html")
+
+
 @student_bp.route("/student_login", methods=["GET", "POST"])
 def student_login():
-    if session.get("role") != "student":
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
 
     if request.method == "GET":
@@ -223,7 +287,7 @@ def student_login():
 
 @student_bp.route("/mcq_test", methods=["GET"])
 def mcq_test():
-    if session.get("role") != "student":
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
 
     mcqs = session.get("mcqs")
@@ -257,7 +321,7 @@ def mcq_test():
 
 @student_bp.route("/submit", methods=["POST"])
 def submit():
-    if session.get("role") != "student":
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
 
     randomized = session.get("mcqs_randomized")
@@ -320,6 +384,14 @@ def submit():
                            session_key=key, difficulty=difficulty)
     except Exception as e:
         print(f"[WARNING] Learning analysis skipped: {e}")
+
+    # Gamification: award XP (10 per correct answer, +5 completion bonus) and
+    # advance the daily streak. Best-effort — never affects scoring.
+    try:
+        from core.repositories import prefs_repo
+        prefs_repo.record_activity(session.get("user_id"), xp_gain=score * 10 + 5)
+    except Exception as e:
+        print(f"[WARNING] XP/streak update skipped: {e}")
 
     return render_template(
         "result.html", score=score, total=total, details=details, explanations=explanations

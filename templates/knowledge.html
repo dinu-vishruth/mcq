@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Knowledge — Examly</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/dist/app.css">
+</head>
+
+<body>
+  {# React mount shell for the Knowledge page. Data fetched client-side from /api/knowledge. #}
+  <div id="root"
+       data-page="knowledge"
+       data-bootstrap='{{ { "username": session.username or "there" } | tojson }}'></div>
+  <script type="module" src="/static/dist/app.js"></script>
+</body>
+
+</html>

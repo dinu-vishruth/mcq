@@ -33,3 +33,39 @@ export function csrfToken(): string {
       ?.getAttribute("content") ?? ""
   );
 }
+
+// Shared JSON API helpers. Every screen used to hand-roll fetch + CSRF; these
+// centralize it. Mutations automatically attach the CSRF header expected by the
+// Flask-WTF-protected /api endpoints.
+export async function apiGet<T = any>(path: string): Promise<T> {
+  const res = await fetch(path, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+export async function apiSend<T = any>(
+  path: string,
+  method: "POST" | "DELETE" | "PUT",
+  body?: unknown,
+): Promise<T> {
+  const res = await fetch(path, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "X-CSRFToken": csrfToken(),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let msg = `${method} ${path} failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.error) msg = data.error;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(msg);
+  }
+  return res.json();
+}

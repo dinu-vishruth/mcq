@@ -71,3 +71,36 @@ def get_chunks(document_id) -> list[dict]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+def list_by_owner(owner: str) -> list[dict]:
+    """All documents uploaded by this user, newest first."""
+    if not owner:
+        return []
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT id, title, source_type, char_count, chunk_count, status, created_at, meta_json "
+            "FROM documents WHERE owner=? ORDER BY created_at DESC",
+            (owner,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def delete(document_id, owner: str) -> bool:
+    """Delete a document and its chunks, scoped to the owner. Returns True if a
+    row was removed. Embeddings are content-hash keyed and shared/cached, so we
+    leave them (harmless orphans, reused on re-ingest)."""
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT owner FROM documents WHERE id=?", (document_id,)).fetchone()
+        if row is None or row["owner"] != owner:
+            return False
+        conn.execute("DELETE FROM chunks WHERE document_id=?", (document_id,))
+        conn.execute("DELETE FROM documents WHERE id=?", (document_id,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()

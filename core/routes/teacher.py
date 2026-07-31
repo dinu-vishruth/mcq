@@ -20,22 +20,14 @@ teacher_bp = Blueprint("teacher", __name__)
 
 @teacher_bp.route("/teacher")
 def teacher_dashboard():
-    if session.get("role") != "teacher":
-        return redirect(url_for("auth.home"))
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT session_key, created_at, difficulty, timer, archived FROM sessions WHERE teacher=? ORDER BY created_at DESC",
-        (session.get("username"),),
-    )
-    rows = [dict(r) for r in cur.fetchall()]
-    conn.close()
-    return render_template("teacher_dashboard.html", sessions=rows)
+    # Legacy teacher dashboard removed. Everyone is a single "User"; the unified
+    # dashboard is the home. Kept as a redirect so old links never 404.
+    return redirect(url_for("student.dashboard"))
 
 
 @teacher_bp.route("/session_report/<session_key>")
 def session_report(session_key):
-    if session.get("role") != "teacher":
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
 
     conn = get_db()
@@ -121,7 +113,7 @@ def download_report(session_key):
 
 @teacher_bp.route("/delete_session/<session_key>", methods=["POST"])
 def delete_session(session_key):
-    if session.get("role") != "teacher":
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
     if not session_key.isalnum():
         return "Invalid session key format", 400
@@ -140,7 +132,7 @@ def delete_session(session_key):
 
 @teacher_bp.route("/archive_session/<session_key>", methods=["POST"])
 def archive_session(session_key):
-    if session.get("role") != "teacher":
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
     if not session_key.isalnum():
         return "Invalid session key format", 400
@@ -158,7 +150,7 @@ def archive_session(session_key):
 
 @teacher_bp.route("/unarchive_session/<session_key>", methods=["POST"])
 def unarchive_session(session_key):
-    if session.get("role") != "teacher":
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
     if not session_key.isalnum():
         return "Invalid session key format", 400
@@ -176,7 +168,7 @@ def unarchive_session(session_key):
 
 @teacher_bp.route("/clone_session/<session_key>", methods=["POST"])
 def clone_session(session_key):
-    if session.get("role") != "teacher":
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
     if not session_key.isalnum():
         return "Invalid session key format", 400
@@ -201,7 +193,7 @@ def clone_session(session_key):
 
 @teacher_bp.route("/edit_session/<session_key>", methods=["GET", "POST"])
 def edit_session(session_key):
-    if session.get("role") != "teacher":
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
     if not session_key.isalnum():
         return "Invalid session key format", 400
@@ -269,7 +261,7 @@ def edit_session(session_key):
 
 @teacher_bp.route("/export_results/<session_key>")
 def export_results(session_key):
-    if session.get("role") != "teacher":
+    if not session.get("user_id"):
         return redirect(url_for("auth.home"))
     if not session_key.isalnum():
         return "Invalid session key format", 400

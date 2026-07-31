@@ -102,6 +102,56 @@ def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medi
     return collected[:num_questions]
 
 
+def generate_from_document(document_id: int, num_questions: int = 5,
+                           difficulty: str = "medium", *, topic: str | None = None) -> list[dict]:
+    """Generate MCQs from an ALREADY-INGESTED document (Practice from Knowledge).
+
+    Skips ingestion — the document is already chunked and embedded — and runs the
+    same Retriever -> ContextBuilder -> Question -> QA -> Difficulty loop. Returns
+    the same MCQ shape as generate_mcqs_rag. Raises ValueError if the document has
+    no retrievable context so the caller can surface a clear message.
+    """
+    top_k = max(config.RETRIEVAL_TOP_K, min(num_questions * 2, 40))
+    query = _retrieval_query(difficulty, topic)
+    hits = RetrieverAgent().run(document_id, query, top_k, spread=True)
+    if not hits:
+        raise ValueError("This knowledge source has no indexed content to practice from yet.")
+
+    context = ContextBuilderAgent().run(hits)
+
+    qa = QualityAssuranceAgent()
+    question_agent = QuestionAgent()
+    difficulty_agent = DifficultyAgent()
+
+    collected: list[dict] = []
+    attempts = 0
+    max_attempts = 2 if config.IS_VERCEL else 3
+    deadline = time.monotonic() + (config.PIPELINE_DEADLINE_SECONDS - config.LLM_TIMEOUT)
+    while len(collected) < num_questions and attempts < max_attempts:
+        if attempts >= 1 and time.monotonic() >= deadline:
+            break
+        attempts += 1
+        need = num_questions - len(collected)
+        try:
+            raw = question_agent.run(context, need, difficulty)
+        except Exception:
+            break
+        valid, _rejected = qa.run(raw)
+        graded = difficulty_agent.run(valid, difficulty)
+        collected.extend(graded["matched"])
+        seen, deduped = set(), []
+        for q in collected:
+            k = q["question"].strip().lower()
+            if k not in seen:
+                seen.add(k)
+                deduped.append(q)
+        collected = deduped
+
+    if not collected:
+        raise ValueError("Could not generate questions from this source. Try a different difficulty or topic.")
+    return collected[:num_questions]
+
+
 def _legacy_fallback(text, num_questions, difficulty, reason: str = "") -> list[dict]:
     """Use the original single-shot generator. Import locally to avoid a cycle."""
     if reason:

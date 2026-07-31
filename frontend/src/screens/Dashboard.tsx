@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
-  Play, Sparkles, Target, Trophy, Clock, Flame, Zap, BookOpen,
-  TrendingUp, Brain, ArrowRight, Calendar, FileText,
+  Play, Sparkles, Target, Clock, Flame, Zap, BookOpen, Dumbbell,
+  TrendingUp, Brain, ArrowRight, RefreshCw, AlertTriangle, Bell, Loader2, ChevronRight,
 } from "lucide-react";
-import type { DashboardData } from "@/types";
+import type { DashboardApi } from "@/types";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -13,7 +13,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { Onboarding } from "./Onboarding";
 import { AppShell } from "@/components/AppShell";
-import { csrfToken } from "@/bootstrap";
+import { apiGet } from "@/bootstrap";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -22,142 +22,167 @@ function greeting(): string {
   return "Good evening";
 }
 
-function flashError(): string {
-  return document.getElementById("flash-error")?.dataset.message ?? "";
-}
+const REC_ICON: Record<string, typeof Play> = {
+  revision: RefreshCw, practice: Dumbbell, start: Sparkles, interview: Brain,
+};
+const REC_HREF: Record<string, string> = {
+  revision: "/weak-topics", practice: "/practice", start: "/knowledge", interview: "/practice",
+};
 
-export default function Dashboard({ data }: { data: DashboardData }) {
-  // The existing /student route doesn't compute onboarding state (we don't edit
-  // it), so prefs are fetched from the additive /api/prefs endpoint on mount.
+export default function Dashboard({ data }: { data: { username: string } }) {
+  const [d, setD] = useState<DashboardApi | null>(null);
+  const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [prefs, setPrefs] = useState(data.prefs);
-  const hasHistory = data.total_quizzes > 0;
-  const last = data.history[0];
-  const joinError = flashError();
 
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/prefs", { headers: { Accept: "application/json" } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((p) => {
-        if (cancelled || !p) return;
-        setPrefs(p.prefs);
-        if (p.needs_onboarding) setShowOnboarding(true);
+    apiGet<DashboardApi>("/api/dashboard")
+      .then((res) => {
+        setD(res);
+        if (res.needs_onboarding) setShowOnboarding(true);
       })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+      .catch(() => setD(null))
+      .finally(() => setLoading(false));
   }, []);
 
+  const username = d?.username || data.username;
+
+  if (loading) {
+    return (
+      <AppShell active="dashboard" username={username}>
+        <div className="grid place-items-center min-h-[60vh] text-text-3"><Loader2 className="w-6 h-6 animate-spin" /></div>
+      </AppShell>
+    );
+  }
+
+  const hasHistory = (d?.total_quizzes ?? 0) > 0;
+  const topWeak = d?.weak_topics?.[0];
+  const resume = d?.recent?.[0];
+
   return (
-    <AppShell active="home" username={data.username} streak={data.streak} xp={data.xp}>
-      {showOnboarding && (
-        <Onboarding
-          onDone={() => setShowOnboarding(false)}
-          initial={prefs}
-        />
-      )}
+    <AppShell active="dashboard" username={username} streak={d?.streak} xp={d?.xp}>
+      {showOnboarding && <Onboarding onDone={() => setShowOnboarding(false)} initial={null} />}
 
       <div className="max-w-6xl mx-auto px-5 md:px-8 py-8 md:py-10">
-        {/* Hero */}
-        <motion.header
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="mb-8"
-        >
+        {/* Hero — what should I study today? */}
+        <motion.header initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }} className="mb-8">
           <p className="text-accent-2 text-sm font-medium mb-2 flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4" /> Your learning companion
+            <Sparkles className="w-4 h-4" /> Your exam coach
           </p>
           <h1 className="text-[clamp(1.9rem,3.2vw,2.5rem)] font-bold leading-tight">
-            {greeting()}, {data.username} 👋
+            {greeting()}, {username}
           </h1>
           <p className="text-text-2 mt-2 max-w-xl">
-            {hasHistory
-              ? `You've completed ${data.total_quizzes} session${data.total_quizzes !== 1 ? "s" : ""} at a ${data.avg_score}% average. Ready to keep the momentum going?`
-              : "Let's get started. Upload your study material and your AI coach will build a personalized learning journey."}
+            {topWeak
+              ? `Today, focus on ${topWeak.topic} — it's your biggest opportunity to improve.`
+              : hasHistory
+              ? "You're on track. A short session today keeps your streak and recall sharp."
+              : "Let's build your baseline. Add a study source and I'll turn it into practice."}
           </p>
-          <div className="flex flex-wrap gap-3 mt-5">
-            {last ? (
-              <Button leftIcon={<Play className="w-4 h-4" />} onClick={() => (window.location.href = "/student#join")}>
-                Continue Learning
-              </Button>
-            ) : (
-              <Button leftIcon={<Play className="w-4 h-4" />} onClick={() => (window.location.href = "/upload")}>
-                Start Learning
-              </Button>
-            )}
-            <Button variant="secondary" leftIcon={<Sparkles className="w-4 h-4" />} onClick={() => (window.location.href = "/upload")}>
-              Add Knowledge
-            </Button>
-          </div>
         </motion.header>
+
+        {/* Today's plan: primary CTA + goal + streak */}
+        <div className="grid lg:grid-cols-3 gap-4 mb-8">
+          <Card pad="lg" className="lg:col-span-2 bg-gradient-to-br from-accent/[0.08] to-card">
+            <div className="flex items-center gap-2 text-accent-2 text-sm font-medium mb-2">
+              <Target className="w-4 h-4" /> Today's study goal
+            </div>
+            <h2 className="font-display text-xl font-semibold mb-1">
+              {d?.daily_minutes ?? 30} minutes · {topWeak ? topWeak.topic : "mixed practice"}
+            </h2>
+            <p className="text-text-2 text-sm mb-5">
+              {topWeak
+                ? "A focused revision plus a short practice set will move the needle fastest."
+                : "Generate a quick set from your knowledge to keep momentum."}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {resume ? (
+                <a href="/practice"><Button leftIcon={<Play className="w-4 h-4" />}>Start today's session</Button></a>
+              ) : (
+                <a href={hasHistory ? "/practice" : "/knowledge"}>
+                  <Button leftIcon={<Play className="w-4 h-4" />}>{hasHistory ? "Start practicing" : "Add knowledge"}</Button>
+                </a>
+              )}
+              {topWeak && (
+                <a href="/weak-topics"><Button variant="secondary" leftIcon={<RefreshCw className="w-4 h-4" />}>Revise weak topics</Button></a>
+              )}
+            </div>
+          </Card>
+
+          <Card pad="lg" className="flex flex-col justify-center">
+            <div className="flex items-center justify-between mb-3">
+              <span className="flex items-center gap-2 text-sm font-medium"><Flame className="w-4 h-4 text-warning" /> Streak</span>
+              <Badge tone="warning">{d?.streak ?? 0} day{(d?.streak ?? 0) !== 1 ? "s" : ""}</Badge>
+            </div>
+            <div className="flex gap-1.5 mb-4">
+              {["M", "T", "W", "T", "F", "S", "S"].map((lbl, i) => (
+                <div key={i} className={`flex-1 aspect-square grid place-items-center rounded-sm text-xs font-medium ${
+                  i < (d?.streak ?? 0) ? "bg-warning/20 text-warning" : "bg-white/[0.04] text-text-3"}`}>{lbl}</div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2.5 pt-3 border-t border-white/[0.06]">
+              <span className="grid place-items-center w-9 h-9 rounded-md bg-violet/10 text-violet"><Zap className="w-4 h-4" /></span>
+              <div>
+                <div className="font-semibold leading-none">{d?.xp ?? 0} XP</div>
+                <div className="text-text-3 text-xs mt-0.5">Level {d?.level ?? 1}</div>
+              </div>
+            </div>
+          </Card>
+        </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard index={0} value={data.total_quizzes} label="Study Sessions" icon={<BookOpen />} tone="accent" />
-          <StatCard index={1} value={`${data.avg_score}%`} label="Average Score" icon={<Target />} tone="emerald" />
-          <StatCard index={2} value={`${data.best_score}%`} label="Best Score" icon={<Trophy />} tone="amber" />
-          <StatCard
-            index={3}
-            value={data.total_time >= 60 ? `${Math.floor(data.total_time / 60)}m` : `${data.total_time}s`}
-            label="Study Time"
-            icon={<Clock />}
-            tone="violet"
-          />
+          <StatCard index={0} value={d?.total_quizzes ?? 0} label="Sessions" icon={<BookOpen />} tone="accent" />
+          <StatCard index={1} value={`${d?.avg_score ?? 0}%`} label="Avg Score" icon={<Target />} tone="emerald" />
+          <StatCard index={2} value={d?.knowledge_count ?? 0} label="Knowledge Sources" icon={<Brain />} tone="violet" />
+          <StatCard index={3}
+            value={(d?.total_time ?? 0) >= 60 ? `${Math.floor((d?.total_time ?? 0) / 60)}m` : `${d?.total_time ?? 0}s`}
+            label="Study Time" icon={<Clock />} tone="amber" />
         </div>
 
-        {/* Streak + XP */}
-        <div className="grid md:grid-cols-3 gap-4 mb-8">
-          <Card className="md:col-span-2">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="flex items-center gap-2 text-lg mb-0">
-                <Flame className="w-5 h-5 text-warning" /> Daily Streak
-              </h2>
-              <Badge tone="warning">{data.streak} day{data.streak !== 1 ? "s" : ""}</Badge>
+        {/* Recommendations — proactive coach */}
+        {(d?.recommendations?.length ?? 0) > 0 && (
+          <div className="mb-8">
+            <h2 className="font-display font-semibold mb-3 flex items-center gap-2"><Sparkles className="w-4 h-4 text-accent" /> Recommended for today</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {d!.recommendations.map((r, i) => {
+                const Icon = REC_ICON[r.kind] ?? Play;
+                return (
+                  <motion.a key={i} href={REC_HREF[r.kind] ?? "/practice"}
+                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+                    <Card hover pad="md" className="h-full">
+                      <span className="grid place-items-center w-10 h-10 rounded-md bg-accent/10 text-accent mb-3"><Icon className="w-5 h-5" /></span>
+                      <div className="font-medium">{r.title}</div>
+                      <p className="text-text-3 text-xs mt-1 mb-3 leading-relaxed">{r.reason}</p>
+                      <span className="text-accent text-sm font-medium flex items-center gap-1">{r.cta} <ChevronRight className="w-3.5 h-3.5" /></span>
+                    </Card>
+                  </motion.a>
+                );
+              })}
             </div>
-            <div className="flex gap-2">
-              {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
-                <div
-                  key={i}
-                  className={`flex-1 aspect-square grid place-items-center rounded-sm text-sm font-medium ${
-                    i < data.streak ? "bg-warning/20 text-warning" : "bg-white/[0.04] text-text-3"
-                  }`}
-                >
-                  {d}
-                </div>
-              ))}
-            </div>
-            <p className="text-text-3 text-sm mt-3">Practice a little every day to keep your streak alive.</p>
-          </Card>
-          <Card className="flex flex-col justify-center items-center text-center">
-            <span className="grid place-items-center w-12 h-12 rounded-full bg-violet/10 text-violet mb-2">
-              <Zap className="w-6 h-6" />
-            </span>
-            <div className="text-3xl font-display font-bold">{data.xp}</div>
-            <div className="text-text-3 text-sm">XP · Level {Math.floor(data.xp / 100) + 1}</div>
-          </Card>
-        </div>
+          </div>
+        )}
 
-        {/* Charts + weak areas */}
+        {/* Trend + weak topics */}
         {hasHistory && (
           <div className="grid lg:grid-cols-2 gap-4 mb-8">
             <Card>
-              <h2 className="flex items-center gap-2 text-lg"><TrendingUp className="w-5 h-5 text-accent" /> Performance Trend</h2>
-              <p className="text-text-3 text-sm mb-4 -mt-2">Your scores over time (%)</p>
-              <TrendChart dates={data.chart_dates} scores={data.chart_scores} />
+              <h2 className="flex items-center gap-2 text-lg"><TrendingUp className="w-5 h-5 text-accent" /> Weekly performance</h2>
+              <p className="text-text-3 text-sm mb-4 -mt-2">Your scores over recent sessions (%)</p>
+              <TrendChart dates={(d?.chart ?? []).map((c) => c.date)} scores={(d?.chart ?? []).map((c) => c.score)} />
             </Card>
             <Card>
-              <h2 className="flex items-center gap-2 text-lg"><Target className="w-5 h-5 text-danger" /> Weak Areas</h2>
-              <p className="text-text-3 text-sm mb-4 -mt-2">Concepts to review</p>
-              {data.weak_topics.length ? (
+              <div className="flex items-center justify-between">
+                <h2 className="flex items-center gap-2 text-lg"><AlertTriangle className="w-5 h-5 text-warning" /> Weak topics</h2>
+                <a href="/weak-topics" className="text-accent text-sm hover:underline">View all</a>
+              </div>
+              <p className="text-text-3 text-sm mb-4 -mt-2">What to review next</p>
+              {(d?.weak_topics?.length ?? 0) ? (
                 <div className="space-y-4">
-                  {data.weak_topics.map((w) => (
+                  {d!.weak_topics.slice(0, 4).map((w) => (
                     <div key={w.topic}>
                       <div className="flex items-center justify-between mb-1.5">
                         <strong className="text-sm">{w.topic}</strong>
-                        <Badge tone="danger">{w.wrong}/{w.total} missed</Badge>
+                        <Badge tone="danger">{w.pct}%</Badge>
                       </div>
                       <ProgressBar pct={w.pct} tone="danger" />
                     </div>
@@ -170,104 +195,45 @@ export default function Dashboard({ data }: { data: DashboardData }) {
           </div>
         )}
 
-        {/* AI Coach nudge */}
-        <Card className="mb-8 bg-gradient-to-br from-violet/[0.1] to-card border-white/[0.11]">
-          <div className="flex items-start gap-4">
-            <span className="grid place-items-center w-11 h-11 rounded-md bg-violet/15 text-violet shrink-0">
-              <Brain className="w-6 h-6" />
-            </span>
+        {/* Upcoming revision reminders */}
+        {topWeak && (
+          <Card pad="md" className="mb-8 flex items-start gap-4 bg-gradient-to-br from-violet/[0.08] to-card">
+            <span className="grid place-items-center w-11 h-11 rounded-md bg-violet/15 text-violet shrink-0"><Bell className="w-5 h-5" /></span>
             <div className="flex-1">
-              <h2 className="text-lg mb-1">Your AI Coach</h2>
-              <p className="text-text-2 text-sm mb-4">
-                {data.weak_topics.length
-                  ? `Focus today on ${data.weak_topics[0].topic} — it's your biggest opportunity to improve.`
-                  : data.recommendations.length
-                  ? data.recommendations[0]
-                  : hasHistory
-                  ? "You're doing great. Turn fresh notes into a session to keep improving."
-                  : "Upload your first document and I'll build a learning path tailored to you."}
+              <h2 className="font-display font-semibold mb-1">Revision reminder</h2>
+              <p className="text-text-2 text-sm mb-3">
+                {topWeak.topic} is due for a review — spaced repetition works best before you forget.
               </p>
-              <Button variant="secondary" size="sm" rightIcon={<ArrowRight className="w-4 h-4" />} onClick={() => (window.location.href = "/upload")}>
-                {data.weak_topics.length ? "Practice weak topics" : "Add knowledge"}
-              </Button>
+              <a href="/weak-topics"><Button variant="secondary" size="sm" rightIcon={<ArrowRight className="w-4 h-4" />}>Revise now</Button></a>
             </div>
-          </div>
-        </Card>
-
-        {/* Recommended topics */}
-        {data.recommendations.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-lg mb-3">Recommended for you</h2>
-            <div className="flex flex-wrap gap-2">
-              {data.recommendations.map((r, i) => (
-                <Badge key={i} tone="accent" className="text-sm px-3 py-1.5">{r}</Badge>
-              ))}
-            </div>
-          </div>
+          </Card>
         )}
 
-        {/* Join a session — preserves the existing /student_login POST flow */}
-        <Card className="mb-8" id="join">
-          <h2 className="flex items-center gap-2 text-lg"><Play className="w-5 h-5 text-accent" /> Join a Session</h2>
-          <p className="text-text-3 text-sm mb-4 -mt-2">Enter a session key to start a shared quiz.</p>
-          {joinError && (
-            <div className="mb-3 px-3.5 py-2.5 rounded-md bg-danger/10 border border-danger/20 text-danger text-sm">
-              {joinError}
-            </div>
-          )}
-          <form action="/student_login" method="post" className="flex flex-col sm:flex-row gap-3">
-            <input type="hidden" name="csrf_token" value={csrfToken()} />
-            <input
-              type="text"
-              name="session_key"
-              placeholder="e.g. a1b2c3d4"
-              required
-              className="flex-1 h-11 px-4 rounded-md bg-inset border border-white/[0.08] text-text placeholder:text-text-3 focus:outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/20"
-            />
-            <Button type="submit" rightIcon={<ArrowRight className="w-4 h-4" />}>Start Quiz</Button>
-          </form>
-        </Card>
-
-        {/* Recent activity */}
-        <h2 className="text-lg mb-3">Recent Activity</h2>
-        {data.history.length ? (
+        {/* Resume card */}
+        <h2 className="font-display font-semibold mb-3">Recent study sessions</h2>
+        {(d?.recent?.length ?? 0) ? (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {data.history.map((h, i) => {
-              const pct = h.total ? h.score / h.total : 0;
-              return (
-                <motion.div
-                  key={`${h.session_key}-${i}`}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.04, duration: 0.4 }}
-                >
-                  <Card hover>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="grid place-items-center w-9 h-9 rounded-sm bg-white/5 text-text-2">
-                        <FileText className="w-4 h-4" />
-                      </span>
-                      <Badge tone={pct >= 0.7 ? "success" : "danger"}>{h.score} / {h.total}</Badge>
-                    </div>
-                    <code className="text-sm text-text-2 block mb-3">{h.session_key}</code>
-                    <div className="flex flex-wrap gap-3 text-xs text-text-3">
-                      <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> {h.submitted_at.slice(0, 16).replace("T", " ")}</span>
-                      <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {h.time_spent || 0}s</span>
-                    </div>
-                  </Card>
-                </motion.div>
-              );
-            })}
+            {d!.recent.map((h, i) => (
+              <motion.div key={`${h.session_key}-${i}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
+                <Card hover pad="md">
+                  <div className="flex items-center justify-between mb-3">
+                    <Badge tone="neutral">{h.difficulty || "mixed"}</Badge>
+                    <Badge tone={h.pct >= 70 ? "success" : "danger"}>{h.pct}%</Badge>
+                  </div>
+                  <div className="text-sm text-text-2">{h.score} / {h.total} correct</div>
+                  <div className="text-text-3 text-xs mt-2 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" /> {(h.submitted_at || "").slice(0, 16).replace("T", " ")}
+                  </div>
+                </Card>
+              </motion.div>
+            ))}
           </div>
         ) : (
           <Card className="text-center py-12">
-            <span className="grid place-items-center w-14 h-14 rounded-full bg-white/5 text-text-2 mx-auto mb-4">
-              <BookOpen className="w-7 h-7" />
-            </span>
-            <h2 className="text-lg mb-1">Your AI is waiting to learn</h2>
-            <p className="text-text-3 text-sm mb-5">Add study material to start building your learning journey.</p>
-            <Button leftIcon={<Sparkles className="w-4 h-4" />} onClick={() => (window.location.href = "/upload")}>
-              Add Knowledge
-            </Button>
+            <span className="grid place-items-center w-14 h-14 rounded-full bg-white/5 text-text-2 mx-auto mb-4"><BookOpen className="w-7 h-7" /></span>
+            <h2 className="text-lg mb-1">No sessions yet</h2>
+            <p className="text-text-3 text-sm mb-5">Add a knowledge source, then generate your first practice set.</p>
+            <a href="/knowledge"><Button leftIcon={<Sparkles className="w-4 h-4" />}>Go to Knowledge</Button></a>
           </Card>
         )}
       </div>
