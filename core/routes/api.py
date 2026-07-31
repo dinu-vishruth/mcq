@@ -145,9 +145,9 @@ def _study_recommendations(weak, prefs, total_quizzes):
     if total_quizzes == 0:
         recs.append({
             "kind": "start",
-            "title": "Take your first practice set",
-            "reason": "Upload a document in Knowledge, then practice to build your baseline.",
-            "cta": "Go to Knowledge",
+            "title": "Take your first quiz",
+            "reason": "Upload a document or save a resource, then make a quiz to build your baseline.",
+            "cta": "Make Quiz & Test",
         })
     else:
         recs.append({
@@ -289,10 +289,49 @@ def weak_topics_data():
         weak = get_weak_topics(user_id, limit=20)
     except Exception as e:
         print(f"[WARNING] weak-topics API skipped: {e}")
+
+    from core.repositories import learning_repo
     for w in weak:
         pct = w.get("pct", 0)
         w["severity"] = "high" if pct >= 60 else "medium" if pct >= 30 else "low"
+        # How many of the missed questions we can actually rebuild into a review
+        # quiz. The UI only offers "Review" when this is > 0, so no dead buttons.
+        try:
+            w["reviewable"] = len(learning_repo.missed_questions_for_topic(user_id, w["topic"], limit=30))
+        except Exception:
+            w["reviewable"] = 0
     return jsonify({"items": weak})
+
+
+@api_bp.route("/weak-topics/review", methods=["POST"])
+def weak_topics_review():
+    """Rebuild a quiz from the ACTUAL questions the user missed for a topic and
+    launch it via the existing session/quiz flow. Returns a session_key the
+    frontend hands to /student_login (same handoff as practice/generate).
+
+    This is a genuine re-attempt of the exact questions gotten wrong — no
+    regeneration, no LLM — so it works offline and in any pipeline mode."""
+    user_id = _require_user()
+    if not user_id:
+        return jsonify({"error": "unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    topic = (data.get("topic") or "").strip()
+    if not topic:
+        return jsonify({"error": "topic required"}), 400
+
+    from core.repositories import learning_repo
+    mcqs = learning_repo.missed_questions_for_topic(user_id, topic, limit=20)
+    if not mcqs:
+        return jsonify({"error": "No reviewable questions for this topic yet."}), 404
+
+    # Timer scales with the set (~45s/question), clamped to a sane range.
+    timer = max(60, min(1800, len(mcqs) * 45))
+    from utils.session_manager import create_session_key
+    session_key = create_session_key(
+        teacher=session.get("username"), difficulty="review", timer=timer, mcqs=mcqs,
+    )
+    return jsonify({"ok": True, "session_key": session_key, "count": len(mcqs)})
 
 
 @api_bp.route("/achievements", methods=["GET"])

@@ -64,7 +64,7 @@ class QualityAssuranceAgent(Agent):
 
         cleaned = {"question": question, "options": norm_opts, "answer_text": answer}
         # Carry optional metadata forward without letting it break the contract.
-        for extra in ("bloom", "source_hint"):
+        for extra in ("bloom", "source_hint", "explanation"):
             if extra in q:
                 cleaned[extra] = q[extra]
         return cleaned, None

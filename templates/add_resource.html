@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Resource — Examly</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/dist/app.css">
+  <!-- Client-side text extraction (avoids Vercel 4.5MB upload limit). Loaded
+       globally so the React AddResource screen can call window.pdfjsLib / window.mammoth. -->
+  <script src="/static/js/pdf.min.js"></script>
+  <script src="/static/js/mammoth.browser.min.js"></script>
+</head>
+
+<body>
+  {# React mount shell for the store-only resource upload. Posts to
+     /ingest_resource which saves + indexes the document and redirects to
+     /journey WITHOUT generating a quiz. #}
+  <div id="root"
+       data-page="add-resource"
+       data-bootstrap='{{ {
+         "error": error | default(""),
+         "username": session.username or "Learner",
+         "streak": session.streak | default(0),
+         "xp": session.xp | default(0)
+       } | tojson }}'></div>
+
+  <script type="module" src="/static/dist/app.js"></script>
+</body>
+
+</html>

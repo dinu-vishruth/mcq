@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import {
-  LayoutDashboard, Library, Compass, Dumbbell, TrendingUp, AlertTriangle,
+  LayoutDashboard, Compass, FileQuestion, TrendingUp, AlertTriangle,
   Trophy, Settings, LogOut, GraduationCap, Flame, Zap, Menu, X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -9,9 +9,8 @@ interface NavItem { href: string; label: string; icon: typeof LayoutDashboard; k
 
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, key: "dashboard" },
-  { href: "/knowledge", label: "Knowledge", icon: Library, key: "knowledge" },
   { href: "/journey", label: "Learning Journey", icon: Compass, key: "journey" },
-  { href: "/practice", label: "Practice", icon: Dumbbell, key: "practice" },
+  { href: "/knowledge", label: "Make Quiz & Test", icon: FileQuestion, key: "knowledge" },
   { href: "/progress", label: "Progress", icon: TrendingUp, key: "progress" },
   { href: "/weak-topics", label: "Weak Topics", icon: AlertTriangle, key: "weak-topics" },
   { href: "/achievements", label: "Achievements", icon: Trophy, key: "achievements" },

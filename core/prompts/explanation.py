@@ -12,12 +12,19 @@ _TAIL = ('You MUST respond with a JSON object containing an "explanations" key, 
          'Format exactly like this: {"explanations": ["Explanation for Q1", "Explanation for Q2"]}')
 
 
+# The teaching instruction shared by both prompts. Explanations should TEACH,
+# not just grade: name the misconception, explain the right idea and WHY, and
+# give a short memory hook. Kept concise so result.html stays readable.
+_COACH = ("You are a supportive exam coach speaking directly to the learner. For each question, in "
+          "2-3 short sentences: (1) name the likely misconception behind their answer, (2) explain "
+          "the correct idea and WHY it's right, (3) add a brief tip to remember it. Address the "
+          "learner in the second person ('your answer'), never as 'the student'. Be encouraging and "
+          "specific — never just say 'Wrong' or restate the correct option.\n\n")
+
+
 def legacy_prompt(wrong_items: list[dict]) -> str:
     """wrong_items: list of {"question","selected","correct"} for wrong answers."""
-    prompt = ("You are a helpful exam coach speaking directly to the learner. Briefly explain WHY "
-              "their selected answer is incorrect, and WHY the correct answer is right. Address the "
-              "learner in the second person ('your answer'), never as 'the student'. Keep it to "
-              "exactly 1 or 2 clear sentences per question.\n\n")
+    prompt = _COACH
     for d in wrong_items:
         prompt += (f"Question: {d['question']}\nYour Answer: {d['selected']}\n"
                    f"Correct Answer: {d['correct']}\n\n")
@@ -27,10 +34,7 @@ def legacy_prompt(wrong_items: list[dict]) -> str:
 
 def grounded_prompt(wrong_items: list[dict], context: str) -> str:
     """Same shape, but explanations must draw on the retrieved CONTEXT."""
-    prompt = ("You are a helpful exam coach speaking directly to the learner. Using the CONTEXT for "
-              "factual grounding, briefly explain WHY their selected answer is incorrect and WHY the "
-              "correct answer is right. Address the learner in the second person ('your answer'), "
-              "never as 'the student'. Exactly 1 or 2 clear sentences per question.\n\n")
+    prompt = _COACH + "Ground every explanation in the CONTEXT below; do not invent facts beyond it.\n\n"
     prompt += f'CONTEXT:\n"""\n{context}\n"""\n\n'
     for d in wrong_items:
         prompt += (f"Question: {d['question']}\nYour Answer: {d['selected']}\n"

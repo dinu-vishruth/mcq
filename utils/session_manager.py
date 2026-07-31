@@ -9,8 +9,8 @@ lives in one place.
 from core.repositories import session_repo
 
 
-def create_session_key(teacher, difficulty, timer, mcqs):
-    return session_repo.create_session(teacher, difficulty, timer, mcqs)
+def create_session_key(teacher, difficulty, timer, mcqs, document_id=None):
+    return session_repo.create_session(teacher, difficulty, timer, mcqs, document_id=document_id)
 
 
 def validate_session_key(key):

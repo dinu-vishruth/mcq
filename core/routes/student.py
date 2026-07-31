@@ -201,24 +201,23 @@ def knowledge():
 
 @student_bp.route("/journey")
 def journey():
-    """Learning Journey (React island). After opening a knowledge source, asks
-    'What would you like to achieve today?' and launches a guided workflow.
-    Optional ?doc=<id> preselects a knowledge source."""
+    """Learning Journey (React island): the user's saved-resource library.
+    Lists indexed study resources (data from /api/knowledge), links to
+    /add_resource to store more, and to /practice?doc=<id> to make a quiz from
+    one. Does NOT generate anything itself."""
     if not session.get("user_id"):
         return redirect(url_for("auth.home"))
-    document_id = request.args.get("doc")
-    title = ""
-    if document_id:
-        try:
-            from core.repositories import document_repo
-            doc = document_repo.get(int(document_id))
-            if doc and doc["owner"] == session.get("username"):
-                title = doc["title"] or ""
-            else:
-                document_id = None
-        except (ValueError, TypeError):
-            document_id = None
-    return render_template("journey.html", document_id=document_id, title=title)
+    return render_template("journey.html")
+
+
+@student_bp.route("/add_resource")
+def add_resource():
+    """Store-only upload page (React island) for the Learning Journey. Uploading
+    here saves + indexes the document as a reusable resource and returns to the
+    library — it never generates a quiz. Posts to /ingest_resource."""
+    if not session.get("user_id"):
+        return redirect(url_for("auth.home"))
+    return render_template("add_resource.html")
 
 
 @student_bp.route("/practice")

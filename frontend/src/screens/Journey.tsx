@@ -1,140 +1,124 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
-  Compass, BookOpen, Dumbbell, RefreshCw, MessageSquare, ClipboardCheck,
-  Target, ChevronRight, Loader2, Library,
+  Compass, Plus, Dumbbell, Trash2, Clock, Layers, CheckCircle2, Loader2, Library,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/Card";
-import { apiGet } from "@/bootstrap";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { apiGet, apiSend } from "@/bootstrap";
 import type { KnowledgeItem } from "@/types";
 
-interface JourneyData { username: string; document_id: number | null; title: string }
-
-interface Workflow {
-  key: string;
-  label: string;
-  desc: string;
-  icon: typeof BookOpen;
-  tone: string;
-  href: (docId: number | null) => string;
-}
-
-const WORKFLOWS: Workflow[] = [
-  { key: "learn", label: "Learn Concepts", desc: "Build understanding with guided explanations from your source.",
-    icon: BookOpen, tone: "text-accent bg-accent/10",
-    href: (d) => (d ? `/practice?doc=${d}&mode=learn` : "/practice") },
-  { key: "practice", label: "Practice MCQs", desc: "Configure and generate a practice set to test recall.",
-    icon: Dumbbell, tone: "text-success bg-success/10",
-    href: (d) => (d ? `/practice?doc=${d}` : "/practice") },
-  { key: "revision", label: "Quick Revision", desc: "A fast, focused pass over the key points.",
-    icon: RefreshCw, tone: "text-violet bg-violet/10",
-    href: (d) => (d ? `/practice?doc=${d}&mode=revision&count=5` : "/practice") },
-  { key: "interview", label: "Interview Preparation", desc: "Rapid-fire questions to sharpen on-the-spot recall.",
-    icon: MessageSquare, tone: "text-warning bg-warning/10",
-    href: (d) => (d ? `/practice?doc=${d}&mode=interview` : "/practice") },
-  { key: "mock", label: "Mock Test", desc: "A timed, full-length set that mirrors the real thing.",
-    icon: ClipboardCheck, tone: "text-accent bg-accent/10",
-    href: (d) => (d ? `/practice?doc=${d}&mode=mock&count=20` : "/practice") },
-  { key: "weak", label: "Weak Topic Practice", desc: "Target the concepts you miss most.",
-    icon: Target, tone: "text-danger bg-danger/10",
-    href: () => "/weak-topics" },
-];
-
-export default function Journey({ data }: { data: JourneyData }) {
-  const [docId, setDocId] = useState<number | null>(data.document_id);
-  const [docTitle, setDocTitle] = useState(data.title);
+// Learning Journey is the user's saved-resource library. It stores what they
+// upload (via /add_resource) and lets them turn any saved resource into a quiz.
+// It does NOT generate anything itself and never redirects to a quiz on its own.
+export default function Journey({ data }: { data: { username: string } }) {
   const [items, setItems] = useState<KnowledgeItem[]>([]);
-  const [loading, setLoading] = useState(!data.document_id);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<number | null>(null);
 
   useEffect(() => {
-    if (data.document_id) return; // already have a source
     apiGet<{ items: KnowledgeItem[] }>("/api/knowledge")
       .then((d) => setItems(d.items))
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
-  }, [data.document_id]);
+  }, []);
 
-  // No source chosen yet: let the user pick one first.
-  if (!docId) {
-    return (
-      <AppShell active="journey" username={data.username}>
-        <div className="max-w-4xl mx-auto px-5 lg:px-8 py-8">
-          <h1 className="font-display text-2xl font-semibold flex items-center gap-2.5">
-            <Compass className="w-6 h-6 text-accent" /> Learning Journey
-          </h1>
-          <p className="text-text-2 mt-1.5 mb-8">Pick a knowledge source to begin.</p>
-
-          {loading ? (
-            <div className="grid place-items-center py-20 text-text-3"><Loader2 className="w-6 h-6 animate-spin" /></div>
-          ) : items.length === 0 ? (
-            <Card pad="lg" className="text-center py-14">
-              <div className="grid place-items-center w-12 h-12 rounded-lg bg-accent/10 text-accent mx-auto mb-3"><Library className="w-6 h-6" /></div>
-              <h3 className="font-display font-semibold">No sources yet</h3>
-              <p className="text-text-2 mt-1">Add a study resource to start a journey.</p>
-              <a href="/upload" className="text-accent hover:underline mt-3 inline-block">Go to Knowledge →</a>
-            </Card>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {items.map((k) => (
-                <button
-                  key={k.id}
-                  onClick={() => { setDocId(k.id); setDocTitle(k.title); }}
-                  className="text-left"
-                >
-                  <Card hover pad="md" className="flex items-center justify-between">
-                    <div className="min-w-0">
-                      <div className="font-medium truncate">{k.title}</div>
-                      <div className="text-text-3 text-xs mt-0.5">{k.topic_count} topics · ~{k.est_minutes} min</div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-text-3 shrink-0" />
-                  </Card>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </AppShell>
-    );
+  async function remove(id: number) {
+    if (!confirm("Remove this resource from your library? Your quiz results are kept.")) return;
+    setBusy(id);
+    try {
+      await apiSend(`/api/knowledge/${id}`, "DELETE");
+      setItems((prev) => prev.filter((k) => k.id !== id));
+    } catch {
+      alert("Could not remove. Please try again.");
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
     <AppShell active="journey" username={data.username}>
-      <div className="max-w-4xl mx-auto px-5 lg:px-8 py-8">
-        {docTitle && (
-          <div className="mb-2 text-text-3 text-sm flex items-center gap-1.5">
-            <Library className="w-4 h-4" /> {docTitle}
+      <div className="max-w-6xl mx-auto px-5 lg:px-8 py-8">
+        <div className="flex items-start justify-between gap-4 mb-8">
+          <div>
+            <h1 className="font-display text-2xl font-semibold flex items-center gap-2.5">
+              <Compass className="w-6 h-6 text-accent" /> Learning Journey
+            </h1>
+            <p className="text-text-2 mt-1.5">Your saved study resources. Add material once, then make quizzes from it anytime.</p>
           </div>
-        )}
-        <h1 className="font-display text-2xl font-semibold">What would you like to achieve today?</h1>
-        <p className="text-text-2 mt-1.5 mb-8">Choose a workflow. Your coach will guide the session.</p>
+          <a href="/add_resource">
+            <Button leftIcon={<Plus className="w-4 h-4" />}>Add Resource</Button>
+          </a>
+        </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          {WORKFLOWS.map((w, i) => {
-            const Icon = w.icon;
-            return (
-              <motion.a
-                key={w.key}
-                href={w.href(docId)}
+        {loading ? (
+          <div className="grid place-items-center py-24 text-text-3">
+            <Loader2 className="w-6 h-6 animate-spin" />
+          </div>
+        ) : items.length === 0 ? (
+          <Card pad="lg" className="text-center py-16">
+            <div className="grid place-items-center w-14 h-14 rounded-lg bg-accent/10 text-accent mx-auto mb-4">
+              <Library className="w-7 h-7" />
+            </div>
+            <h3 className="font-display text-lg font-semibold">Your library is empty</h3>
+            <p className="text-text-2 mt-1.5 max-w-md mx-auto">
+              Save your notes, textbook chapters, or slides here. We index them so you can generate quizzes and revise on demand — no need to re-upload each time.
+            </p>
+            <a href="/add_resource" className="inline-block mt-5">
+              <Button leftIcon={<Plus className="w-4 h-4" />}>Add your first resource</Button>
+            </a>
+          </Card>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {items.map((k, i) => (
+              <motion.div
+                key={k.id}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
+                transition={{ delay: i * 0.04 }}
               >
-                <Card hover pad="md" className="h-full flex items-start gap-4">
-                  <span className={`grid place-items-center w-11 h-11 rounded-md shrink-0 ${w.tone}`}>
-                    <Icon className="w-5 h-5" />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="font-display font-semibold flex items-center gap-1.5">
-                      {w.label} <ChevronRight className="w-4 h-4 text-text-3" />
-                    </div>
-                    <p className="text-text-2 text-sm mt-1 leading-relaxed">{w.desc}</p>
+                <Card pad="md" className="h-full flex flex-col">
+                  <div className="flex items-center justify-between mb-3">
+                    <Badge tone="neutral">{k.subject}</Badge>
+                    {k.indexed ? (
+                      <span className="flex items-center gap-1 text-success text-xs font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> AI Indexed
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-warning text-xs font-medium">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> {k.status}
+                      </span>
+                    )}
                   </div>
+
+                  <h3 className="font-display font-semibold leading-snug line-clamp-2 min-h-[2.6rem]">{k.title}</h3>
+
+                  <div className="flex items-center gap-4 text-text-3 text-xs mt-3 mb-4">
+                    <span className="flex items-center gap-1"><Layers className="w-3.5 h-3.5" /> {k.topic_count} topics</span>
+                    <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> ~{k.est_minutes} min</span>
+                  </div>
+
+                  <div className="flex-1" />
+
+                  <a href={`/practice?doc=${k.id}`} className="block mb-2">
+                    <Button variant="secondary" size="sm" className="w-full" leftIcon={<Dumbbell className="w-3.5 h-3.5" />}>
+                      Make Quiz
+                    </Button>
+                  </a>
+                  <button
+                    onClick={() => remove(k.id)}
+                    disabled={busy === k.id}
+                    className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md text-text-3 hover:text-danger hover:bg-danger/8 transition-colors text-xs disabled:opacity-50"
+                  >
+                    {busy === k.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Remove
+                  </button>
                 </Card>
-              </motion.a>
-            );
-          })}
-        </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
       </div>
     </AppShell>
   );

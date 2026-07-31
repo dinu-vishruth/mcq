@@ -22,8 +22,10 @@ import config
 from core.agents.planner import PlannerAgent
 from core.agents.retriever import RetrieverAgent
 from core.agents.context_builder import ContextBuilderAgent
-from core.agents.question import QuestionAgent
+from core.agents.context_validation import ContextValidationAgent
+from core.agents.question import QuestionAgent, InsufficientContextError
 from core.agents.difficulty import DifficultyAgent
+from core.agents.fact_verification import FactVerificationAgent
 from core.agents.quality_assurance import QualityAssuranceAgent
 from core.services.ingestion_service import ingest_document
 
@@ -45,6 +47,61 @@ def _retrieval_query(difficulty: str, topic: str | None) -> str:
     return f"The most important concepts, facts and relationships for {difficulty} exam questions."
 
 
+def _collect_mcqs(context: str, num_questions: int, difficulty: str) -> list[dict]:
+    """Generate -> QA -> Fact-verify -> Difficulty, regenerating only the
+    shortfall, until we have `num_questions` or the retry/time budget runs out.
+
+    Shared by both public entry points. Emits the structured per-stage log from
+    the brief. Raises InsufficientContextError only if the FIRST attempt reports
+    it (so the caller can fall back to the fuller-text path); later attempts that
+    hit it just stop the loop with whatever was collected.
+    """
+    qa = QualityAssuranceAgent()
+    question_agent = QuestionAgent()
+    verifier = FactVerificationAgent()
+    difficulty_agent = DifficultyAgent()
+
+    collected: list[dict] = []
+    attempts = 0
+    max_attempts = _max_attempts(num_questions)
+    deadline = time.monotonic() + (config.PIPELINE_DEADLINE_SECONDS - config.LLM_TIMEOUT)
+
+    while len(collected) < num_questions and attempts < max_attempts:
+        if attempts >= 1 and time.monotonic() >= deadline:
+            break  # out of time budget; return what we have
+        attempts += 1
+        need = num_questions - len(collected)
+
+        raw = question_agent.run(context, need, difficulty)  # may raise InsufficientContextError
+
+        # Structural QA (deterministic contract guard).
+        valid, _rejected = qa.run(raw)
+
+        # Fact verification (the new grounding gate) before we accept anything.
+        if config.FACT_VERIFICATION_ENABLED and valid:
+            verified, rejected = verifier.run(valid, context)
+            print(f"[mcq_pipeline] Fact Checker: {len(verified)} PASS, {len(rejected)} rejected (attempt {attempts})")
+            valid = verified
+        else:
+            print(f"[mcq_pipeline] Fact Checker: skipped (attempt {attempts})")
+
+        # Difficulty match (discard off-level questions).
+        graded = difficulty_agent.run(valid, difficulty)
+        collected.extend(graded["matched"])
+
+        # De-duplicate by question text across attempts.
+        seen, deduped = set(), []
+        for q in collected:
+            key = q["question"].strip().lower()
+            if key not in seen:
+                seen.add(key)
+                deduped.append(q)
+        collected = deduped
+
+    print(f"[mcq_pipeline] Collected {len(collected)}/{num_questions} MCQs in {attempts} attempt(s)")
+    return collected[:num_questions]
+
+
 def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medium",
                       *, owner: str = "", title: str = "", user_request: str = "") -> list[dict]:
     # 1. Planner: for the standard upload flow, params are explicit; a free-form
@@ -63,54 +120,41 @@ def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medi
     # 3. Retrieve diverse, document-spread context. Scale breadth to question count.
     top_k = max(config.RETRIEVAL_TOP_K, min(num_questions * 2, 40))
     query = _retrieval_query(difficulty, topic)
-    hits = RetrieverAgent().run(document_id, query, top_k, spread=True)
+    retriever = RetrieverAgent()
+    hits = retriever.run(document_id, query, top_k, spread=True)
     if not hits:
         # No retrievable context (e.g. embedding store empty) -> legacy path.
         return _legacy_fallback(text, num_questions, difficulty)
 
+    stats = retriever.assess(hits)
+    print(f"[mcq_pipeline] Retriever: {stats['count']} chunks, avg similarity "
+          f"{stats['avg_score']:.3f}{' (low confidence)' if stats['low_confidence'] else ''}")
+
     # 4. Build token-budgeted context (retrieved chunks only).
     context = ContextBuilderAgent().run(hits)
 
-    # 5. Generate -> QA (structural) -> Difficulty (level match), regenerating
-    #    only what's missing, up to a small number of attempts.
-    qa = QualityAssuranceAgent()
-    question_agent = QuestionAgent()
-    difficulty_agent = DifficultyAgent()
+    # 4b. Context validation: if the context confidently can't support grounded
+    #     questions, fall back to the fuller-text legacy path instead of letting
+    #     the generator invent facts.
+    if config.CONTEXT_VALIDATION_ENABLED:
+        verdict = ContextValidationAgent().run(context, num_questions, difficulty)
+        print(f"[mcq_pipeline] Context Validator: {'PASS' if verdict['sufficient'] else 'INSUFFICIENT'}")
+        if not verdict["sufficient"]:
+            return _legacy_fallback(text, num_questions, difficulty,
+                                    reason=f"insufficient context: {verdict.get('reason', '')}")
 
-    collected: list[dict] = []
-    attempts = 0
-    max_attempts = _max_attempts(num_questions)
-    # Stop retrying before the serverless function limit so we never get killed
-    # mid-generation. Leave headroom below Vercel's 60s cap for the final response.
-    deadline = time.monotonic() + (config.PIPELINE_DEADLINE_SECONDS - config.LLM_TIMEOUT)
-    while len(collected) < num_questions and attempts < max_attempts:
-        if attempts >= 1 and time.monotonic() >= deadline:
-            break  # out of time budget; return what we have so far
-        attempts += 1
-        need = num_questions - len(collected)
-        try:
-            raw = question_agent.run(context, need, difficulty)
-        except Exception as e:
-            if attempts == 1:
-                return _legacy_fallback(text, num_questions, difficulty, reason=str(e))
-            break
-
-        valid, _rejected = qa.run(raw)
-        graded = difficulty_agent.run(valid, difficulty)
-        collected.extend(graded["matched"])
-        # De-duplicate by question text across attempts.
-        seen, deduped = set(), []
-        for q in collected:
-            key = q["question"].strip().lower()
-            if key not in seen:
-                seen.add(key)
-                deduped.append(q)
-        collected = deduped
+    # 5. Generate -> QA -> Fact-verify -> Difficulty, filling the shortfall.
+    try:
+        collected = _collect_mcqs(context, num_questions, difficulty)
+    except InsufficientContextError as e:
+        return _legacy_fallback(text, num_questions, difficulty, reason=str(e))
+    except Exception as e:
+        return _legacy_fallback(text, num_questions, difficulty, reason=str(e))
 
     if not collected:
         return _legacy_fallback(text, num_questions, difficulty)
 
-    return collected[:num_questions]
+    return collected
 
 
 def generate_from_document(document_id: int, num_questions: int = 5,
@@ -124,43 +168,62 @@ def generate_from_document(document_id: int, num_questions: int = 5,
     """
     top_k = max(config.RETRIEVAL_TOP_K, min(num_questions * 2, 40))
     query = _retrieval_query(difficulty, topic)
-    hits = RetrieverAgent().run(document_id, query, top_k, spread=True)
+    retriever = RetrieverAgent()
+    hits = retriever.run(document_id, query, top_k, spread=True)
     if not hits:
         raise ValueError("This knowledge source has no indexed content to practice from yet.")
 
+    stats = retriever.assess(hits)
+    print(f"[mcq_pipeline] Retriever: {stats['count']} chunks, avg similarity "
+          f"{stats['avg_score']:.3f}{' (low confidence)' if stats['low_confidence'] else ''}")
+
     context = ContextBuilderAgent().run(hits)
 
-    qa = QualityAssuranceAgent()
-    question_agent = QuestionAgent()
-    difficulty_agent = DifficultyAgent()
-
-    collected: list[dict] = []
-    attempts = 0
-    max_attempts = _max_attempts(num_questions)
-    deadline = time.monotonic() + (config.PIPELINE_DEADLINE_SECONDS - config.LLM_TIMEOUT)
-    while len(collected) < num_questions and attempts < max_attempts:
-        if attempts >= 1 and time.monotonic() >= deadline:
-            break
-        attempts += 1
-        need = num_questions - len(collected)
+    # In legacy mode, match the instant-quiz path: a single-shot generation from
+    # the retrieved context. The full RAG verification loop (context validation +
+    # fact verification + difficulty grading) fires several sequential LLM calls,
+    # which — especially under 429 backoff — makes this path slow enough to look
+    # hung. Only run that heavier pipeline when RAG is explicitly enabled.
+    if config.AI_PIPELINE != "rag":
         try:
-            raw = question_agent.run(context, need, difficulty)
-        except Exception:
-            break
-        valid, _rejected = qa.run(raw)
-        graded = difficulty_agent.run(valid, difficulty)
-        collected.extend(graded["matched"])
-        seen, deduped = set(), []
-        for q in collected:
-            k = q["question"].strip().lower()
-            if k not in seen:
-                seen.add(k)
-                deduped.append(q)
-        collected = deduped
+            mcqs = _legacy_from_context(context, num_questions, difficulty)
+        except Exception as e:
+            raise ValueError(f"Could not generate questions from this source: {e}")
+        if not mcqs:
+            raise ValueError("Could not generate questions from this source. Try a different difficulty or topic.")
+        return mcqs[:num_questions]
+
+    # There's no fuller-text fallback here (the raw document text isn't in hand),
+    # so a confident INSUFFICIENT verdict surfaces as a clear, actionable error
+    # rather than silently producing hallucinated questions.
+    if config.CONTEXT_VALIDATION_ENABLED:
+        verdict = ContextValidationAgent().run(context, num_questions, difficulty)
+        print(f"[mcq_pipeline] Context Validator: {'PASS' if verdict['sufficient'] else 'INSUFFICIENT'}")
+        if not verdict["sufficient"]:
+            raise ValueError("This source doesn't have enough indexed content to generate grounded "
+                             "questions. Try a broader topic or add more material.")
+
+    try:
+        collected = _collect_mcqs(context, num_questions, difficulty)
+    except InsufficientContextError:
+        raise ValueError("This source doesn't have enough indexed content to generate grounded "
+                         "questions. Try a broader topic or add more material.")
 
     if not collected:
         raise ValueError("Could not generate questions from this source. Try a different difficulty or topic.")
-    return collected[:num_questions]
+    return collected
+
+
+def _legacy_from_context(context, num_questions, difficulty) -> list[dict]:
+    """Single-shot generation using the retrieved CONTEXT as the source text.
+
+    Used by generate_from_document in legacy mode so making a quiz from a saved
+    resource is as fast as the instant-upload path (one LLM call, not the full
+    RAG verification loop). The context is already retrieved + budgeted, so we
+    feed it straight to the legacy generator.
+    """
+    print(f"[mcq_pipeline] legacy single-shot from context ({len(context)} chars)")
+    return _legacy_fallback(context, num_questions, difficulty)
 
 
 def _legacy_fallback(text, num_questions, difficulty, reason: str = "") -> list[dict]:

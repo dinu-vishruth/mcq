@@ -389,5 +389,44 @@ class TestTruncatedJSONSalvage(unittest.TestCase):
             self._parse("I'm sorry, I cannot help with that request.")
 
 
+class TestGroqFailedGeneration(unittest.TestCase):
+    """Groq's json_object mode returns HTTP 400 (code json_validate_failed) when
+    the model's JSON is truncated at the token cap, stashing the partial JSON in
+    error.failed_generation. The adapter must recover it so the tolerant parser
+    can salvage the complete questions instead of failing the whole request."""
+
+    class _Resp:
+        def __init__(self, body):
+            self.status_code = 400
+            self.text = "bad request"
+            self._body = body
+        def json(self):
+            return self._body
+
+    @staticmethod
+    def _q(n):
+        return (
+            '{"question": "Q%d?", "options": ['
+            '{"label": "A", "text": "a%d"}, {"label": "B", "text": "b%d"}, '
+            '{"label": "C", "text": "c%d"}, {"label": "D", "text": "d%d"}], '
+            '"answer_text": "a%d"}' % (n, n, n, n, n, n)
+        )
+
+    def test_recovers_partial_and_parses(self):
+        from core.llm.openai_compatible import OpenAICompatibleProvider
+        from core.llm.base import LLMProvider
+        partial = ('{"questions": [' + self._q(1) + ', ' + self._q(2)
+                   + ', {"question": "Q3?", "options": [{"label": "A", "tex')
+        resp = self._Resp({"error": {"code": "json_validate_failed", "failed_generation": partial}})
+        content = OpenAICompatibleProvider._failed_generation(resp)
+        self.assertIsNotNone(content)
+        self.assertEqual(len(LLMProvider._parse_json(content)["questions"]), 2)
+
+    def test_ignores_other_400s(self):
+        from core.llm.openai_compatible import OpenAICompatibleProvider
+        resp = self._Resp({"error": {"code": "context_length_exceeded", "message": "too long"}})
+        self.assertIsNone(OpenAICompatibleProvider._failed_generation(resp))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

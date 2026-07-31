@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
-  AlertTriangle, Loader2, RefreshCw, Dumbbell, MessageSquare, CheckCircle2, TrendingDown,
+  AlertTriangle, Loader2, RotateCcw, CheckCircle2, TrendingDown,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { apiGet } from "@/bootstrap";
+import { apiGet, apiSend, csrfToken } from "@/bootstrap";
 
-interface WeakItem { topic: string; wrong: number; total: number; pct: number; severity: "high" | "medium" | "low" }
+interface WeakItem {
+  topic: string; wrong: number; total: number; pct: number;
+  severity: "high" | "medium" | "low"; reviewable: number;
+}
 
 const SEV: Record<string, { tone: "danger" | "warning" | "success"; label: string }> = {
   high: { tone: "danger", label: "Needs work" },
@@ -20,6 +23,8 @@ const SEV: Record<string, { tone: "danger" | "warning" | "success"; label: strin
 export default function WeakTopics({ data }: { data: { username: string } }) {
   const [items, setItems] = useState<WeakItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [starting, setStarting] = useState<string | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     apiGet<{ items: WeakItem[] }>("/api/weak-topics")
@@ -27,6 +32,26 @@ export default function WeakTopics({ data }: { data: { username: string } }) {
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
   }, []);
+
+  async function review(topic: string) {
+    setStarting(topic);
+    setError("");
+    try {
+      const res = await apiSend<{ session_key: string }>("/api/weak-topics/review", "POST", { topic });
+      // Hand off to the existing quiz flow via the classic form POST it expects.
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = "/student_login";
+      form.innerHTML =
+        `<input name="csrf_token" value="${csrfToken()}">` +
+        `<input name="session_key" value="${res.session_key}">`;
+      document.body.appendChild(form);
+      form.submit();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start review. Try again.");
+      setStarting(null);
+    }
+  }
 
   return (
     <AppShell active="weak-topics" username={data.username}>
@@ -37,6 +62,8 @@ export default function WeakTopics({ data }: { data: { username: string } }) {
         <p className="text-text-2 mt-1.5 mb-8">
           Your coach tracks concepts you miss and points you to the fastest way to fix them.
         </p>
+
+        {error && <div className="mb-4 text-danger text-sm bg-danger/8 border border-danger/20 rounded-md px-4 py-3">{error}</div>}
 
         {loading ? (
           <div className="grid place-items-center py-24 text-text-3"><Loader2 className="w-6 h-6 animate-spin" /></div>
@@ -79,16 +106,25 @@ export default function WeakTopics({ data }: { data: { username: string } }) {
 
                       <ProgressBar pct={w.pct} tone={sev.tone === "success" ? "success" : "danger"} />
 
-                      <div className="flex flex-wrap gap-2 mt-4">
-                        <a href={`/practice?topic=${encodeURIComponent(w.topic)}`}>
-                          <Button size="sm" leftIcon={<Dumbbell className="w-3.5 h-3.5" />}>Adaptive practice</Button>
-                        </a>
-                        <a href={`/practice?topic=${encodeURIComponent(w.topic)}&mode=revision&count=5`}>
-                          <Button size="sm" variant="secondary" leftIcon={<RefreshCw className="w-3.5 h-3.5" />}>Quick revision</Button>
-                        </a>
-                        <a href={`/practice?topic=${encodeURIComponent(w.topic)}&mode=interview`}>
-                          <Button size="sm" variant="ghost" leftIcon={<MessageSquare className="w-3.5 h-3.5" />}>Interview Qs</Button>
-                        </a>
+                      <div className="flex flex-wrap items-center gap-2 mt-4">
+                        {w.reviewable > 0 ? (
+                          <Button
+                            size="sm"
+                            onClick={() => review(w.topic)}
+                            disabled={starting === w.topic}
+                            leftIcon={starting === w.topic
+                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              : <RotateCcw className="w-3.5 h-3.5" />}
+                          >
+                            {starting === w.topic
+                              ? "Starting…"
+                              : `Review ${w.reviewable} missed question${w.reviewable > 1 ? "s" : ""}`}
+                          </Button>
+                        ) : (
+                          <span className="text-text-3 text-xs">
+                            Original questions no longer available to review.
+                          </span>
+                        )}
                       </div>
                     </Card>
                   </motion.div>

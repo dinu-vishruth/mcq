@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import requests
 
-from core.llm.base import LLMProvider, LLMError
+from core.llm.base import LLMProvider, LLMError, RateLimitError
 
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
 class GeminiProvider(LLMProvider):
-    def complete(self, messages, *, temperature=None, max_tokens=None, json_mode=False) -> str:
+    def _complete_once(self, messages, *, temperature=None, max_tokens=None, json_mode=False) -> str:
         if not self.api_key:
             raise LLMError("API Key is missing. Please set GEMINI_API_KEY in your .env file.")
 
@@ -50,7 +50,8 @@ class GeminiProvider(LLMProvider):
         if resp.status_code == 401 or resp.status_code == 403:
             raise LLMError("Invalid API key! Please check your GEMINI_API_KEY.")
         if resp.status_code == 429:
-            raise LLMError("API rate limit exceeded! Please wait a moment and try again.")
+            raise RateLimitError("API rate limit exceeded! Please wait a moment and try again.",
+                                 retry_after=self._parse_retry_after(resp))
         if resp.status_code != 200:
             raise LLMError(f"API request failed with status code {resp.status_code}: {resp.text[:300]}")
 

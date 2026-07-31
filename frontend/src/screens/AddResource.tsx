@@ -1,52 +1,37 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UploadCloud, FileText, Brain, Check, Sparkles, Layers, Boxes, Database } from "lucide-react";
+import { UploadCloud, FileText, Brain, Check, Library, Layers, Boxes, Database, ArrowLeft } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { AppShell } from "@/components/AppShell";
 import { csrfToken } from "@/bootstrap";
-import {
-  extractText, sampleText, validateFileSize, initPdfWorker, MAX_UPLOAD_SIZE,
-} from "@/lib/extract";
+import { extractText, sampleText, validateFileSize, initPdfWorker, MAX_UPLOAD_SIZE } from "@/lib/extract";
 
-export interface UploadData {
+export interface AddResourceData {
   error?: string;
   username: string;
   streak: number;
   xp: number;
 }
 
+// Store-only pipeline — no quiz-generation step, ends at "Saved".
 const PIPELINE = [
   { label: "Uploading", icon: UploadCloud },
   { label: "Extracting Text", icon: FileText },
   { label: "Understanding Content", icon: Brain },
   { label: "Creating Chunks", icon: Layers },
   { label: "Generating Embeddings", icon: Boxes },
-  { label: "Building Knowledge Base", icon: Database },
-  { label: "Ready", icon: Check },
+  { label: "Saving to Library", icon: Database },
+  { label: "Saved", icon: Check },
 ];
 
-// Keep a numeric input inside its allowed range. An empty or non-numeric field
-// falls back to `fallback` so the hidden inputs always carry a valid value.
-function clampInt(raw: string, min: number, max: number, fallback: number): number {
-  const n = parseInt(raw, 10);
-  if (Number.isNaN(n)) return fallback;
-  return Math.min(max, Math.max(min, n));
-}
-
-export default function Upload({ data }: { data: UploadData }) {
+export default function AddResource({ data }: { data: AddResourceData }) {
   const [fileName, setFileName] = useState("");
+  const [title, setTitle] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState(data.error ?? "");
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState(0);
-  // Quiz config lives in state, not in the DOM. The visible inputs unmount when
-  // `busy` flips to show the pipeline, so the submitted values come from
-  // always-mounted hidden inputs below — otherwise the fields would be missing
-  // from the POST and the server would silently fall back to its defaults.
-  const [numQuestions, setNumQuestions] = useState(10);
-  const [difficulty, setDifficulty] = useState("medium");
-  const [timerMinutes, setTimerMinutes] = useState(10);
   const fileRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const extractedRef = useRef<HTMLInputElement>(null);
@@ -56,11 +41,10 @@ export default function Upload({ data }: { data: UploadData }) {
   function pickFile(file: File): boolean {
     setError("");
     const sizeErr = validateFileSize(file);
-    if (sizeErr) {
-      setError(sizeErr);
-      return false;
-    }
+    if (sizeErr) { setError(sizeErr); return false; }
     setFileName(file.name);
+    // Default the title to the filename (without extension) if not set yet.
+    if (!title) setTitle(file.name.replace(/\.[^.]+$/, ""));
     return true;
   }
 
@@ -81,7 +65,6 @@ export default function Upload({ data }: { data: UploadData }) {
         text = (await extractText(file)) ?? "";
       }
       if (text && text.trim().length > 0) {
-        // Advance the visual pipeline while the server generates.
         setStage(2);
         const sampled = sampleText(text, 150000);
         if (extractedRef.current) extractedRef.current.value = sampled;
@@ -92,6 +75,7 @@ export default function Upload({ data }: { data: UploadData }) {
         setTimeout(() => setStage(5), 600);
         setTimeout(() => formRef.current?.submit(), 200);
       } else {
+        // .pptx (or no client text) -> let the server extract it.
         if (file.size > MAX_UPLOAD_SIZE) {
           setError("No readable text could be extracted, and the file exceeds 4.5 MB so it can't be uploaded directly. Try a text-based document.");
           setBusy(false);
@@ -112,14 +96,19 @@ export default function Upload({ data }: { data: UploadData }) {
   }
 
   return (
-    <AppShell active="knowledge" username={data.username} streak={data.streak} xp={data.xp}>
+    <AppShell active="journey" username={data.username} streak={data.streak} xp={data.xp}>
       <div className="max-w-2xl mx-auto px-5 py-10">
+        <a href="/journey" className="inline-flex items-center gap-1.5 text-text-3 hover:text-text text-sm mb-6">
+          <ArrowLeft className="w-4 h-4" /> Back to Learning Journey
+        </a>
         <div className="text-center mb-8">
           <p className="text-accent-2 text-sm font-medium mb-2 flex items-center justify-center gap-1.5">
-            <Sparkles className="w-4 h-4" /> Upload &amp; generate
+            <Library className="w-4 h-4" /> Add to your library
           </p>
-          <h1 className="text-[clamp(1.8rem,3vw,2.4rem)] font-bold">Make a Quiz from New Material</h1>
-          <p className="text-text-2 mt-2">Upload notes, books, or slides and we'll generate a quiz right away. To keep material for reuse, save it in your Learning Journey instead.</p>
+          <h1 className="text-[clamp(1.8rem,3vw,2.4rem)] font-bold">Save a Study Resource</h1>
+          <p className="text-text-2 mt-2">
+            Upload notes, books, or slides. We read, understand, and index them so you can generate quizzes from them anytime — this just saves it, no quiz yet.
+          </p>
         </div>
 
         {error && (
@@ -127,13 +116,10 @@ export default function Upload({ data }: { data: UploadData }) {
         )}
 
         <Card pad="lg">
-          <form ref={formRef} action="/upload" method="post" encType="multipart/form-data" onSubmit={onSubmit}>
+          <form ref={formRef} action="/ingest_resource" method="post" encType="multipart/form-data" onSubmit={onSubmit}>
             <input type="hidden" name="csrf_token" value={csrfToken()} />
             <input ref={extractedRef} type="hidden" name="extracted_text" />
-            {/* Always mounted so the config survives the switch to <Pipeline />. */}
-            <input type="hidden" name="num_questions" value={numQuestions} />
-            <input type="hidden" name="difficulty" value={difficulty} />
-            <input type="hidden" name="timer" value={timerMinutes} />
+            <input type="hidden" name="title" value={title} />
 
             {!busy ? (
               <>
@@ -171,32 +157,20 @@ export default function Upload({ data }: { data: UploadData }) {
                   />
                 </label>
 
-                <div className="grid sm:grid-cols-3 gap-4 mt-5">
-                  <div>
-                    <label htmlFor="num-questions" className="text-text-2 text-sm block mb-1.5">Questions</label>
-                    <input id="num-questions" type="number" min={1} max={30} value={numQuestions}
-                      onChange={(e) => setNumQuestions(clampInt(e.target.value, 1, 30, 10))}
-                      className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
-                  </div>
-                  <div>
-                    <label htmlFor="difficulty" className="text-text-2 text-sm block mb-1.5">Difficulty</label>
-                    <select id="difficulty" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}
-                      className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50">
-                      <option value="easy">Easy</option>
-                      <option value="medium">Medium</option>
-                      <option value="hard">Hard</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="timer" className="text-text-2 text-sm block mb-1.5">Time limit (minutes)</label>
-                    <input id="timer" type="number" min={1} max={180} value={timerMinutes}
-                      onChange={(e) => setTimerMinutes(clampInt(e.target.value, 1, 180, 10))}
-                      className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
-                  </div>
+                <div className="mt-5">
+                  <label htmlFor="title" className="text-text-2 text-sm block mb-1.5">Resource name</label>
+                  <input
+                    id="title"
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g. DBMS Unit 3 — Transactions"
+                    className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text placeholder:text-text-3 focus:outline-none focus:border-accent/50"
+                  />
                 </div>
 
-                <Button type="submit" size="lg" className="w-full mt-6" leftIcon={<Sparkles className="w-4 h-4" />}>
-                  Generate Quiz
+                <Button type="submit" size="lg" className="w-full mt-6" leftIcon={<Library className="w-4 h-4" />}>
+                  Save to Library
                 </Button>
               </>
             ) : (
@@ -240,7 +214,7 @@ function Pipeline({ stage }: { stage: number }) {
       </div>
       <AnimatePresence>
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-text-3 text-sm mt-6">
-          Generating your practice set with AI…
+          Saving to your library…
         </motion.p>
       </AnimatePresence>
     </div>

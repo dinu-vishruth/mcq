@@ -32,3 +32,7 @@ reports/
 # Vector store (Chroma default persistence dir)
 chroma_db/
 vector_store/
+
+# Internal docs — keep out of production/repo (NOT requirements.txt, which deploys)
+explanation.txt
+deployment.txt

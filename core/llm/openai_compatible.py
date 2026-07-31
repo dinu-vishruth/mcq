@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import requests
 
-from core.llm.base import LLMProvider, LLMError
+from core.llm.base import LLMProvider, LLMError, RateLimitError
 
 # Canonical base URLs per provider id.
 BASE_URLS = {
@@ -29,7 +29,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self.provider_id = provider_id
         self.base_url = (base_url or BASE_URLS.get(provider_id, BASE_URLS["groq"])).rstrip("/")
 
-    def complete(self, messages, *, temperature=None, max_tokens=None, json_mode=False) -> str:
+    def _complete_once(self, messages, *, temperature=None, max_tokens=None, json_mode=False) -> str:
         if not self.api_key:
             raise LLMError("API Key is missing. Please set LLM_API_KEY (or GROK_API_KEY) in your .env file.")
 
@@ -60,8 +60,17 @@ class OpenAICompatibleProvider(LLMProvider):
         if resp.status_code == 401:
             raise LLMError("Invalid API key! Please check your LLM_API_KEY / GROK_API_KEY.")
         if resp.status_code == 429:
-            raise LLMError("API rate limit exceeded! Please wait a moment and try again.")
+            raise RateLimitError("API rate limit exceeded! Please wait a moment and try again.",
+                                 retry_after=self._parse_retry_after(resp))
         if resp.status_code != 200:
+            # Groq's json_object mode returns HTTP 400 (code json_validate_failed)
+            # when the model's JSON is truncated at the token cap — but it puts the
+            # partial JSON in error.failed_generation. Recover it so the tolerant
+            # parser can salvage the complete objects, exactly as it would for a
+            # truncated 200 response. Callers then top up any shortfall.
+            salvaged = self._failed_generation(resp)
+            if salvaged:
+                return salvaged
             raise LLMError(f"API request failed with status code {resp.status_code}: {resp.text[:300]}")
 
         try:
@@ -69,3 +78,15 @@ class OpenAICompatibleProvider(LLMProvider):
             return data["choices"][0]["message"]["content"].strip()
         except (KeyError, IndexError, ValueError) as e:
             raise LLMError(f"Unexpected AI API response shape: {e}")
+
+    @staticmethod
+    def _failed_generation(resp) -> str | None:
+        """Pull error.failed_generation from a Groq json_validate_failed 400."""
+        try:
+            err = resp.json().get("error", {})
+        except ValueError:
+            return None
+        if err.get("code") != "json_validate_failed":
+            return None
+        partial = err.get("failed_generation")
+        return partial.strip() if isinstance(partial, str) and partial.strip() else None

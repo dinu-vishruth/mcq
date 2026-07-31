@@ -101,9 +101,11 @@ class TestPipelineWithStubbedLLM(unittest.TestCase):
         reset_vector_store()
 
     def _install_stub(self, questions):
-        """Patch get_llm() used by the question/difficulty/planner agents."""
+        """Patch get_llm() used by every LLM-calling agent in the pipeline."""
         import core.agents.question as qmod
         import core.agents.difficulty as dmod
+        import core.agents.context_validation as cvmod
+        import core.agents.fact_verification as fvmod
 
         class StubLLM:
             def complete_json(self, messages, **kw):
@@ -114,12 +116,21 @@ class TestPipelineWithStubbedLLM(unittest.TestCase):
                     idxs = [int(n) for n in re.findall(r"^(\d+)\.", content, re.M)]
                     return {"grades": [{"index": i, "level": "medium", "matches_requested": True}
                                        for i in idxs]}
+                if "context-sufficiency" in content or "enough substantive" in content:
+                    return {"sufficient": True, "confidence": 0.9, "reason": "ok"}
+                if "Verify each multiple-choice question" in content:
+                    import re
+                    idxs = [int(n) for n in re.findall(r"^#(\d+)", content, re.M)]
+                    return {"results": [{"index": i, "passed": True, "confidence": 0.95, "issue": ""}
+                                        for i in idxs]}
                 # Question generation.
                 return {"questions": questions}
 
         stub = StubLLM()
         qmod.get_llm = lambda: stub
         dmod.get_llm = lambda: stub
+        cvmod.get_llm = lambda: stub
+        fvmod.get_llm = lambda: stub
 
     def test_pipeline_returns_legacy_shape(self):
         questions = [{
@@ -141,6 +152,59 @@ class TestPipelineWithStubbedLLM(unittest.TestCase):
             self.assertEqual(len(q["options"]), 4)
             self.assertIn(q["answer_text"], [o["text"] for o in q["options"]])
             self.assertEqual([o["label"] for o in q["options"]], ["A", "B", "C", "D"])
+
+    def test_generate_from_document_legacy_is_single_shot(self):
+        """In legacy mode, making a quiz from a saved resource must NOT run the
+        multi-call RAG verification loop (which made the page hang). It should do
+        one single-shot generation, so the ContextValidation/FactVerification
+        agents are never called."""
+        questions = [{
+            "question": f"Saved Q{i}?",
+            "options": [{"label": "A", "text": f"a{i}"}, {"label": "B", "text": f"b{i}"},
+                        {"label": "C", "text": f"c{i}"}, {"label": "D", "text": f"d{i}"}],
+            "answer_text": f"a{i}",
+        } for i in range(3)]
+        self._install_stub(questions)
+
+        # Trip-wire: the legacy path must not touch these agents at all.
+        import core.agents.context_validation as cvmod
+        import core.agents.fact_verification as fvmod
+        def _boom():
+            raise AssertionError("verification agent called in legacy single-shot path")
+        cvmod.get_llm = _boom
+        fvmod.get_llm = _boom
+
+        # The legacy single-shot path delegates to models.mcq_generator.generate_mcqs.
+        # Stub it directly (other suites also monkeypatch this module attr, so we
+        # set + restore our own to stay isolated) and record it was called.
+        import models.mcq_generator as legacy_mod
+        calls = {"n": 0}
+        def _fake_generate(text, num_questions=5, difficulty="medium"):
+            calls["n"] += 1
+            return questions[:num_questions]
+        prev_gen = legacy_mod.generate_mcqs
+        legacy_mod.generate_mcqs = _fake_generate
+
+        prev_mode = config.AI_PIPELINE
+        config.AI_PIPELINE = "legacy"
+        try:
+            # Ingest a document to get a real document_id to generate from.
+            from core.services.ingestion_service import ingest_document
+            ing = ingest_document(
+                ("Normalization reduces redundancy. Primary keys identify rows. "
+                 "Indexes speed reads but slow writes. ") * 15,
+                owner="t2", title="DBMS", source_type="paste")
+            from core.services.mcq_pipeline import generate_from_document
+            mcqs = generate_from_document(ing["document_id"], num_questions=3, difficulty="medium")
+        finally:
+            config.AI_PIPELINE = prev_mode
+            legacy_mod.generate_mcqs = prev_gen
+
+        self.assertEqual(calls["n"], 1)          # exactly one single-shot call
+        self.assertEqual(len(mcqs), 3)
+        for q in mcqs:
+            self.assertEqual(len(q["options"]), 4)
+            self.assertIn(q["answer_text"], [o["text"] for o in q["options"]])
 
 
 if __name__ == "__main__":

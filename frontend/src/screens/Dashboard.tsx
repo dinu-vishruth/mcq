@@ -133,7 +133,7 @@ export default function Dashboard({ data }: { data: { username: string } }) {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard index={0} value={d?.total_quizzes ?? 0} label="Sessions" icon={<BookOpen />} tone="accent" />
           <StatCard index={1} value={`${d?.avg_score ?? 0}%`} label="Avg Score" icon={<Target />} tone="emerald" />
-          <StatCard index={2} value={d?.knowledge_count ?? 0} label="Knowledge Sources" icon={<Brain />} tone="violet" />
+          <StatCard index={2} value={d?.knowledge_count ?? 0} label="Saved Resources" icon={<Brain />} tone="violet" />
           <StatCard index={3}
             value={(d?.total_time ?? 0) >= 60 ? `${Math.floor((d?.total_time ?? 0) / 60)}m` : `${d?.total_time ?? 0}s`}
             label="Study Time" icon={<Clock />} tone="amber" />
@@ -232,8 +232,8 @@ export default function Dashboard({ data }: { data: { username: string } }) {
           <Card className="text-center py-12">
             <span className="grid place-items-center w-14 h-14 rounded-full bg-white/5 text-text-2 mx-auto mb-4"><BookOpen className="w-7 h-7" /></span>
             <h2 className="text-lg mb-1">No sessions yet</h2>
-            <p className="text-text-3 text-sm mb-5">Add a knowledge source, then generate your first practice set.</p>
-            <a href="/knowledge"><Button leftIcon={<Sparkles className="w-4 h-4" />}>Go to Knowledge</Button></a>
+            <p className="text-text-3 text-sm mb-5">Make your first quiz from a document or a saved resource.</p>
+            <a href="/knowledge"><Button leftIcon={<Sparkles className="w-4 h-4" />}>Make Quiz &amp; Test</Button></a>
           </Card>
         )}
       </div>

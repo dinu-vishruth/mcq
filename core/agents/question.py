@@ -16,6 +16,10 @@ from core.llm import get_llm, LLMError
 from core.prompts import mcq as mcq_prompts
 
 
+class InsufficientContextError(LLMError):
+    """The model reported the retrieved context can't support grounded MCQs."""
+
+
 class QuestionAgent(Agent):
     name = "question"
 
@@ -25,9 +29,16 @@ class QuestionAgent(Agent):
             {"role": "system", "content": mcq_prompts.SYSTEM},
             {"role": "user", "content": prompt},
         ]
+        # Low temperature keeps questions faithful to the context, not the
+        # model's own memory (the source of hallucinated / off-context options).
         data = get_llm().complete_json(
-            messages, max_tokens=config.mcq_token_budget(num_questions)
+            messages,
+            max_tokens=config.mcq_token_budget(num_questions),
+            temperature=config.LLM_GENERATION_TEMPERATURE,
         )
+        if isinstance(data, dict) and str(data.get("status", "")).upper() == "INSUFFICIENT_CONTEXT":
+            self._log("model reported INSUFFICIENT_CONTEXT")
+            raise InsufficientContextError("Retrieved context is insufficient to generate grounded questions.")
         if isinstance(data, dict) and "questions" in data:
             mcqs = data["questions"]
         elif isinstance(data, list):

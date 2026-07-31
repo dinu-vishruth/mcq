@@ -20,6 +20,15 @@ class LLMError(Exception):
     """Raised for any LLM call failure. Carries a user-safe message."""
 
 
+class RateLimitError(LLMError):
+    """Provider returned HTTP 429. Carries an optional retry_after hint (seconds)
+    parsed from the Retry-After header so the retry layer can respect it."""
+
+    def __init__(self, message: str, retry_after: float | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 class LLMProvider(abc.ABC):
     """Abstract base for all LLM adapters."""
 
@@ -30,20 +39,59 @@ class LLMProvider(abc.ABC):
         self.temperature = temperature
 
     @abc.abstractmethod
+    def _complete_once(self, messages: list[dict], *, temperature: float | None = None,
+                       max_tokens: int | None = None, json_mode: bool = False) -> str:
+        """Single provider call. Subclasses implement this; they must raise
+        RateLimitError on HTTP 429 so the retry layer in complete() can back off."""
+        raise NotImplementedError
+
     def complete(self, messages: list[dict], *, temperature: float | None = None,
                  max_tokens: int | None = None, json_mode: bool = False) -> str:
-        """Return the assistant's raw text for a chat-style message list.
+        """Return the assistant's raw text, retrying on 429 with exponential
+        backoff (honoring Retry-After when the provider sends it).
 
         messages: [{"role": "system"|"user"|"assistant", "content": str}, ...]
         json_mode: hint the provider to emit strict JSON when supported.
         """
-        raise NotImplementedError
+        # Imported lazily so tests that stub config still see current values.
+        import time
+        import config
+
+        max_retries = max(0, int(getattr(config, "LLM_MAX_RETRIES", 3)))
+        base = float(getattr(config, "LLM_RETRY_BACKOFF", 1.5))
+        max_wait = float(getattr(config, "LLM_RETRY_MAX_WAIT", 8))
+
+        attempt = 0
+        while True:
+            try:
+                return self._complete_once(messages, temperature=temperature,
+                                           max_tokens=max_tokens, json_mode=json_mode)
+            except RateLimitError as e:
+                if attempt >= max_retries:
+                    raise
+                # Prefer the provider's own hint; else exponential backoff.
+                wait = e.retry_after if e.retry_after is not None else base * (2 ** attempt)
+                wait = min(wait, max_wait)
+                attempt += 1
+                print(f"[llm] 429 rate limit; retry {attempt}/{max_retries} in {wait:.1f}s")
+                time.sleep(wait)
 
     def complete_json(self, messages: list[dict], *, temperature: float | None = None,
                       max_tokens: int | None = None) -> Any:
         """Return parsed JSON from the model. Raises LLMError on invalid JSON."""
         raw = self.complete(messages, temperature=temperature, max_tokens=max_tokens, json_mode=True)
         return self._parse_json(raw)
+
+    @staticmethod
+    def _parse_retry_after(resp) -> float | None:
+        """Best-effort parse of the Retry-After header (delta-seconds form)."""
+        try:
+            val = resp.headers.get("Retry-After") or resp.headers.get("retry-after")
+            if val is None:
+                return None
+            return max(0.0, float(val))
+        except (TypeError, ValueError):
+            return None
 
     # -- helpers -----------------------------------------------------------
     @staticmethod
