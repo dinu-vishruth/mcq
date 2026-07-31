@@ -4,71 +4,126 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cortex — Sign In</title>
+  <title>MCQ Generator — Sign In</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 
 <body>
   {% from "partials/icons.html" import icon %}
-  <div class="auth-shell">
-    <!-- Hero panel -->
-    <section class="auth-hero">
-      <div class="brand-row">
+
+  {% if error %}
+  <div class="toast-stack" id="toast-stack">
+    <div class="toast" role="alert" aria-live="assertive">
+      <span class="ti">{{ icon("x") }}</span>
+      <span>{{ error }}</span>
+      <button type="button" class="tclose" aria-label="Dismiss" data-toast-close>{{ icon("x") }}</button>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="authx">
+    <div class="authx-bg" aria-hidden="true">
+      <span class="authx-glow g1"></span>
+      <span class="authx-glow g2"></span>
+      <span class="authx-glow g3"></span>
+    </div>
+
+    <!-- Left hero (60%) -->
+    <section class="authx-hero">
+      <div class="authx-brand">
         <span class="brand-mark">{{ icon("brain") }}</span>
-        <span class="brand-name">Cortex</span>
+        <span class="brand-name">MCQ Generator</span>
       </div>
 
-      <div>
-        <p class="eyebrow" style="margin-bottom:1rem">Your AI learning companion</p>
-        <h2 class="auth-hero-tagline">Turn any document into <span class="grad">mastery</span>.</h2>
-        <p class="auth-hero-sub">Upload your notes and let Cortex build adaptive quizzes, track weak topics, and coach you to your goals.</p>
+      <span class="authx-badge"><span class="spk">{{ icon("spark") }}</span> AI Powered Learning Platform</span>
 
-        <div class="auth-hero-points">
-          <div class="auth-hero-point"><span class="chk">{{ icon("check") }}</span> AI-generated questions from your material</div>
-          <div class="auth-hero-point"><span class="chk">{{ icon("check") }}</span> Instant explanations and insights</div>
-          <div class="auth-hero-point"><span class="chk">{{ icon("check") }}</span> Streaks, XP, and progress tracking</div>
+      <h1 class="authx-headline">Turn your study material into <span class="grad">exam-ready mastery</span>.</h1>
+
+      <p class="authx-sub">Upload notes, books and PDFs. Generate adaptive quizzes, detailed explanations and personalized learning journeys powered by AI.</p>
+
+      <div class="authx-features">
+        <div class="authx-feature">
+          <span class="fi">{{ icon("brain") }}</span>
+          <h3>Adaptive MCQ Generation</h3>
+          <p>Questions tailored to your uploaded study material.</p>
+        </div>
+        <div class="authx-feature">
+          <span class="fi">{{ icon("bolt") }}</span>
+          <h3>Instant Explanations</h3>
+          <p>Understand every answer instead of memorizing.</p>
+        </div>
+        <div class="authx-feature">
+          <span class="fi">{{ icon("chart") }}</span>
+          <h3>Performance Analytics</h3>
+          <p>Track strengths, weak topics and learning progress.</p>
+        </div>
+        <div class="authx-feature">
+          <span class="fi">{{ icon("target") }}</span>
+          <h3>Personalized Learning</h3>
+          <p>AI recommends what to study next.</p>
         </div>
       </div>
 
-      <p class="muted" style="font-size:0.82rem">Trusted by learners who take their time seriously.</p>
+      <div class="authx-stats">
+        <div class="authx-stat"><div class="num" data-count="50000" data-suffix="K+" data-div="1000">0</div><div class="lbl">Questions Generated</div></div>
+        <div class="authx-stat"><div class="num" data-count="10000" data-suffix="K+" data-div="1000">0</div><div class="lbl">Study Sessions</div></div>
+        <div class="authx-stat"><div class="num" data-count="95" data-suffix="%">0</div><div class="lbl">Student Satisfaction</div></div>
+        <div class="authx-stat"><div class="num" data-count="49" data-suffix="★" data-div="10" data-dec="1">0</div><div class="lbl">Average Rating</div></div>
+      </div>
     </section>
 
-    <!-- Form panel -->
-    <section class="auth-panel">
-      <div class="auth-card">
+    <!-- Right auth card (40%) -->
+    <section class="authx-panel">
+      <div class="authx-card">
         <div class="logo-badge">{{ icon("brain") }}</div>
-        <h1>Welcome back</h1>
-        <p class="subtitle">Sign in to continue learning</p>
-
-        {% if error %}<div class="error-toast">{{ icon("x") }} {{ error }}</div>{% endif %}
+        <h1>Welcome Back</h1>
+        <p class="subtitle">Continue your AI learning journey.</p>
 
         <form action="/login" method="post">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
           <div class="input-group">
             <label for="username-input">Username</label>
-            <input type="text" name="username" placeholder="Your username" required id="username-input" autofocus>
+            <input type="text" name="username" id="username-input" placeholder="Your username" autocomplete="username" required autofocus>
           </div>
+
           <div class="input-group">
             <label for="password-input">Password</label>
-            <input type="password" name="password" placeholder="••••••••" required id="password-input">
+            <div class="authx-input-wrap">
+              <input type="password" name="password" id="password-input" placeholder="••••••••" autocomplete="current-password" required>
+              <button type="button" class="pw-toggle" data-pw-toggle="password-input" aria-label="Show password">{{ icon("eye") }}</button>
+            </div>
           </div>
+
+          <div class="authx-row">
+            <label class="authx-check"><input type="checkbox" name="remember"> Remember me</label>
+            <a href="/signup" class="authx-link">Forgot password?</a>
+          </div>
+
           <button type="submit" class="btn btn-primary btn-lg" id="login-btn">Sign In {{ icon("arrow-right") }}</button>
         </form>
 
-        <div class="divider"><span>New to Cortex?</span></div>
-        <a href="/signup" class="btn btn-secondary btn-lg">Create an account</a>
+        <div class="authx-divider"><span>or</span></div>
+
+        <div class="authx-oauth">
+          <button type="button" class="oauth-btn" data-oauth="Google">{{ icon("google") }} Google</button>
+          <button type="button" class="oauth-btn" data-oauth="GitHub">{{ icon("github") }} GitHub</button>
+        </div>
+
+        <p class="authx-alt">Don't have an account? <a href="/signup" class="authx-link">Create Account</a></p>
 
         <div class="demo-hint">
-          <span class="dh-title">Demo credentials</span>
+          <span class="dh-title">Try the demo</span>
           <div>
-            <strong>Teacher:</strong> <code>teacher</code> / <code>teacher123</code><br>
-            <strong>Student:</strong> <code>student</code> / <code>student123</code>
+            <code>student</code> / <code>student123</code>
           </div>
         </div>
       </div>
     </section>
   </div>
+
+  <script src="/static/js/auth.js" defer></script>
 </body>
 
 </html>

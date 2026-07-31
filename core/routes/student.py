@@ -99,6 +99,92 @@ def student_dashboard():
     )
 
 
+@student_bp.route("/progress")
+def progress():
+    """Learning-progress page (React island). Additive read-only aggregation of
+    the learner's existing results + weak topics + prefs. Does not touch or
+    change any existing route; renders the progress.html mount shell."""
+    if session.get("role") not in ("student", "teacher"):
+        return redirect(url_for("auth.home"))
+
+    user_id = session.get("user_id")
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT r.score, r.total, r.submitted_at, r.time_spent, s.difficulty
+        FROM results r
+        LEFT JOIN sessions s ON r.session_key = s.session_key
+        WHERE r.user_id=?
+        ORDER BY r.submitted_at ASC
+    """, (user_id,)).fetchall()
+    conn.close()
+
+    total_quizzes = len(rows)
+    total_correct = sum(r["score"] or 0 for r in rows)
+    total_answered = sum(r["total"] or 0 for r in rows)
+    total_time = sum(r["time_spent"] or 0 for r in rows)
+    accuracy = round(total_correct / total_answered * 100, 1) if total_answered else 0
+
+    # Daily activity heatmap: {YYYY-MM-DD: quiz_count}
+    heatmap: dict[str, int] = {}
+    weekly: dict[str, dict] = {}
+    for r in rows:
+        day = (r["submitted_at"] or "")[:10]
+        if day:
+            heatmap[day] = heatmap.get(day, 0) + 1
+        week = (r["submitted_at"] or "")[:7]  # YYYY-MM bucket for the monthly bar
+        if week:
+            pct = (r["score"] / r["total"] * 100) if r["total"] else 0
+            b = weekly.setdefault(week, {"sum": 0.0, "count": 0})
+            b["sum"] += pct
+            b["count"] += 1
+    weekly_series = [
+        {"label": k, "avg": round(v["sum"] / v["count"], 1) if v["count"] else 0, "count": v["count"]}
+        for k, v in sorted(weekly.items())
+    ]
+
+    weak_topics = []
+    try:
+        from core.services.learning_service import get_weak_topics
+        weak_topics = get_weak_topics(user_id, limit=10)
+    except Exception as e:
+        print(f"[WARNING] Progress weak-topics lookup skipped: {e}")
+
+    prefs = None
+    xp = 0
+    streak = 0
+    try:
+        conn2 = get_db()
+        prow = conn2.execute(
+            "SELECT goal, style, daily_minutes, xp, streak FROM user_prefs WHERE user_id=?",
+            (user_id,)).fetchone()
+        conn2.close()
+        if prow:
+            prefs = {"goal": prow["goal"], "style": prow["style"], "daily_minutes": prow["daily_minutes"]}
+            xp = prow["xp"] or 0
+            streak = prow["streak"] or 0
+    except Exception as e:
+        print(f"[WARNING] Progress prefs lookup skipped: {e}")
+
+    # XP heuristic when prefs.xp isn't populated: 10 XP per correct answer.
+    if not xp:
+        xp = total_correct * 10
+
+    return render_template(
+        "progress.html",
+        total_quizzes=total_quizzes,
+        accuracy=accuracy,
+        total_time=total_time,
+        total_correct=total_correct,
+        total_answered=total_answered,
+        heatmap=heatmap,
+        weekly=weekly_series,
+        weak_topics=weak_topics,
+        prefs=prefs,
+        xp=xp,
+        streak=streak,
+    )
+
+
 @student_bp.route("/student_login", methods=["GET", "POST"])
 def student_login():
     if session.get("role") != "student":

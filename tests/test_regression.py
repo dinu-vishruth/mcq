@@ -118,7 +118,7 @@ class TestPublicRoutes(Base):
     def test_home_shows_login_when_logged_out(self):
         r = self.client().get("/")
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"Cortex", r.data)
+        self.assertIn(b"MCQ Generator", r.data)
 
     def test_signup_get(self):
         self.assertEqual(self.client().get("/signup").status_code, 200)
@@ -170,7 +170,8 @@ class TestRoleGating(Base):
         self._login(c, "stud2", "password123")
         r = c.get("/student")
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"Welcome back", r.data)
+        # Dashboard is now a React island; assert the mount shell is served.
+        self.assertIn(b'data-page="dashboard"', r.data)
 
 
 class TestGenerationAndQuizFlow(Base):
@@ -187,7 +188,10 @@ class TestGenerationAndQuizFlow(Base):
         r = c.post("/upload", data={"extracted_text": "Some study material about math and geography.",
                                     "num_questions": "2", "difficulty": "medium", "timer": "120"})
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"Quiz is ready", r.data)
+        # "Quiz created" page is now a React island; the generated session_key
+        # and questions are carried in the bootstrap JSON payload.
+        self.assertIn(b'data-page="report"', r.data)
+        self.assertIn(b'"session_key"', r.data)
 
     def test_full_student_quiz_scoring(self):
         c = self.client()
@@ -213,8 +217,11 @@ class TestGenerationAndQuizFlow(Base):
 
         r = c.post("/submit", data=form)
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"correct", r.data)  # score hero: "{score} / {total} correct"
-        self.assertIn(b"2 / 2", r.data)  # 2/2
+        # Result is now a React island; score is carried in the bootstrap JSON
+        # payload rather than server-rendered HTML.
+        self.assertIn(b'data-page="result"', r.data)
+        self.assertIn(b'"score": 2', r.data)
+        self.assertIn(b'"total": 2', r.data)
 
         # Result persisted with correct score
         conn = sqlite3.connect(_DB)

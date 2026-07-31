@@ -1,6 +1,13 @@
 # Virtual environment
 venv/
 
+# Node / frontend build tooling (built assets in static/dist ARE committed)
+node_modules/
+frontend/node_modules/
+frontend/.vite/
+.vite/
+frontend/tsconfig.tsbuildinfo
+
 # Python cache
 __pycache__/
 *.pyc
