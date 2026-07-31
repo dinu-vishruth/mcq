@@ -54,7 +54,7 @@ CONTEXT:
 
 def explain_topic_prompt(context: str, topic: str | None) -> str:
     subject = topic or "the main concept in the context"
-    return f"""Using ONLY the CONTEXT, explain {subject} clearly for a student.
+    return f"""Using ONLY the CONTEXT, explain {subject} clearly and directly to the learner.
 Respond with JSON exactly like:
 {{"explanation": {{"topic": "...", "body": "clear multi-sentence explanation", "example": "a concrete example"}}}}
 
