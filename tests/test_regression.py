@@ -202,9 +202,15 @@ class TestGenerationAndQuizFlow(Base):
         # off to the quiz so the questions are never shown with their answers.
         self.assertEqual(r.status_code, 302)
         self.assertIn("/mcq_test", r.headers["Location"])
+        # Only the session_key lives in the (signed-cookie) session now; timer +
+        # mcqs are re-fetched from the DB. Verify the stored timer is seconds.
         with c.session_transaction() as sess:
-            self.assertEqual(sess["timer"], 600)
-            self.assertTrue(sess["session_key"])
+            key = sess["session_key"]
+            self.assertTrue(key)
+        conn = sqlite3.connect(_DB)
+        stored_timer = conn.execute("SELECT timer FROM sessions WHERE session_key=?", (key,)).fetchone()[0]
+        conn.close()
+        self.assertEqual(stored_timer, 600)
 
     def test_upload_rejects_out_of_range_timer(self):
         c = self.client()
@@ -226,15 +232,13 @@ class TestGenerationAndQuizFlow(Base):
         self.assertEqual(r.status_code, 302)
         self.assertIn("/mcq_test", r.headers["Location"])
 
-        # Render test (this populates mcqs_randomized in session)
+        # Render test. Options are shuffled, but question order and answer_text
+        # are stable, so correct answers come straight from the fixture.
         r = c.get("/mcq_test")
         self.assertEqual(r.status_code, 200)
 
-        # Read randomized answers from the server session to submit correct ones.
-        with c.session_transaction() as sess:
-            randomized = sess["mcqs_randomized"]
         form = {"student_name": "stud3", "time_spent": "42"}
-        for i, q in enumerate(randomized):
+        for i, q in enumerate(FIXED_MCQS):
             form[f"q-{i}"] = q["answer_text"]  # all correct
 
         r = c.post("/submit", data=form)
@@ -260,9 +264,7 @@ class TestGenerationAndQuizFlow(Base):
         key = self._make_session()
         c.post("/student_login", data={"session_key": key})
         c.get("/mcq_test")
-        with c.session_transaction() as sess:
-            randomized = sess["mcqs_randomized"]
-        form = {f"q-{i}": q["answer_text"] for i, q in enumerate(randomized)}
+        form = {f"q-{i}": q["answer_text"] for i, q in enumerate(FIXED_MCQS)}
         c.post("/submit", data=form)
         # Second join attempt must be blocked
         r = c.post("/student_login", data={"session_key": key})

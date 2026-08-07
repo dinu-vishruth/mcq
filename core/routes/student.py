@@ -15,6 +15,7 @@ from datetime import datetime
 from flask import (Blueprint, render_template, request, session, redirect, url_for)
 
 from core.models.db import get_db
+from core.repositories import session_repo
 from utils.session_manager import validate_session_key
 import models.explanation_engine as explanation_engine
 
@@ -277,9 +278,8 @@ def student_login():
     if not row:
         return render_template("student_dashboard.html", error="Session not found")
 
-    mcqs = json.loads(row[0])
-    session["mcqs"] = mcqs
-    session["timer"] = row[1]
+    # Only the key goes in the (signed-cookie) session; mcqs + timer are
+    # re-fetched from the DB in mcq_test/submit so the cookie stays small.
     session["session_key"] = key
     return redirect(url_for("student.mcq_test"))
 
@@ -289,13 +289,18 @@ def mcq_test():
     if not session.get("user_id"):
         return redirect(url_for("auth.home"))
 
-    mcqs = session.get("mcqs")
+    key = session.get("session_key")
+    if not key:
+        return redirect(url_for("student.student_login"))
+
+    row = session_repo.get(key)
+    if not row:
+        return redirect(url_for("student.student_login"))
+
+    mcqs = json.loads(row["mcqs_json"])
     # Fall back to a usable duration, not 60s: a missing value used to silently
     # give every quiz a one-minute limit regardless of what was configured.
-    timer = session.get("timer") or 600
-    key = session.get("session_key")
-    if not mcqs or not key:
-        return redirect(url_for("student.student_login"))
+    timer = row["timer"] or 600
 
     conn = get_db()
     existing = conn.execute("SELECT 1 FROM results WHERE session_key=? AND user_id=?",
@@ -316,7 +321,6 @@ def mcq_test():
             "answer_text": q["answer_text"],
         })
 
-    session["mcqs_randomized"] = randomized
     return render_template("mcq_test.html", mcqs=randomized, timer=timer)
 
 
@@ -325,10 +329,21 @@ def submit():
     if not session.get("user_id"):
         return redirect(url_for("auth.home"))
 
-    randomized = session.get("mcqs_randomized")
     key = session.get("session_key")
-    if not randomized or not key:
+    if not key:
         return redirect(url_for("student.student_login"))
+
+    # Rebuild the questions from the DB (not the cookie). Only option ORDER was
+    # shuffled at render time; question order and answer_text are unchanged, and
+    # scoring compares the submitted option text against answer_text — both
+    # stable across the shuffle — so the stored mcqs are the source of truth.
+    srow = session_repo.get(key)
+    if not srow:
+        return redirect(url_for("student.student_login"))
+    randomized = [
+        {"question": q["question"], "answer_text": q["answer_text"]}
+        for q in json.loads(srow["mcqs_json"])
+    ]
 
     conn = get_db()
     existing = conn.execute("SELECT 1 FROM results WHERE session_key=? AND user_id=?",

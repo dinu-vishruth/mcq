@@ -9,19 +9,23 @@ import os
 import sqlite3
 from datetime import timedelta
 from flask import Flask, request, session, redirect
-from flask_session import Session
 from flask_wtf.csrf import CSRFProtect
 from config import SECRET_KEY, DB_PATH, UPLOAD_FOLDER
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = SECRET_KEY
-app.config["SESSION_TYPE"] = "filesystem"
-app.config["SESSION_FILE_DIR"] = "/tmp/flask_session" if os.environ.get("VERCEL") else "flask_session"
+# Use Flask's default signed-cookie sessions. Server-side filesystem sessions
+# (flask_session) don't work on Vercel: each request may hit a different
+# ephemeral instance with its own /tmp, so the CSRF token written on the login
+# GET is missing on the POST. Signed cookies travel with the client and verify
+# on any instance. Keep the session payload small (session_key only, never the
+# full mcqs list) so it stays under the ~4KB cookie limit.
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=24)
-os.makedirs(app.config["SESSION_FILE_DIR"], exist_ok=True)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = bool(os.environ.get("VERCEL"))
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-Session(app)
 csrf = CSRFProtect(app)
 
 @app.before_request

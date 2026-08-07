@@ -9,6 +9,17 @@ except ImportError:
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
+    # On Vercel each cold start is a fresh process; a random key here would be
+    # different per instance, so session cookies signed by one invocation fail
+    # verification on the next — which surfaces as "CSRF session token missing".
+    # Require a stable key in production; only fall back to a random one for
+    # local dev (single long-lived process).
+    if os.environ.get("VERCEL"):
+        raise RuntimeError(
+            "SECRET_KEY environment variable is required on Vercel. "
+            "Set it in the project's Environment Variables so session cookies "
+            "stay valid across serverless invocations."
+        )
     SECRET_KEY = secrets.token_hex(32)
 GROK_API_KEY = os.getenv("GROK_API_KEY", "")
 GROK_MODEL = os.getenv("GROK_MODEL", "grok-2-1212")

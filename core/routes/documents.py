@@ -195,8 +195,8 @@ def upload():
         timer=timer_seconds,
         mcqs=mcqs,
     )
-    # Skip preview page - go directly to quiz
-    session["mcqs"] = mcqs
-    session["timer"] = timer_seconds
+    # Skip preview page - go directly to quiz. Only the session_key goes in the
+    # cookie; mcqs + timer are re-fetched from the DB (they're already persisted
+    # by create_session_key) so the signed-cookie session stays under ~4KB.
     session["session_key"] = session_key
     return redirect(url_for("student.mcq_test"))

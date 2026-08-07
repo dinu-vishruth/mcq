@@ -1,0 +1,43 @@
+# Vercel uses THIS file (not .gitignore) to decide what to upload.
+# Keep the deploy small and under the size limit.
+
+# Local ML model weights (945 MB) — NOT used on Vercel (hashing embedder fallback)
+models/flan-t5-mcq/
+train/
+*.safetensors
+*.bin
+*.whl
+download_pytorch_cuda.py
+
+# Frontend source + tooling — only the BUILT assets in static/dist/ are served
+frontend/node_modules/
+frontend/.vite/
+frontend/src/
+frontend/public/
+frontend/*.json
+frontend/*.ts
+frontend/*.js
+frontend/*.html
+frontend/tsconfig.tsbuildinfo
+node_modules/
+
+# Local runtime data / caches (regenerated at runtime; routed to /tmp on Vercel)
+chroma_db/
+vector_store/
+flask_session/
+uploads/
+reports/
+database/*.db
+database/*.db.bak
+__pycache__/
+*.pyc
+
+# Dev-only
+tests/
+.env
+.env*
+.git/
+
+# Internal docs
+explanation.txt
+deployment.txt

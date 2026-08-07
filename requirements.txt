@@ -1,5 +1,4 @@
 flask
-flask-session
 pdfplumber
 python-docx
 python-pptx
