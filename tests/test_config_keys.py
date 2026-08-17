@@ -132,7 +132,7 @@ class TestProviderAutoDetection(unittest.TestCase):
         # A leftover LLM_MODEL=grok-... must not be sent to Groq, which would 404.
         provider, model = registry._resolve_auto("gsk_x", "grok-2-1212")
         self.assertEqual(provider, "groq")
-        self.assertIn("llama", model)
+        self.assertEqual(model, "openai/gpt-oss-120b")
 
     def test_xai_and_openai_and_anthropic_prefixes(self):
         self.assertEqual(registry._resolve_auto("xai-x", "grok-2-1212")[0], "xai")
@@ -142,17 +142,17 @@ class TestProviderAutoDetection(unittest.TestCase):
     def test_falls_back_to_provider_specific_key(self):
         """No unified key: use the provider whose own key is set, not xAI."""
         config.ANTHROPIC_API_KEY = "sk-ant-x"
-        provider, model = registry._resolve_auto("", "llama-3.3-70b-versatile")
+        provider, model = registry._resolve_auto("", "openai/gpt-oss-120b")
         self.assertEqual(provider, "anthropic")
-        self.assertIn("claude", model)   # stale llama model name not reused
+        self.assertIn("claude", model)   # stale groq model name not reused
 
         config.ANTHROPIC_API_KEY = ""
         config.GEMINI_API_KEY = "gk-x"
         self.assertEqual(registry._resolve_auto("", "")[0], "gemini")
 
     def test_model_kept_when_plausible_for_provider(self):
-        _, model = registry._resolve_auto("gsk_x", "mixtral-8x7b-32768")
-        self.assertEqual(model, "mixtral-8x7b-32768")
+        _, model = registry._resolve_auto("gsk_x", "qwen/qwen3.6-27b")
+        self.assertEqual(model, "qwen/qwen3.6-27b")
 
 
 class TestGenerationGuard(unittest.TestCase):

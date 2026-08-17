@@ -25,7 +25,7 @@ _cached: LLMProvider | None = None
 # configured model name clearly doesn't belong to (e.g. a llama model name left
 # over in LLM_MODEL while the only key available is an Anthropic one).
 _DEFAULT_MODELS = {
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "openai/gpt-oss-120b",
     "xai": "grok-2-1212",
     "openai": "gpt-4o-mini",
     "gemini": "gemini-1.5-flash",
@@ -35,16 +35,28 @@ _DEFAULT_MODELS = {
 #: Substring that should appear in a model name for each provider. Used only to
 #: decide whether the configured LLM_MODEL is plausible for the chosen provider.
 _MODEL_HINTS = {
-    "groq": ("llama", "mixtral", "gemma", "qwen", "deepseek", "kimi"),
+    "groq": ("llama", "mixtral", "gemma", "qwen", "deepseek", "kimi", "gpt-oss", "compound", "allam"),
     "xai": ("grok",),
     "openai": ("gpt", "o1", "o3", "o4"),
     "gemini": ("gemini",),
     "anthropic": ("claude",),
 }
 
+# Decommissioned/deprecated models from providers that should automatically map to the active default
+_DEPRECATED_MODELS = {
+    "llama-3.3-70b-versatile",
+    "llama-3.1-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama3-8b-8192",
+    "llama3-70b-8192",
+    "mixtral-8x7b-32768",
+}
+
 
 def _model_for(provider_id: str, model: str) -> str:
     """Keep `model` when it plausibly belongs to `provider_id`, else the default."""
+    if model in _DEPRECATED_MODELS:
+        return _DEFAULT_MODELS.get(provider_id, model)
     hints = _MODEL_HINTS.get(provider_id, ())
     if model and any(h in model.lower() for h in hints):
         return model
