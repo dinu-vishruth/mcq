@@ -1,12 +1,20 @@
-flask
+fastapi
+uvicorn
+# ASGI plumbing: itsdangerous signs the session cookie (SessionMiddleware),
+# python-multipart parses file uploads, httpx makes the Google token exchange.
+itsdangerous
+python-multipart
+httpx
+jinja2
+# werkzeug.security supplies the password hashing the existing users table uses;
+# kept as a direct dependency now that Flask no longer pulls it in.
+werkzeug
 pdfplumber
 python-docx
 python-pptx
 reportlab
 requests
-gunicorn
 python-dotenv
-flask-wtf
 # RAG: small, Vercel-safe. Used by the sqlite vector store + retriever.
 numpy
 

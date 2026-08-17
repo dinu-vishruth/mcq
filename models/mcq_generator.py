@@ -57,8 +57,11 @@ def generate_mcqs(text, num_questions=5, difficulty="medium"):
     Returns a list of MCQ dicts: {question, options:[{label,text}*4], answer_text}.
     """
     text = clean_text(text)
-    if not config.LLM_API_KEY:
-        raise MCQGenerationError("API Key is missing. Please set the GROK_API_KEY environment variable in your .env file.")
+    if not config.llm_key_present():
+        # Full diagnostic (variable names, .env path) to the log for whoever runs
+        # the server; a plain message to the learner, who can't act on config.
+        print(f"[mcq] generation blocked: {config.missing_key_message()}")
+        raise MCQGenerationError(config.USER_FACING_AI_UNAVAILABLE)
     if not text:
         raise MCQGenerationError("No text found. Please upload a valid document or provide some text.")
 

@@ -21,11 +21,63 @@ from core.llm.anthropic import AnthropicProvider
 _cached: LLMProvider | None = None
 
 
+# Default model per provider, used when auto-detection picks a provider that the
+# configured model name clearly doesn't belong to (e.g. a llama model name left
+# over in LLM_MODEL while the only key available is an Anthropic one).
+_DEFAULT_MODELS = {
+    "groq": "llama-3.3-70b-versatile",
+    "xai": "grok-2-1212",
+    "openai": "gpt-4o-mini",
+    "gemini": "gemini-1.5-flash",
+    "anthropic": "claude-sonnet-5",
+}
+
+#: Substring that should appear in a model name for each provider. Used only to
+#: decide whether the configured LLM_MODEL is plausible for the chosen provider.
+_MODEL_HINTS = {
+    "groq": ("llama", "mixtral", "gemma", "qwen", "deepseek", "kimi"),
+    "xai": ("grok",),
+    "openai": ("gpt", "o1", "o3", "o4"),
+    "gemini": ("gemini",),
+    "anthropic": ("claude",),
+}
+
+
+def _model_for(provider_id: str, model: str) -> str:
+    """Keep `model` when it plausibly belongs to `provider_id`, else the default."""
+    hints = _MODEL_HINTS.get(provider_id, ())
+    if model and any(h in model.lower() for h in hints):
+        return model
+    return _DEFAULT_MODELS.get(provider_id, model)
+
+
 def _resolve_auto(api_key: str, model: str) -> tuple[str, str]:
-    """Return (provider_id, model) using the legacy prefix heuristic."""
+    """Return (provider_id, model) for LLM_PROVIDER=auto.
+
+    Key-prefix detection first (the historical behaviour), then a fallback to
+    whichever per-provider key is actually configured. Without that fallback a
+    deployment holding only, say, ANTHROPIC_API_KEY resolved to xAI with an empty
+    key and failed at request time with a misleading "invalid key" error.
+    """
     if api_key.startswith("gsk_"):
-        chosen = model if "llama" in model.lower() else "llama-3.3-70b-versatile"
-        return "groq", chosen
+        return "groq", _model_for("groq", model)
+    if api_key.startswith("xai-"):
+        return "xai", _model_for("xai", model)
+    if api_key.startswith("sk-ant-"):
+        return "anthropic", _model_for("anthropic", model)
+    if api_key.startswith("sk-"):
+        return "openai", _model_for("openai", model)
+    if api_key:
+        # Unrecognised prefix: preserve the legacy default of treating it as xAI.
+        return "xai", model
+    # No unified key at all -- fall back to any provider-specific key present.
+    for provider_id, key in (
+        ("anthropic", config.ANTHROPIC_API_KEY),
+        ("gemini", config.GEMINI_API_KEY),
+        ("openai", config.OPENAI_API_KEY),
+    ):
+        if key:
+            return provider_id, _model_for(provider_id, model)
     return "xai", model
 
 

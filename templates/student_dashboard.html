@@ -12,16 +12,19 @@
 
 <body>
   {#
-    React mount shell. The existing /student route (core/routes/student.py) is
-    UNCHANGED — it still computes and passes all of these template vars. We just
-    serialize them into a data-bootstrap JSON payload for the React island to
-    render, instead of rendering server-side HTML. Fields the route doesn't
-    compute (recommendations, xp, streak) get safe defaults here; onboarding
-    state is fetched client-side from /api/prefs.
+    React mount shell. The route hands us the COMPLETE dashboard payload as
+    `bootstrap` (see fastapi_app/services/dashboard.py), so the island renders on
+    first paint with no follow-up request to /api/dashboard — that extra
+    round-trip behind a spinner was what made this page feel slow, especially on
+    a cold serverless start.
+
+    The `else` branch is the fallback for routes that render this template
+    without the payload (e.g. /student_login showing an error): individual vars
+    with safe defaults, exactly as before.
   #}
   <div id="root"
        data-page="dashboard"
-       data-bootstrap='{{ {
+       data-bootstrap='{{ (bootstrap if bootstrap is defined and bootstrap else {
          "username": session.username or "Learner",
          "total_quizzes": total_quizzes | default(0),
          "avg_score": avg_score | default(0),
@@ -37,7 +40,7 @@
          "recommendations": recommendations | default([]),
          "needs_onboarding": false,
          "prefs": none
-       } | tojson }}'></div>
+       }) | tojson }}'></div>
 
   {% if error %}
   <div id="flash-error" data-message="{{ error }}" style="display:none"></div>

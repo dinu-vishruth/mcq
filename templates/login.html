@@ -106,8 +106,17 @@
 
         <div class="authx-divider"><span>or</span></div>
 
+        {#
+          Google is a real link to the OAuth flow, rendered only when the server
+          has credentials (config.GOOGLE_OAUTH_ENABLED) so there's never a button
+          that can't work. GitHub is still a placeholder handled by auth.js.
+        #}
         <div class="authx-oauth">
+          {% if google_oauth_enabled %}
+          <a href="/auth/google" class="oauth-btn">{{ icon("google") }} Google</a>
+          {% else %}
           <button type="button" class="oauth-btn" data-oauth="Google">{{ icon("google") }} Google</button>
+          {% endif %}
           <button type="button" class="oauth-btn" data-oauth="GitHub">{{ icon("github") }} GitHub</button>
         </div>
 

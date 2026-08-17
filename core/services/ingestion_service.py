@@ -27,8 +27,10 @@ def ingest_document(raw_text: str, *, owner: str = "", title: str = "",
     if not processed.chunks:
         raise ValueError("Could not extract any readable text to ingest.")
 
+    # Scoped to the owner: dedup must not hand this user another user's document,
+    # which previously left the second uploader with no row and an empty library.
     dh = document_repo.doc_hash(processed.text)
-    existing = document_repo.find_by_hash(dh)
+    existing = document_repo.find_by_hash(dh, owner=owner)
     if existing is not None and existing["status"] == "ready":
         return {"document_id": existing["id"], "reused": True,
                 "chunk_count": existing["chunk_count"], "embed_stats": None}

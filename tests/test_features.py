@@ -28,11 +28,11 @@ config.EMBEDDING_BACKEND = "hashing"
 config.VECTOR_STORE = "sqlite"
 
 import app as app_module
-app_module.DB_PATH = _DB
-app_module.UPLOAD_FOLDER = _UP
 import utils.session_manager as sm
 sm.DB_PATH = _DB
-app_module.init_db()
+
+from fastapi_app.database import init_db
+init_db()
 
 # Deterministic, offline MCQ generation.
 FIXED_MCQS = [
@@ -50,9 +50,11 @@ FIXED_MCQS = [
 class Base(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.flask = app_module.app
-        cls.flask.config["TESTING"] = True
-        cls.flask.config["WTF_CSRF_ENABLED"] = False
+        # FastAPI app behind a Flask-test-client-shaped shim (see tests/_client.py).
+        # CSRF is exercised, not disabled: the shim supplies a real token.
+        from config import SECRET_KEY
+        from tests._client import make_client_factory
+        cls._client_factory = staticmethod(make_client_factory(app_module.app, SECRET_KEY))
         import models.mcq_generator as _mcq
         _mcq.generate_mcqs = lambda text, num_questions=5, difficulty="medium": FIXED_MCQS[:num_questions]
 
@@ -83,7 +85,7 @@ class TestInstantUploadDoesNotSaveResource(Base):
     resource. Only /ingest_resource (explicit 'Add Resource') saves to the library."""
 
     def test_upload_generates_quiz_without_saving_resource(self):
-        c = self.flask.test_client()
+        c = self._client_factory()
         self._seed_and_login(c, "ku1")
         r = c.post("/upload", data={
             "extracted_text": "Deadlocks occur when two transactions each wait for the other. " * 20,
@@ -110,7 +112,7 @@ class TestStoreOnlyResourceUpload(Base):
             conn.close()
 
     def test_ingest_resource_stores_without_quiz(self):
-        c = self.flask.test_client()
+        c = self._client_factory()
         self._seed_and_login(c, "rs1")
         before = self._count_sessions()
 
@@ -131,9 +133,56 @@ class TestStoreOnlyResourceUpload(Base):
         self.assertTrue(any(it["title"] == "DBMS Normalization" for it in items))
 
     def test_ingest_resource_requires_login(self):
-        r = self.flask.test_client().post("/ingest_resource", data={"extracted_text": "x"})
+        r = self._client_factory().post("/ingest_resource", data={"extracted_text": "x"})
         self.assertEqual(r.status_code, 302)
         self.assertNotIn("/journey", r.headers["Location"])  # bounced to home
+
+    def test_same_content_saved_separately_for_each_owner(self):
+        """Dedup is per owner, so the 2nd uploader still gets their own resource.
+
+        Regression: doc_hash was globally UNIQUE and find_by_hash ignored owner,
+        so the second user to add identical material got the first user's row
+        back, had no row created, and landed on an empty library.
+        """
+        shared = "Indexes speed up lookups by avoiding a full table scan. " * 20
+
+        first = self._client_factory()
+        self._seed_and_login(first, "dup_a")
+        r1 = first.post("/ingest_resource", data={"extracted_text": shared, "title": "A Copy"})
+        self.assertEqual(r1.status_code, 302)
+        self.assertIn("/journey", r1.headers["Location"])
+
+        second = self._client_factory()
+        self._seed_and_login(second, "dup_b")
+        r2 = second.post("/ingest_resource", data={"extracted_text": shared, "title": "B Copy"})
+        self.assertEqual(r2.status_code, 302)
+        self.assertIn("/journey", r2.headers["Location"])
+
+        # The heart of the bug: this list came back empty.
+        b_items = second.get("/api/knowledge").get_json()["items"]
+        self.assertTrue(any(it["title"] == "B Copy" for it in b_items),
+                        f"second owner's library should not be empty: {b_items}")
+        self.assertTrue(all(it["indexed"] for it in b_items),
+                        f"second owner's copy should be indexed and quiz-ready: {b_items}")
+
+        # Each library shows only its own copy.
+        a_titles = {it["title"] for it in first.get("/api/knowledge").get_json()["items"]}
+        b_titles = {it["title"] for it in b_items}
+        self.assertIn("A Copy", a_titles)
+        self.assertNotIn("B Copy", a_titles)
+        self.assertNotIn("A Copy", b_titles)
+
+    def test_re_adding_own_content_does_not_duplicate(self):
+        """Per-owner dedup still applies: the same user re-adding gets one row."""
+        text = "Transactions must satisfy atomicity, consistency, isolation, durability. " * 20
+        c = self._client_factory()
+        self._seed_and_login(c, "dup_c")
+
+        c.post("/ingest_resource", data={"extracted_text": text, "title": "ACID"})
+        c.post("/ingest_resource", data={"extracted_text": text, "title": "ACID again"})
+
+        items = c.get("/api/knowledge").get_json()["items"]
+        self.assertEqual(len(items), 1, f"re-adding own content should reuse the row: {items}")
 
 
 class TestWeakTopicReview(Base):
@@ -146,7 +195,7 @@ class TestWeakTopicReview(Base):
             conn.close()
 
     def test_review_reconstructs_missed_questions(self):
-        c = self.flask.test_client()
+        c = self._client_factory()
         self._seed_and_login(c, "wt1")
         uid = self._uid("wt1")
 
@@ -180,7 +229,7 @@ class TestWeakTopicReview(Base):
         self.assertEqual(len(rebuilt[0]["options"]), 4)
 
     def test_review_404_when_nothing_reconstructable(self):
-        c = self.flask.test_client()
+        c = self._client_factory()
         self._seed_and_login(c, "wt2")
         r = c.post("/api/weak-topics/review", json={"topic": "Nonexistent Topic"})
         self.assertEqual(r.status_code, 404)

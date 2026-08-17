@@ -105,8 +105,17 @@
 
         <div class="authx-divider"><span>or</span></div>
 
+        {#
+          Same OAuth entry point as sign-in: Google's flow creates the account on
+          first use, so "sign up with Google" and "sign in with Google" are one
+          route. Only shown when the server has credentials configured.
+        #}
         <div class="authx-oauth">
+          {% if google_oauth_enabled %}
+          <a href="/auth/google" class="oauth-btn">{{ icon("google") }} Google</a>
+          {% else %}
           <button type="button" class="oauth-btn" data-oauth="Google">{{ icon("google") }} Google</button>
+          {% endif %}
           <button type="button" class="oauth-btn" data-oauth="GitHub">{{ icon("github") }} GitHub</button>
         </div>
 

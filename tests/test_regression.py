@@ -29,14 +29,12 @@ config.DB_PATH = _DB
 config.UPLOAD_FOLDER = _UP
 
 import app as app_module
-# app.py bound these names at import via `from config import ...`; repoint them too.
-app_module.DB_PATH = _DB
-app_module.UPLOAD_FOLDER = _UP
 # session_manager also did `from config import DB_PATH`.
 import utils.session_manager as sm
 sm.DB_PATH = _DB
 
-app_module.init_db()
+from fastapi_app.database import init_db
+init_db()
 
 FIXED_MCQS = [
     {
@@ -65,11 +63,13 @@ FIXED_MCQS = [
 class Base(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.flask = app_module.app
-        cls.flask.config["TESTING"] = True
-        cls.flask.config["WTF_CSRF_ENABLED"] = False
+        # FastAPI app behind a Flask-test-client-shaped shim (see tests/_client.py).
+        # CSRF is exercised, not disabled: the shim supplies a real token.
+        from config import SECRET_KEY
+        from tests._client import make_client_factory
+        cls._client_factory = staticmethod(make_client_factory(app_module.app, SECRET_KEY))
         # Stub the network-calling functions at their SOURCE modules. The
-        # blueprints import these modules (not the names), so patching the
+        # routers import these modules (not the names), so patching the
         # module attribute takes effect in the routes.
         import models.mcq_generator as _mcq
         import models.explanation_engine as _exp
@@ -84,7 +84,6 @@ class Base(unittest.TestCase):
         # keeps route reads and repo writes pointed at the same DB.
         config.DB_PATH = _DB
         config.UPLOAD_FOLDER = _UP
-        app_module.DB_PATH = _DB
         sm.DB_PATH = _DB
         # The login lockout is keyed by IP; all test clients share 127.0.0.1,
         # so clear attempts between tests to keep them isolated.
@@ -94,7 +93,7 @@ class Base(unittest.TestCase):
         conn.close()
 
     def client(self):
-        return self.flask.test_client()
+        return self._client_factory()
 
     def _seed_user(self, username, password, role):
         from werkzeug.security import generate_password_hash

@@ -29,12 +29,21 @@ const REC_HREF: Record<string, string> = {
   revision: "/weak-topics", practice: "/practice", start: "/knowledge", interview: "/practice",
 };
 
-export default function Dashboard({ data }: { data: { username: string } }) {
-  const [d, setD] = useState<DashboardApi | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+// The server embeds the complete dashboard payload in #root's data-bootstrap,
+// so this screen renders on first paint. It used to mount empty, show a spinner,
+// and fetch /api/dashboard — a second round-trip for data the page already had,
+// which on a cold serverless start meant staring at the spinner for seconds.
+// Only fall back to fetching if the payload is absent (a route that rendered the
+// template without it).
+export default function Dashboard({ data }: { data: Partial<DashboardApi> & { username: string } }) {
+  const preloaded = typeof data.total_quizzes === "number" ? (data as DashboardApi) : null;
+
+  const [d, setD] = useState<DashboardApi | null>(preloaded);
+  const [loading, setLoading] = useState(preloaded === null);
+  const [showOnboarding, setShowOnboarding] = useState(Boolean(preloaded?.needs_onboarding));
 
   useEffect(() => {
+    if (preloaded) return;
     apiGet<DashboardApi>("/api/dashboard")
       .then((res) => {
         setD(res);
@@ -42,7 +51,7 @@ export default function Dashboard({ data }: { data: { username: string } }) {
       })
       .catch(() => setD(null))
       .finally(() => setLoading(false));
-  }, []);
+  }, [preloaded]);
 
   const username = d?.username || data.username;
 

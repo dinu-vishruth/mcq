@@ -17,10 +17,25 @@ def doc_hash(cleaned_text: str) -> str:
     return hashlib.sha256(cleaned_text.encode("utf-8")).hexdigest()
 
 
-def find_by_hash(dh: str):
+def find_by_hash(dh: str, owner: str | None = None):
+    """Find a document by content hash, scoped to ``owner`` when given.
+
+    Scoping matters: dedup is per user. A global lookup handed the second person
+    to upload a given document the FIRST person's row, so no row was created for
+    them and their library came back empty. Pass the owner for any dedup decision.
+
+    ``owner=None`` keeps the old global behaviour for callers that legitimately
+    want any copy of the content (embedding reuse, admin lookups).
+    """
     conn = get_db()
     try:
-        return conn.execute("SELECT * FROM documents WHERE doc_hash=?", (dh,)).fetchone()
+        if owner is None:
+            return conn.execute(
+                "SELECT * FROM documents WHERE doc_hash=?", (dh,)
+            ).fetchone()
+        return conn.execute(
+            "SELECT * FROM documents WHERE doc_hash=? AND owner=?", (dh, owner)
+        ).fetchone()
     finally:
         conn.close()
 

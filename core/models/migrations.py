@@ -23,7 +23,7 @@ import sqlite3
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    doc_hash      TEXT UNIQUE,              -- sha256 of cleaned full text (dedup)
+    doc_hash      TEXT,                     -- sha256 of cleaned full text (dedup)
     owner         TEXT,                     -- username who uploaded
     title         TEXT,
     source_type   TEXT,                     -- pdf | docx | pptx | txt | paste
@@ -31,7 +31,11 @@ CREATE TABLE IF NOT EXISTS documents (
     chunk_count   INTEGER DEFAULT 0,
     status        TEXT DEFAULT 'pending',   -- pending | chunked | embedded | ready | error
     created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
-    meta_json     TEXT                      -- arbitrary metadata (page count, etc.)
+    meta_json     TEXT,                     -- arbitrary metadata (page count, etc.)
+    -- Dedup is PER OWNER, not global. A global UNIQUE(doc_hash) meant the second
+    -- user to upload the same material got the first user's row back and no row
+    -- of their own, so their library rendered empty.
+    UNIQUE(doc_hash, owner)
 );
 
 CREATE TABLE IF NOT EXISTS chunks (
@@ -116,6 +120,80 @@ CREATE TABLE IF NOT EXISTS user_prefs (
 """
 
 
+#: Column order used when copying rows during the documents rebuild. Named
+#: explicitly (rather than SELECT *) so the copy is insensitive to column order.
+_DOC_COLUMNS = (
+    "id, doc_hash, owner, title, source_type, char_count, chunk_count, "
+    "status, created_at, meta_json"
+)
+
+
+def _documents_needs_owner_scoped_dedup(conn: sqlite3.Connection) -> bool:
+    """True when `documents` still carries the global UNIQUE(doc_hash).
+
+    Detected from the stored DDL rather than a version counter, so it holds for
+    databases created before this migration existed and is safe to re-check on
+    every boot.
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='documents'"
+    ).fetchone()
+    if row is None or not row[0]:
+        return False  # Fresh DB: SCHEMA above already has the composite UNIQUE.
+    ddl = " ".join(row[0].split())
+    return "doc_hash TEXT UNIQUE" in ddl or "UNIQUE(doc_hash, owner)" not in ddl
+
+
+def _rebuild_documents_for_owner_scoped_dedup(conn: sqlite3.Connection) -> None:
+    """Drop the global UNIQUE(doc_hash) in favour of UNIQUE(doc_hash, owner).
+
+    SQLite cannot drop a constraint in place, so the table is rebuilt. Every row
+    is preserved with its original `id` because chunks.document_id references it.
+
+    Two safety points worth stating:
+      - The copy runs inside one transaction, so a failure rolls back and leaves
+        the original table untouched.
+      - Foreign keys are disabled for the swap. Were they on, DROP TABLE would
+        cascade or error against chunks; ids are unchanged, so the references
+        stay valid either way.
+    """
+    # Duplicate (doc_hash, owner) pairs would violate the new constraint. They
+    # can exist because the old schema never enforced anything per owner.
+    dupes = conn.execute(
+        "SELECT doc_hash, owner, COUNT(*) c FROM documents "
+        "GROUP BY doc_hash, owner HAVING c > 1"
+    ).fetchall()
+    if dupes:
+        # Keep the lowest id per pair; it is the one chunks were written against.
+        conn.execute(
+            "DELETE FROM documents WHERE id NOT IN ("
+            "  SELECT MIN(id) FROM documents GROUP BY doc_hash, owner"
+            ")"
+        )
+
+    conn.execute("""
+        CREATE TABLE documents_migrated (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            doc_hash      TEXT,
+            owner         TEXT,
+            title         TEXT,
+            source_type   TEXT,
+            char_count    INTEGER DEFAULT 0,
+            chunk_count   INTEGER DEFAULT 0,
+            status        TEXT DEFAULT 'pending',
+            created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
+            meta_json     TEXT,
+            UNIQUE(doc_hash, owner)
+        )
+    """)
+    conn.execute(
+        f"INSERT INTO documents_migrated ({_DOC_COLUMNS}) "
+        f"SELECT {_DOC_COLUMNS} FROM documents"
+    )
+    conn.execute("DROP TABLE documents")
+    conn.execute("ALTER TABLE documents_migrated RENAME TO documents")
+
+
 def run_migrations(conn: sqlite3.Connection) -> None:
     """Apply all additive migrations. Idempotent."""
     conn.executescript(SCHEMA)
@@ -126,3 +204,16 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         except sqlite3.OperationalError:
             pass  # Column already exists.
     conn.commit()
+
+    # Not additive, so it sits apart from the block above and is guarded by a
+    # check of the live DDL. See _rebuild_documents_for_owner_scoped_dedup.
+    if _documents_needs_owner_scoped_dedup(conn):
+        had_fk = conn.execute("PRAGMA foreign_keys").fetchone()[0]
+        if had_fk:
+            conn.execute("PRAGMA foreign_keys=OFF")
+        try:
+            with conn:  # Commit on success, roll back on any exception.
+                _rebuild_documents_for_owner_scoped_dedup(conn)
+        finally:
+            if had_fk:
+                conn.execute("PRAGMA foreign_keys=ON")

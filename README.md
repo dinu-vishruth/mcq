@@ -116,12 +116,14 @@ Create a `.env` file in the project root. At minimum, provide an LLM key:
 
 ```dotenv
 # --- LLM ---
+# Set ONE key. Groq is recommended (free tier); keys look like `gsk_...`:
+#   https://console.groq.com/keys
+GROQ_API_KEY=your_key_here
 LLM_PROVIDER=auto            # auto | groq | xai | openai | gemini | anthropic
-LLM_API_KEY=your_key_here    # falls back to GROK_API_KEY if unset
-LLM_MODEL=                   # falls back to GROK_MODEL if unset
+LLM_MODEL=                   # optional; a sensible default per provider is used
 
-# Provider-specific keys (only what you use)
-GROK_API_KEY=
+# Alternatives instead of GROQ_API_KEY (only set what you use)
+XAI_API_KEY=
 OPENAI_API_KEY=
 GEMINI_API_KEY=
 ANTHROPIC_API_KEY=
@@ -141,7 +143,14 @@ CONTEXT_MAX_CHARS=12000
 SECRET_KEY=                  # auto-generated if unset
 ```
 
-With `LLM_PROVIDER=auto`, a key beginning with `gsk_` is treated as Groq; otherwise it is treated as xAI/Grok. The database schema (`database/schema.sql`) and all RAG tables are initialized automatically on first run.
+With `LLM_PROVIDER=auto` the provider is detected from the key prefix: `gsk_` → Groq, `xai-` → xAI, `sk-ant-` → Anthropic, `sk-` → OpenAI. If no unified key is set, whichever provider-specific key exists is used. The database schema (`database/schema.sql`) and all RAG tables are initialized automatically on first run.
+
+**Two naming gotchas worth knowing:**
+
+- **Groq vs Grok.** Groq is the inference host (`gsk_...` keys); Grok is xAI's model. They differ by one letter. Both `GROQ_*` and `GROK_*` spellings are accepted, so older `.env` files keep working.
+- **Never set a variable to an empty value.** Leave it out entirely. A blank value is treated as unset, so `LLM_API_KEY=` no longer silently overrides a working `GROQ_API_KEY` — but blank entries in a hosting dashboard are still best deleted rather than left empty.
+
+On startup the app logs which provider and model it resolved, or a warning naming exactly what it looked for if no key was found. Check that line first when generation fails.
 
 ### 4. Running the Application
 
@@ -149,7 +158,7 @@ With `LLM_PROVIDER=auto`, a key beginning with `gsk_` is treated as Groq; otherw
 python app.py
 ```
 
-Open `http://127.0.0.1:5000/` in your browser.
+Open `http://127.0.0.1:8000/` in your browser. (`python app.py` runs uvicorn with reload; `uvicorn app:app --reload` is equivalent.)
 
 Default seeded accounts (for quick local/demo use): `teacher` and `student`.
 
@@ -169,10 +178,11 @@ npm run dev       # optional: Vite dev server with HMR
 |---|---|---|
 | `SECRET_KEY` | random | Flask session secret |
 | `LLM_PROVIDER` | `auto` | `auto`/`groq`/`xai`/`openai`/`gemini`/`anthropic` |
-| `LLM_API_KEY` | `GROK_API_KEY` | Unified LLM key |
-| `LLM_MODEL` | `GROK_MODEL` | Unified LLM model |
-| `GROK_API_KEY` / `GROK_MODEL` | `""` / `grok-2-1212` | Legacy key/model |
-| `OPENAI_API_KEY` / `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` | `""` | Per-provider keys |
+| `GROQ_API_KEY` / `GROK_API_KEY` | `""` | Groq key (`gsk_...`); both spellings accepted |
+| `LLM_API_KEY` | falls back to the Groq key | Unified LLM key |
+| `LLM_MODEL` | per-provider default | Unified LLM model |
+| `GROQ_MODEL` / `GROK_MODEL` | `grok-2-1212` | Legacy model name |
+| `XAI_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` | `""` | Per-provider keys |
 | `LLM_TIMEOUT` / `LLM_TEMPERATURE` | `45` / `0.3` | Request tuning |
 | `AI_PIPELINE` | `legacy` | `legacy` or `rag` |
 | `EMBEDDING_BACKEND` | `auto` | `auto`/`sentence_transformer`/`remote`/`hashing` |

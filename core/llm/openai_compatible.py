@@ -31,7 +31,9 @@ class OpenAICompatibleProvider(LLMProvider):
 
     def _complete_once(self, messages, *, temperature=None, max_tokens=None, json_mode=False) -> str:
         if not self.api_key:
-            raise LLMError("API Key is missing. Please set LLM_API_KEY (or GROK_API_KEY) in your .env file.")
+            import config
+            print(f"[llm] {config.missing_key_message()}")
+            raise LLMError(config.USER_FACING_AI_UNAVAILABLE)
 
         payload = {
             "model": self.model,
@@ -58,7 +60,15 @@ class OpenAICompatibleProvider(LLMProvider):
             raise LLMError(f"Network error when connecting to the AI API: {re}")
 
         if resp.status_code == 401:
-            raise LLMError("Invalid API key! Please check your LLM_API_KEY / GROK_API_KEY.")
+            # Distinguish "wrong key" from "right key, wrong provider": a Groq
+            # `gsk_` key sent to api.x.ai also 401s, and that misconfiguration
+            # is otherwise indistinguishable from an invalid key.
+            hint = ""
+            if self.provider_id != "groq" and self.api_key.startswith("gsk_"):
+                hint = (" That key looks like a Groq key ('gsk_') but it was sent to "
+                        f"{self.provider_id}. Set LLM_PROVIDER=groq (or unset it to auto-detect).")
+            raise LLMError(f"Invalid API key for {self.provider_id}. "
+                           f"Check GROQ_API_KEY / LLM_API_KEY.{hint}")
         if resp.status_code == 429:
             raise RateLimitError("API rate limit exceeded! Please wait a moment and try again.",
                                  retry_after=self._parse_retry_after(resp))

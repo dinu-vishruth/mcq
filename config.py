@@ -1,11 +1,51 @@
 # config.py
 import os
 import secrets
+
+# Anchor the .env lookup to this file's directory rather than the process CWD.
+# Bare load_dotenv() searches relative to the caller, so launching the server
+# from anywhere but the project root (a systemd unit, an IDE run config, a
+# `uvicorn` invoked from a parent dir) silently found no .env -- which surfaced
+# downstream as "API Key is missing" even though the key was sitting in the file.
+_ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+DOTENV_LOADED = False
+DOTENV_ERROR = ""
 try:
     from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+except ImportError:  # pragma: no cover - depends on the install
+    # Previously swallowed in silence, so a missing python-dotenv looked
+    # identical to a missing key. Recorded so startup can say which it is.
+    DOTENV_ERROR = (
+        "python-dotenv is not installed, so .env was not read. "
+        "Install it (pip install -r requirements.txt) or set real environment variables."
+    )
+else:
+    # override=False: real environment variables continue to win over .env,
+    # which is what deployments rely on.
+    DOTENV_LOADED = load_dotenv(_ENV_PATH, override=False)
+    if not DOTENV_LOADED and not os.path.exists(_ENV_PATH):
+        DOTENV_ERROR = f"No .env file at {_ENV_PATH} (fine if you set environment variables directly)."
+
+
+def env_str(*names: str, default: str = "") -> str:
+    """First non-blank value among `names`, else `default`.
+
+    os.getenv(name, fallback) only falls back when the variable is *absent*. A
+    variable that exists but is empty -- an env var added in a hosting dashboard
+    with a blank value, or an empty shell export -- returned "" and shadowed a
+    perfectly good fallback. Blank is treated as unset here, and surrounding
+    whitespace/quotes are stripped so a copy-pasted `KEY="abc"` still works.
+    """
+    for name in names:
+        raw = os.getenv(name)
+        if raw is None:
+            continue
+        value = raw.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1].strip()
+        if value:
+            return value
+    return default
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
@@ -21,8 +61,27 @@ if not SECRET_KEY:
             "stay valid across serverless invocations."
         )
     SECRET_KEY = secrets.token_hex(32)
-GROK_API_KEY = os.getenv("GROK_API_KEY", "")
-GROK_MODEL = os.getenv("GROK_MODEL", "grok-2-1212")
+# --- Google sign-in (OAuth 2.0) -------------------------------------------
+# Create these at https://console.cloud.google.com/apis/credentials by making an
+# "OAuth client ID" of type "Web application", then add the callback URL to its
+# Authorized redirect URIs:
+#   local:  http://localhost:8000/auth/google/callback
+#   Vercel: https://<your-domain>/auth/google/callback
+# Sign-in is simply hidden when these are unset, so the app runs fine without
+# them and the Google button only appears once it can actually work.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+# Optional explicit override. When empty the callback URL is derived from the
+# incoming request, which keeps preview deployments working without new config.
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "")
+GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+# Accept GROQ_* and GROK_* interchangeably. These are two different companies --
+# Groq (keys look like `gsk_...`) is the inference host, Grok is xAI's model --
+# and the one-letter difference is easy to mistype, so a key set under either
+# spelling is honoured instead of silently reading as "no key at all".
+GROK_API_KEY = env_str("GROK_API_KEY", "GROQ_API_KEY", "XAI_API_KEY")
+GROK_MODEL = env_str("GROK_MODEL", "GROQ_MODEL", default="grok-2-1212")
 DB_PATH = "/tmp/mcq.db" if os.environ.get("VERCEL") else "database/mcq.db"
 UPLOAD_FOLDER = "/tmp/uploads" if os.environ.get("VERCEL") else "uploads"
 ALLOWED_EXT = {"pdf", "docx", "txt", "pptx"}
@@ -38,15 +97,56 @@ IS_VERCEL = bool(os.environ.get("VERCEL"))
 # "auto" keeps the legacy behaviour: detect Groq vs xAI from the key prefix.
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "auto").strip().lower()
 
-# Unified key/model. LLM_API_KEY falls back to the historical GROK_API_KEY so
-# existing .env files keep working untouched.
-LLM_API_KEY = os.getenv("LLM_API_KEY", GROK_API_KEY)
-LLM_MODEL = os.getenv("LLM_MODEL", GROK_MODEL)
+# Unified key/model. Falls back through every historical spelling, and a blank
+# LLM_API_KEY no longer shadows a working GROK_API_KEY/GROQ_API_KEY.
+LLM_API_KEY = env_str("LLM_API_KEY", default=GROK_API_KEY)
+LLM_MODEL = env_str("LLM_MODEL", default=GROK_MODEL)
 
 # Per-provider key overrides (optional; only used when explicitly selected).
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY = env_str("OPENAI_API_KEY")
+GEMINI_API_KEY = env_str("GEMINI_API_KEY")
+ANTHROPIC_API_KEY = env_str("ANTHROPIC_API_KEY")
+
+
+def llm_key_present() -> bool:
+    """True when some usable LLM credential is configured."""
+    return bool(LLM_API_KEY or OPENAI_API_KEY or GEMINI_API_KEY or ANTHROPIC_API_KEY)
+
+
+#: Shown to end users when generation can't run for lack of a key. Deliberately
+#: free of variable names and file paths: this renders in the browser, and
+#: server configuration detail should not leak to learners. The operator-facing
+#: detail goes to the logs via missing_key_message().
+USER_FACING_AI_UNAVAILABLE = (
+    "Quiz generation is temporarily unavailable because the AI service isn't "
+    "configured. Your document was not lost - please try again shortly, or "
+    "contact whoever administers this site."
+)
+
+
+def missing_key_message() -> str:
+    """Actionable 'no key' message naming what was actually checked.
+
+    OPERATOR-FACING (logs only) -- it includes the .env path and variable names.
+    Use USER_FACING_AI_UNAVAILABLE for anything rendered in a browser.
+
+    The old text named a single variable (GROK_API_KEY) that the loader did not
+    even read under that spelling in every path, sending people to re-check a
+    file that was already correct. This reports where config looked.
+    """
+    parts = [
+        "No LLM API key found. Set GROQ_API_KEY (or LLM_API_KEY) to a Groq key "
+        "starting with 'gsk_', or GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY."
+    ]
+    if DOTENV_ERROR:
+        parts.append(DOTENV_ERROR)
+    else:
+        parts.append(f"Checked environment variables and {_ENV_PATH}.")
+    if os.getenv("LLM_API_KEY") is not None and not os.getenv("LLM_API_KEY", "").strip():
+        # ASCII only: this string is printed to the console at startup, and the
+        # default Windows code page (cp1252) mangles an em dash into a '?'.
+        parts.append("Note: LLM_API_KEY is set but empty - remove it or give it a value.")
+    return " ".join(parts)
 
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "45"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.3"))
