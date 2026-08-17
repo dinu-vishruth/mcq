@@ -21,10 +21,12 @@ for difficulty in ["easy", "medium", "hard"]:
     print(f"{'='*60}")
     mcqs = generate_mcqs(sample_text, num_questions=3, difficulty=difficulty)
     for i, q in enumerate(mcqs):
-        print(f"\nQ{i+1}: {q['question'][:120]}")
+        q_text = q['question'][:120].encode('ascii', 'replace').decode('ascii')
+        print(f"\nQ{i+1}: {q_text}")
         for o in q["options"]:
             marker = " <-- CORRECT" if o["text"] == q["answer_text"] else ""
-            print(f"  {o['label']}) {o['text']}{marker}")
+            opt_text = o['text'].encode('ascii', 'replace').decode('ascii')
+            print(f"  {o['label']}) {opt_text}{marker}")
 
     print(f"\n  Generated: {len(mcqs)} questions")
 

@@ -132,7 +132,7 @@ class TestProviderAutoDetection(unittest.TestCase):
         # A leftover LLM_MODEL=grok-... must not be sent to Groq, which would 404.
         provider, model = registry._resolve_auto("gsk_x", "grok-2-1212")
         self.assertEqual(provider, "groq")
-        self.assertEqual(model, "openai/gpt-oss-120b")
+        self.assertEqual(model, "groq/compound-mini")
 
     def test_xai_and_openai_and_anthropic_prefixes(self):
         self.assertEqual(registry._resolve_auto("xai-x", "grok-2-1212")[0], "xai")
@@ -142,7 +142,7 @@ class TestProviderAutoDetection(unittest.TestCase):
     def test_falls_back_to_provider_specific_key(self):
         """No unified key: use the provider whose own key is set, not xAI."""
         config.ANTHROPIC_API_KEY = "sk-ant-x"
-        provider, model = registry._resolve_auto("", "openai/gpt-oss-120b")
+        provider, model = registry._resolve_auto("", "groq/compound-mini")
         self.assertEqual(provider, "anthropic")
         self.assertIn("claude", model)   # stale groq model name not reused
 

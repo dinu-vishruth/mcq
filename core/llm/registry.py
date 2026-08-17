@@ -25,7 +25,7 @@ _cached: LLMProvider | None = None
 # configured model name clearly doesn't belong to (e.g. a llama model name left
 # over in LLM_MODEL while the only key available is an Anthropic one).
 _DEFAULT_MODELS = {
-    "groq": "openai/gpt-oss-120b",
+    "groq": "groq/compound-mini",
     "xai": "grok-2-1212",
     "openai": "gpt-4o-mini",
     "gemini": "gemini-1.5-flash",
@@ -35,14 +35,14 @@ _DEFAULT_MODELS = {
 #: Substring that should appear in a model name for each provider. Used only to
 #: decide whether the configured LLM_MODEL is plausible for the chosen provider.
 _MODEL_HINTS = {
-    "groq": ("llama", "mixtral", "gemma", "qwen", "deepseek", "kimi", "gpt-oss", "compound", "allam"),
+    "groq": ("llama", "mixtral", "gemma", "qwen", "deepseek", "kimi", "compound", "allam"),
     "xai": ("grok",),
     "openai": ("gpt", "o1", "o3", "o4"),
     "gemini": ("gemini",),
     "anthropic": ("claude",),
 }
 
-# Decommissioned/deprecated models from providers that should automatically map to the active default
+# Decommissioned or severely rate-limited (low TPM) models on free tier that should map to active high-throughput default
 _DEPRECATED_MODELS = {
     "llama-3.3-70b-versatile",
     "llama-3.1-70b-versatile",
@@ -50,6 +50,8 @@ _DEPRECATED_MODELS = {
     "llama3-8b-8192",
     "llama3-70b-8192",
     "mixtral-8x7b-32768",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
 }
 
 
