@@ -69,11 +69,10 @@ export default function AddResource({ data }: { data: AddResourceData }) {
         const sampled = sampleText(text, 150000);
         if (extractedRef.current) extractedRef.current.value = sampled;
         fileRef.current?.removeAttribute("required");
-        if (fileRef.current) fileRef.current.value = "";
         setStage(3);
-        setTimeout(() => setStage(4), 300);
-        setTimeout(() => setStage(5), 600);
-        setTimeout(() => formRef.current?.submit(), 200);
+        setTimeout(() => setStage(4), 250);
+        setTimeout(() => setStage(5), 500);
+        setTimeout(() => formRef.current?.submit(), 600);
       } else {
         // .pptx (or no client text) -> let the server extract it.
         if (file.size > MAX_UPLOAD_SIZE) {
@@ -82,7 +81,7 @@ export default function AddResource({ data }: { data: AddResourceData }) {
           return;
         }
         setStage(2);
-        setTimeout(() => formRef.current?.submit(), 200);
+        setTimeout(() => formRef.current?.submit(), 300);
       }
     } catch (err: any) {
       if (file.size > MAX_UPLOAD_SIZE) {
@@ -90,7 +89,7 @@ export default function AddResource({ data }: { data: AddResourceData }) {
         setBusy(false);
       } else {
         setStage(2);
-        setTimeout(() => formRef.current?.submit(), 200);
+        setTimeout(() => formRef.current?.submit(), 300);
       }
     }
   }
@@ -107,7 +106,7 @@ export default function AddResource({ data }: { data: AddResourceData }) {
           </p>
           <h1 className="text-[clamp(1.8rem,3vw,2.4rem)] font-bold">Save a Study Resource</h1>
           <p className="text-text-2 mt-2">
-            Upload notes, books, or slides. We read, understand, and index them so you can generate quizzes from them anytime — this just saves it, no quiz yet.
+            Upload notes, books, or slides. We read, understand, and index them so they stay in your library and are ready whenever you want to generate a quiz.
           </p>
         </div>
 

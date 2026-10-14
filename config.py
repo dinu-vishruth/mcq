@@ -224,10 +224,14 @@ ANSWER_EVAL_REEVAL_CONFIDENCE = float(os.getenv("ANSWER_EVAL_REEVAL_CONFIDENCE",
 # "sentence_transformer"-> force local ST model (never available on Vercel)
 # "remote"              -> OpenAI/Gemini embedding endpoint
 # "hashing"             -> pure-Python fallback, zero heavy deps
+#
+# Keep the default on the faster side for uploaded-resource ingestion: the
+# heavy embedding model is the main source of latency during save/index, and a
+# larger chunk size significantly reduces work while staying retrieval-friendly.
 EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "auto").strip().lower()
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "384"))  # MiniLM native dim
-EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "64"))
+EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "128"))
 
 # --- Vector store ---------------------------------------------------------
 # "chroma" (default) -> ChromaDB persistent client
@@ -238,7 +242,9 @@ VECTOR_STORE = os.getenv("VECTOR_STORE", "sqlite" if IS_VERCEL else "chroma").st
 CHROMA_PATH = os.getenv("CHROMA_PATH", "/tmp/chroma_db" if IS_VERCEL else "chroma_db")
 
 # --- Chunking -------------------------------------------------------------
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1000"))       # chars per chunk
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "150"))  # char overlap
-RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "12"))
+# Larger chunks mean fewer embeddings and faster indexing. The overlap stays
+# small enough to preserve continuity without creating a large embedding fan-out.
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1500"))      # chars per chunk
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "80"))   # char overlap
+RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "8"))
 CONTEXT_MAX_CHARS = int(os.getenv("CONTEXT_MAX_CHARS", "12000"))

@@ -12,6 +12,7 @@ where AI_PIPELINE (legacy vs rag) is honoured, since generate_mcqs dispatches.
 from __future__ import annotations
 
 import os
+import threading
 import uuid
 from datetime import datetime
 from typing import Annotated
@@ -119,20 +120,27 @@ async def ingest_resource(
     title: Annotated[str, Form()] = "",
     extracted_text: Annotated[str, Form()] = "",
 ):
-    """Store + index a document as a saved resource, WITHOUT generating a quiz.
-
-    Backs the Learning Journey 'Add Resource' page. Ingestion failure is a real
-    error here (unlike /upload where it's best-effort) since storing the resource
-    is the entire point of the route.
-    """
+    """Store + index a document as a saved resource, then route straight to practice."""
     try:
         text, resolved_title, source_ext = extract_upload_text(file, title, extracted_text)
     except ExtractError as exc:
         return render(request, "add_resource.html", error=str(exc))
 
+    # Store-only flow: keep the saved resource in the library and do not start a
+    # quiz generation session as a side effect. The actual indexing work is moved
+    # to a daemon thread so the redirect completes immediately and the user isn't
+    # forced to wait for chunking + embedding before returning to the library.
     try:
         from core.services.ingestion_service import ingest_document
-        ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
+
+        def _run_ingest():
+            try:
+                ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
+            except Exception as exc:
+                print(f"[ingest_resource] background indexing failed: {exc}")
+
+        thread = threading.Thread(target=_run_ingest, daemon=True)
+        thread.start()
     except Exception as exc:
         return render(
             request, "add_resource.html",
@@ -151,65 +159,31 @@ async def upload_form(request: Request, user: CurrentUser):
 async def upload(
     request: Request,
     user: CurrentUser,
-    conn: Db,
     file: UploadFile | None = None,
     title: Annotated[str, Form()] = "",
     extracted_text: Annotated[str, Form()] = "",
-    num_questions: Annotated[str, Form()] = "10",
-    # The form submits the time limit in MINUTES; sessions store seconds.
-    timer: Annotated[str, Form()] = "10",
-    difficulty: Annotated[str, Form()] = "medium",
 ):
-    """Generate a quiz from an uploaded document and go straight into it."""
+    """Upload a document, save it to the library, then redirect to MakeQuiz
+    where the user configures difficulty, question count, and timer before generating."""
     def reject(message: str):
         return render(request, "upload.html", error=message)
 
-    # Parsed by hand rather than via typed Form params so a bad value produces
-    # the template's inline error message instead of FastAPI's 422 JSON.
     try:
-        question_count = int(num_questions)
-        timer_minutes = int(timer)
-    except (TypeError, ValueError):
-        return reject("Please enter valid numbers for questions and time limit.")
-
-    level = difficulty.strip().lower()
-    if not MIN_QUESTIONS <= question_count <= MAX_QUESTIONS:
-        return reject(f"Number of questions must be between {MIN_QUESTIONS} and {MAX_QUESTIONS}.")
-    if not MIN_TIMER_MINUTES <= timer_minutes <= MAX_TIMER_MINUTES:
-        return reject(f"Time limit must be between {MIN_TIMER_MINUTES} and {MAX_TIMER_MINUTES} minutes.")
-    if level not in VALID_DIFFICULTIES:
-        return reject("Invalid difficulty level selected.")
-
-    throttle_error = _check_generation_throttle(conn, user.username)
-    if throttle_error:
-        return reject(throttle_error)
-
-    try:
-        text, _title, _ext = extract_upload_text(file, title, extracted_text)
+        text, resolved_title, source_ext = extract_upload_text(file, title, extracted_text)
     except ExtractError as exc:
         return reject(str(exc))
 
-    # NOTE: the instant-quiz upload does NOT save a Learning Journey resource.
-    # Only documents added via /ingest_resource land in the user's library, which
-    # keeps one-off quiz material out of their saved resources.
+    doc_id = None
     try:
-        mcqs = mcq_generator.generate_mcqs(
-            text, num_questions=question_count, difficulty=level
-        )
-    except mcq_generator.MCQGenerationError as exc:
-        return reject(str(exc))
+        from core.services.ingestion_service import ingest_document
+        doc_res = ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
+        doc_id = doc_res.get("document_id") if isinstance(doc_res, dict) else None
     except Exception as exc:
-        return reject(f"An unexpected error occurred during MCQ generation: {exc}")
+        return reject(f"Could not save this resource: {exc}. Please try another file.")
 
-    if not mcqs:
-        return reject("No questions were generated. Please try again with a different text.")
-
-    # Only the session_key goes in the cookie; the questions are already
-    # persisted here, so mcq_test re-reads them and the cookie stays small.
-    request.session["session_key"] = create_session_key(
-        teacher=user.username, difficulty=level, timer=timer_minutes * 60, mcqs=mcqs,
-    )
-    return RedirectResponse("/mcq_test", status_code=302)
+    if doc_id:
+        return RedirectResponse(f"/knowledge?doc={doc_id}", status_code=302)
+    return RedirectResponse("/knowledge", status_code=302)
 
 
 def _check_generation_throttle(conn, username: str) -> str | None:

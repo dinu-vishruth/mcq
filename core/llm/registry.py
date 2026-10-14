@@ -25,7 +25,7 @@ _cached: LLMProvider | None = None
 # configured model name clearly doesn't belong to (e.g. a llama model name left
 # over in LLM_MODEL while the only key available is an Anthropic one).
 _DEFAULT_MODELS = {
-    "groq": "groq/compound-mini",
+    "groq": "llama-3.1-8b-instant",
     "xai": "grok-2-1212",
     "openai": "gpt-4o-mini",
     "gemini": "gemini-1.5-flash",

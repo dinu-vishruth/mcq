@@ -24,9 +24,11 @@ Each MCQ object must have exactly the following structure:
 
 
 def legacy_prompt(text: str, num_questions: int, difficulty: str) -> str:
-    """Byte-for-byte equivalent of the original models/mcq_generator.py prompt."""
+    """Byte-for-byte equivalent of the original models/mcq_generator.py prompt,
+    with Bloom's Taxonomy guidance added for better difficulty compliance."""
+    bloom = BLOOM_GUIDANCE.get(difficulty, BLOOM_GUIDANCE["medium"])
     return f"""You are an expert exam creator. Create {num_questions} Multiple Choice Questions from the text below.
-The difficulty must be exactly: {difficulty.upper()}.
+The difficulty must be exactly: {difficulty.upper()}. {bloom}
 Make the distractors highly plausible and challenging (unless difficulty is 'easy').
 
 {_STRUCTURE.format(num_questions=num_questions)}

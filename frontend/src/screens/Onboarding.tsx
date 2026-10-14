@@ -48,6 +48,20 @@ export function Onboarding({ onDone, initial }: { onDone: () => void; initial: U
     onDone();
   }
 
+  async function skip() {
+    setSaving(true);
+    try {
+      await fetch("/api/prefs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
+        body: JSON.stringify({ goal: goal || "", style: style || "", daily_minutes: minutes }),
+      });
+    } catch {
+      /* best-effort */
+    }
+    onDone();
+  }
+
   const canNext = step === 0 ? !!goal : step === 1 ? !!style : true;
 
   return (
@@ -150,7 +164,8 @@ export function Onboarding({ onDone, initial }: { onDone: () => void; initial: U
 
         <div className="flex items-center justify-between mt-7">
           <button
-            onClick={() => (step === 0 ? onDone() : setStep(step - 1))}
+            onClick={() => (step === 0 ? skip() : setStep(step - 1))}
+            disabled={saving}
             className="text-text-3 text-sm hover:text-text-2 transition-colors"
           >
             {step === 0 ? "Skip for now" : "Back"}

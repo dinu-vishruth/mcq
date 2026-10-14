@@ -11,8 +11,8 @@ An AI-powered learning platform for generating and managing MCQ assessments from
 - Library Management: Save resources to per-user libraries
 - Content Indexing: Index resource text for intelligent retrieval
 - MCQ Generation:
-  - Newly uploaded files → single-shot generation
-  - Saved library resources → RAG-enhanced generation
+  - Upload material to save and index a resource, then configure a quiz
+  - Generate from retrieved library content; verification stages run when `AI_PIPELINE=rag`
 - Session Tracking: Monitor quiz sessions and student results
 - Learning Analytics: Identify weak topics after quizzes
 - Explanation Generation: Create revision guidance from source material
@@ -58,7 +58,7 @@ Frontend:
 - Recharts
 
 AI/ML:
-- LLM Providers: Groq, Gemini
+- LLM Providers: Groq, xAI, OpenAI, Gemini, Anthropic
 - Embedding Backends: SentenceTransformers, remote APIs, hashing fallback
 - Vector Stores: ChromaDB, SQLite+NumPy, FAISS
 - Document Parsing: PDF, Word, PowerPoint, TXT
@@ -69,9 +69,9 @@ AI/ML:
 1. Upload or Library: user uploads file or saves study resource
 2. Content Processing: text cleaned and divided into chunks
 3. Embedding Generation: vectors created/stored
-4. Generation:
-   - Direct MCQ generation from uploaded text
-   - OR retrieval-augmented generation from saved resources
+4. Quiz Configuration: choose a saved resource, difficulty, question count, topic focus, and timer
+   - New uploads redirect to this configuration step after indexing
+   - Generation retrieves source content and uses the configured legacy or RAG pipeline
 5. Quiz Creation: session created and student answers recorded
 6. Learning Analysis: weak-topic analysis and revision guidance generated
 
@@ -89,7 +89,9 @@ Vercel:
 - Maintains working state without local `.env`
 
 Library:
-- Intentionally store-only; uploading saves to library and redirects to library page instead of immediate generation.
+- Adding a resource starts indexing in a background thread and redirects to the library without generating a quiz.
+- Uploading through Make Quiz & Test saves and indexes the resource, then redirects to quiz configuration.
+- Background indexing currently relies on the application process remaining alive; failures are logged server-side.
 
 ## Environment Variables
 
@@ -146,6 +148,8 @@ Local:
 Vercel:
 - DB: `/tmp/mcq.db`
 - Uploads: `/tmp/uploads/`
+
+Vercel storage is temporary and is not a durable database for user accounts, resources, or results. A production deployment needs persistent database/storage services.
 
 Persisted:
 - document metadata

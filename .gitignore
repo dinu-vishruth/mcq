@@ -1,5 +1,6 @@
 # Virtual environment
 venv/
+.venv/
 
 # Node / frontend build tooling (built assets in static/dist ARE committed)
 node_modules/
@@ -27,6 +28,7 @@ models/flan-t5-mcq/
 flask_session/
 database/*.db
 database/*.db.bak
+database/*.db.*
 reports/
 
 # Vector store (Chroma default persistence dir)
@@ -38,3 +40,8 @@ explanation.txt
 deployment.txt
 .vercel
 .env*
+
+# Personal agent configuration and local project reviews
+.continue/
+CLAUDE.md
+PROJECT_REVIEW.md

@@ -22,17 +22,9 @@ const PIPELINE = [
   { label: "Understanding Content", icon: Brain },
   { label: "Creating Chunks", icon: Layers },
   { label: "Generating Embeddings", icon: Boxes },
-  { label: "Building Knowledge Base", icon: Database },
+  { label: "Saving to Library", icon: Database },
   { label: "Ready", icon: Check },
 ];
-
-// Keep a numeric input inside its allowed range. An empty or non-numeric field
-// falls back to `fallback` so the hidden inputs always carry a valid value.
-function clampInt(raw: string, min: number, max: number, fallback: number): number {
-  const n = parseInt(raw, 10);
-  if (Number.isNaN(n)) return fallback;
-  return Math.min(max, Math.max(min, n));
-}
 
 export default function Upload({ data }: { data: UploadData }) {
   const [fileName, setFileName] = useState("");
@@ -40,13 +32,6 @@ export default function Upload({ data }: { data: UploadData }) {
   const [error, setError] = useState(data.error ?? "");
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState(0);
-  // Quiz config lives in state, not in the DOM. The visible inputs unmount when
-  // `busy` flips to show the pipeline, so the submitted values come from
-  // always-mounted hidden inputs below — otherwise the fields would be missing
-  // from the POST and the server would silently fall back to its defaults.
-  const [numQuestions, setNumQuestions] = useState(10);
-  const [difficulty, setDifficulty] = useState("medium");
-  const [timerMinutes, setTimerMinutes] = useState(10);
   const fileRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const extractedRef = useRef<HTMLInputElement>(null);
@@ -119,7 +104,7 @@ export default function Upload({ data }: { data: UploadData }) {
             <Sparkles className="w-4 h-4" /> Upload &amp; generate
           </p>
           <h1 className="text-[clamp(1.8rem,3vw,2.4rem)] font-bold">Make a Quiz from New Material</h1>
-          <p className="text-text-2 mt-2">Upload notes, books, or slides and we'll generate a quiz right away. To keep material for reuse, save it in your Learning Journey instead.</p>
+          <p className="text-text-2 mt-2">Upload your study material and we'll save it to your library so you can configure and generate a quiz at your own pace.</p>
         </div>
 
         {error && (
@@ -130,10 +115,6 @@ export default function Upload({ data }: { data: UploadData }) {
           <form ref={formRef} action="/upload" method="post" encType="multipart/form-data" onSubmit={onSubmit}>
             <input type="hidden" name="csrf_token" value={csrfToken()} />
             <input ref={extractedRef} type="hidden" name="extracted_text" />
-            {/* Always mounted so the config survives the switch to <Pipeline />. */}
-            <input type="hidden" name="num_questions" value={numQuestions} />
-            <input type="hidden" name="difficulty" value={difficulty} />
-            <input type="hidden" name="timer" value={timerMinutes} />
 
             {!busy ? (
               <>
@@ -171,32 +152,8 @@ export default function Upload({ data }: { data: UploadData }) {
                   />
                 </label>
 
-                <div className="grid sm:grid-cols-3 gap-4 mt-5">
-                  <div>
-                    <label htmlFor="num-questions" className="text-text-2 text-sm block mb-1.5">Questions</label>
-                    <input id="num-questions" type="number" min={1} max={30} value={numQuestions}
-                      onChange={(e) => setNumQuestions(clampInt(e.target.value, 1, 30, 10))}
-                      className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
-                  </div>
-                  <div>
-                    <label htmlFor="difficulty" className="text-text-2 text-sm block mb-1.5">Difficulty</label>
-                    <select id="difficulty" value={difficulty} onChange={(e) => setDifficulty(e.target.value)}
-                      className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50">
-                      <option value="easy">Easy</option>
-                      <option value="medium">Medium</option>
-                      <option value="hard">Hard</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="timer" className="text-text-2 text-sm block mb-1.5">Time limit (minutes)</label>
-                    <input id="timer" type="number" min={1} max={180} value={timerMinutes}
-                      onChange={(e) => setTimerMinutes(clampInt(e.target.value, 1, 180, 10))}
-                      className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
-                  </div>
-                </div>
-
-                <Button type="submit" size="lg" className="w-full mt-6" leftIcon={<Sparkles className="w-4 h-4" />}>
-                  Generate Quiz
+                <Button type="submit" size="lg" className="w-full mt-6" leftIcon={<UploadCloud className="w-4 h-4" />}>
+                  Upload &amp; Continue
                 </Button>
               </>
             ) : (
@@ -240,7 +197,7 @@ function Pipeline({ stage }: { stage: number }) {
       </div>
       <AnimatePresence>
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-text-3 text-sm mt-6">
-          Generating your practice set with AI…
+          Saving your resource to the library…
         </motion.p>
       </AnimatePresence>
     </div>

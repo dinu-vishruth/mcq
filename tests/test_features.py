@@ -14,6 +14,7 @@ import os
 import json
 import sqlite3
 import tempfile
+import time
 import unittest
 
 _TMP = tempfile.mkdtemp(prefix="mcq_feat_")
@@ -80,29 +81,29 @@ class Base(unittest.TestCase):
         c.post("/login", data={"username": username, "password": "password123"})
 
 
-class TestInstantUploadDoesNotSaveResource(Base):
-    """Instant-quiz upload generates a quiz but must NOT store a Learning Journey
-    resource. Only /ingest_resource (explicit 'Add Resource') saves to the library."""
+class TestUploadAutoSavesResource(Base):
+    """Upload saves the resource to the library and redirects to the MakeQuiz page
+    where the user configures difficulty, question count, and timer before generating."""
 
-    def test_upload_generates_quiz_without_saving_resource(self):
+    def test_upload_saves_resource_and_redirects_to_knowledge(self):
         c = self._client_factory()
         self._seed_and_login(c, "ku1")
         r = c.post("/upload", data={
             "extracted_text": "Deadlocks occur when two transactions each wait for the other. " * 20,
-            "title": "One-off Quiz Material", "num_questions": "2", "difficulty": "medium", "timer": "10",
+            "title": "One-off Quiz Material",
         })
         self.assertEqual(r.status_code, 302)
-        self.assertIn("/mcq_test", r.headers["Location"])
+        self.assertIn("/knowledge", r.headers["Location"])
 
-        # The one-off material must NOT appear as a saved resource.
+        # The material is automatically saved as a resource.
         items = c.get("/api/knowledge").get_json()["items"]
-        self.assertFalse(any(it["title"] == "One-off Quiz Material" for it in items),
-                         f"instant-quiz upload should not be saved: {items}")
+        self.assertTrue(any(it["title"] == "One-off Quiz Material" for it in items),
+                        f"upload should be saved to library: {items}")
 
 
 class TestStoreOnlyResourceUpload(Base):
     """Learning Journey's Add Resource flow: /ingest_resource stores + indexes a
-    document WITHOUT generating a quiz, and redirects to the library."""
+    document WITHOUT generating a quiz, and redirects straight to practice."""
 
     def _count_sessions(self):
         conn = sqlite3.connect(_DB)
@@ -120,9 +121,9 @@ class TestStoreOnlyResourceUpload(Base):
             "extracted_text": "Normalization reduces redundancy across relational tables. " * 20,
             "title": "DBMS Normalization",
         })
-        # Redirects to the library, NOT to a quiz.
+        # Redirects to practice/journey, NOT directly to a quiz.
         self.assertEqual(r.status_code, 302)
-        self.assertIn("/journey", r.headers["Location"])
+        self.assertTrue("/practice" in r.headers["Location"] or "/journey" in r.headers["Location"])
         self.assertNotIn("/mcq_test", r.headers["Location"])
 
         # No quiz session was created by storing a resource.
@@ -135,7 +136,34 @@ class TestStoreOnlyResourceUpload(Base):
     def test_ingest_resource_requires_login(self):
         r = self._client_factory().post("/ingest_resource", data={"extracted_text": "x"})
         self.assertEqual(r.status_code, 302)
+        self.assertNotIn("/practice", r.headers["Location"])
         self.assertNotIn("/journey", r.headers["Location"])  # bounced to home
+
+    def test_ingest_resource_returns_fast_without_blocking_on_indexing(self):
+        """Saving to the library should not block the user on embeddings."""
+        c = self._client_factory()
+        self._seed_and_login(c, "bg1")
+
+        import core.services.ingestion_service as ing
+        original = ing.ingest_document
+
+        def slow_ingest(*args, **kwargs):
+            time.sleep(0.8)
+            return {"document_id": 99, "reused": False, "chunk_count": 1, "embed_stats": None}
+
+        try:
+            ing.ingest_document = slow_ingest
+            start = time.perf_counter()
+            r = c.post("/ingest_resource", data={
+                "extracted_text": "Background indexing should not block the redirect. " * 20,
+                "title": "Background Test",
+            })
+            elapsed = time.perf_counter() - start
+            self.assertEqual(r.status_code, 302)
+            self.assertIn("/journey", r.headers["Location"])
+            self.assertLess(elapsed, 0.5, "save route should return immediately without waiting for indexing")
+        finally:
+            ing.ingest_document = original
 
     def test_same_content_saved_separately_for_each_owner(self):
         """Dedup is per owner, so the 2nd uploader still gets their own resource.
