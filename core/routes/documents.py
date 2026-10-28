@@ -96,11 +96,6 @@ def _extract_upload_text(form, files):
 
 @documents_bp.route("/ingest_resource", methods=["POST"])
 def ingest_resource():
-    """Store + index an uploaded document as a saved resource — WITHOUT
-    generating a quiz. Backs the Learning Journey 'Add Resource' page. On
-    success it redirects to /journey (the library), never to a quiz. Ingestion
-    failure here is a real error (unlike /upload where it's best-effort), since
-    storing the resource is the whole point of this route."""
     if not session.get("user_id"):
         return redirect(url_for("auth.home"))
 
@@ -111,12 +106,13 @@ def ingest_resource():
 
     try:
         from core.services.ingestion_service import ingest_document
-        ingest_document(text, owner=session.get("username", ""), title=title, source_type=source_ext)
+        res = ingest_document(text, owner=session.get("username", ""), title=title, source_type=source_ext)
     except Exception as e:
         return render_template("add_resource.html",
                                error=f"Could not save this resource: {str(e)}. Please try another file.")
 
-    return redirect(url_for("student.journey"))
+    doc_id = res.get("document_id") if isinstance(res, dict) else None
+    return redirect(f"/practice?doc={doc_id}" if doc_id else url_for("student.journey"))
 
 
 @documents_bp.route("/upload", methods=["GET", "POST"])
@@ -144,10 +140,6 @@ def upload():
         return render_template("upload.html", error=str(ve))
 
     # Rate limiting on MCQ Generation — protects the LLM from request bursts.
-    # Only counts sessions that actually triggered generation: weak-topic REVIEW
-    # sessions (difficulty='review') are rebuilt from stored data with no LLM
-    # call, so they must not count against this limit. Configurable + lenient by
-    # default so a single user iterating on their own material isn't blocked.
     cooldown = config.GENERATION_COOLDOWN_SECONDS
     max_per_window = config.GENERATION_MAX_PER_5MIN
     if cooldown > 0:
@@ -175,9 +167,13 @@ def upload():
     except _ExtractError as e:
         return render_template("upload.html", error=str(e))
 
-    # NOTE: the instant-quiz upload does NOT save a Learning Journey resource.
-    # Only documents the user explicitly adds via /ingest_resource are stored in
-    # their library. This keeps one-off quiz material out of the saved resources.
+    doc_id = None
+    try:
+        from core.services.ingestion_service import ingest_document
+        doc_res = ingest_document(text, owner=session.get("username", ""), title=source_title, source_type=source_ext)
+        doc_id = doc_res.get("document_id") if isinstance(doc_res, dict) else None
+    except Exception as exc:
+        print(f"[upload] auto-ingest note: {exc}")
 
     try:
         mcqs = mcq_generator.generate_mcqs(text, num_questions=num_questions, difficulty=difficulty)
@@ -194,6 +190,7 @@ def upload():
         difficulty=difficulty,
         timer=timer_seconds,
         mcqs=mcqs,
+        document_id=doc_id,
     )
     # Skip preview page - go directly to quiz. Only the session_key goes in the
     # cookie; mcqs + timer are re-fetched from the DB (they're already persisted

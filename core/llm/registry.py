@@ -4,8 +4,7 @@ Provider selection. `get_llm()` returns a cached LLMProvider chosen from config.
 Resolution order:
   1. If LLM_PROVIDER is explicit (groq/xai/openai/gemini/anthropic), use it.
   2. If "auto" (default), reproduce the legacy behaviour exactly:
-       key starts with "gsk_"  -> Groq  (llama-3.3-70b-versatile unless a
-                                          llama model is already configured)
+       key starts with "gsk_"  -> Groq (with a current Groq model)
        otherwise               -> xAI (Grok) at the corrected api.x.ai host
 This means an unchanged .env keeps working identically, minus the old
 api.xai.com typo which previously broke every non-Groq key.
@@ -25,7 +24,7 @@ _cached: LLMProvider | None = None
 # configured model name clearly doesn't belong to (e.g. a llama model name left
 # over in LLM_MODEL while the only key available is an Anthropic one).
 _DEFAULT_MODELS = {
-    "groq": "llama-3.1-8b-instant",
+    "groq": "openai/gpt-oss-20b",
     "xai": "grok-2-1212",
     "openai": "gpt-4o-mini",
     "gemini": "gemini-1.5-flash",
@@ -35,14 +34,15 @@ _DEFAULT_MODELS = {
 #: Substring that should appear in a model name for each provider. Used only to
 #: decide whether the configured LLM_MODEL is plausible for the chosen provider.
 _MODEL_HINTS = {
-    "groq": ("llama", "mixtral", "gemma", "qwen", "deepseek", "kimi", "compound", "allam"),
+    "groq": ("llama", "mixtral", "gemma", "qwen", "deepseek", "kimi", "compound", "allam", "gpt-oss"),
     "xai": ("grok",),
     "openai": ("gpt", "o1", "o3", "o4"),
     "gemini": ("gemini",),
     "anthropic": ("claude",),
 }
 
-# Decommissioned or severely rate-limited (low TPM) models on free tier that should map to active high-throughput default
+# Retired Groq models map to the current default. Active GPT-OSS models must
+# remain selectable; a rate limit is not a model deprecation.
 _DEPRECATED_MODELS = {
     "llama-3.3-70b-versatile",
     "llama-3.1-70b-versatile",
@@ -50,14 +50,12 @@ _DEPRECATED_MODELS = {
     "llama3-8b-8192",
     "llama3-70b-8192",
     "mixtral-8x7b-32768",
-    "openai/gpt-oss-120b",
-    "openai/gpt-oss-20b",
 }
 
 
 def _model_for(provider_id: str, model: str) -> str:
     """Keep `model` when it plausibly belongs to `provider_id`, else the default."""
-    if model in _DEPRECATED_MODELS:
+    if provider_id == "groq" and model in _DEPRECATED_MODELS:
         return _DEFAULT_MODELS.get(provider_id, model)
     hints = _MODEL_HINTS.get(provider_id, ())
     if model and any(h in model.lower() for h in hints):
@@ -105,6 +103,9 @@ def build_llm() -> LLMProvider:
 
     if provider == "auto":
         provider, model = _resolve_auto(key, model)
+    elif provider == "groq":
+        # Explicit selection must migrate stale GROQ_MODEL/LLM_MODEL values too.
+        model = _model_for(provider, model)
 
     if provider in ("groq", "xai", "openai", "together"):
         return OpenAICompatibleProvider(key, model, timeout, temp, provider_id=provider)

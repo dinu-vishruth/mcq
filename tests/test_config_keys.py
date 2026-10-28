@@ -17,6 +17,7 @@ empty key whenever only a provider-specific key was configured.
 import os
 import sys
 import unittest
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -132,7 +133,7 @@ class TestProviderAutoDetection(unittest.TestCase):
         # A leftover LLM_MODEL=grok-... must not be sent to Groq, which would 404.
         provider, model = registry._resolve_auto("gsk_x", "grok-2-1212")
         self.assertEqual(provider, "groq")
-        self.assertEqual(model, "llama-3.1-8b-instant")
+        self.assertEqual(model, "openai/gpt-oss-20b")
 
     def test_xai_and_openai_and_anthropic_prefixes(self):
         self.assertEqual(registry._resolve_auto("xai-x", "grok-2-1212")[0], "xai")
@@ -153,6 +154,40 @@ class TestProviderAutoDetection(unittest.TestCase):
     def test_model_kept_when_plausible_for_provider(self):
         _, model = registry._resolve_auto("gsk_x", "qwen/qwen3.6-27b")
         self.assertEqual(model, "qwen/qwen3.6-27b")
+
+
+class TestGroqModelMigration(unittest.TestCase):
+    def test_retired_models_migrate_for_auto_and_explicit_groq(self):
+        for provider in ("auto", "groq"):
+            for model in registry._DEPRECATED_MODELS:
+                with self.subTest(provider=provider, model=model), patch.multiple(
+                    config, LLM_PROVIDER=provider, LLM_API_KEY="gsk_test", LLM_MODEL=model
+                ):
+                    llm = registry.build_llm()
+                    self.assertEqual(llm.provider_id, "groq")
+                    self.assertEqual(llm.model, "openai/gpt-oss-20b")
+                    self.assertEqual(llm.base_url, "https://api.groq.com/openai/v1")
+
+    def test_active_gpt_oss_models_are_preserved(self):
+        for provider in ("auto", "groq"):
+            for model in ("openai/gpt-oss-20b", "openai/gpt-oss-120b"):
+                with self.subTest(provider=provider, model=model), patch.multiple(
+                    config, LLM_PROVIDER=provider, LLM_API_KEY="gsk_test", LLM_MODEL=model
+                ):
+                    self.assertEqual(registry.build_llm().model, model)
+
+    def test_generation_sends_replacement_model_to_groq(self):
+        response = Mock(status_code=200)
+        response.json.return_value = {"choices": [{"message": {"content": '{"questions": []}'}}]}
+        with patch.multiple(
+            config, LLM_PROVIDER="auto", LLM_API_KEY="gsk_test",
+            LLM_MODEL="llama-3.1-8b-instant"
+        ), patch("core.llm.openai_compatible.requests.post", return_value=response) as post:
+            llm = registry.build_llm()
+            self.assertEqual(llm.complete_json([{"role": "user", "content": "Generate JSON quiz questions"}]),
+                             {"questions": []})
+            self.assertEqual(post.call_args.args[0], "https://api.groq.com/openai/v1/chat/completions")
+            self.assertEqual(post.call_args.kwargs["json"]["model"], "openai/gpt-oss-20b")
 
 
 class TestGenerationGuard(unittest.TestCase):
