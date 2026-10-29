@@ -16,6 +16,13 @@ import sqlite3
 
 import config
 
+from core.models import pg_adapter
+
+#: True when DATABASE_URL points the app at Postgres. SQLite remains the
+#: default backend; Postgres is only used when the operator sets DATABASE_URL.
+def is_postgres() -> bool:
+    return bool(config.DATABASE_URL)
+
 #: Seconds to wait for a write lock before raising. SQLite's 5s default is
 #: guessable: a long generation writes while its own request is still open, so
 #: concurrent requests need to queue rather than fail with "database is locked".
@@ -36,5 +43,14 @@ def open_connection(db_path: str) -> sqlite3.Connection:
     return conn
 
 
-def get_db() -> sqlite3.Connection:
+def get_db():
+    """Return a connection for the configured backend.
+
+    Postgres returns the sqlite3-compatible adapter from pg_adapter (same
+    execute/fetchone/Row surface, so repositories are unchanged); SQLite keeps
+    the native connection. Code must not commit to sqlite3-only APIs here:
+    repositories are shared by both backends.
+    """
+    if is_postgres():
+        return pg_adapter.open_postgres(config.DATABASE_URL)
     return open_connection(config.DB_PATH)

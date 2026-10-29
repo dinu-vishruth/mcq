@@ -84,7 +84,23 @@ def init_db() -> None:
     afterwards (the test suite, a CLI override) had its tables created in one
     database while queries ran against another -- surfacing as
     "no such table: login_attempts".
+
+    With DATABASE_URL set the whole boot schema comes from the numbered SQL
+    migrations in database/migrations/ (Postgres dialect); SQLite keeps the
+    programmatic path below. Nothing in Production-Persistence changes the local
+    development flow.
     """
+    from core.models import db as db_mod
+
+    if db_mod.is_postgres():
+        conn = db_mod.get_db()
+        try:
+            from core.models.sql_migrations import run_sql_migrations
+            run_sql_migrations(conn, "postgres")
+        finally:
+            conn.close()
+        return
+
     db_path = config.DB_PATH
     db_dir = os.path.dirname(db_path)
     if db_dir and not os.path.exists(db_dir):

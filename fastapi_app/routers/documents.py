@@ -33,6 +33,31 @@ from ..uploads import FileStorageAdapter, size_of
 
 router = APIRouter(tags=["documents"])
 
+
+def persist_original_file(user: str, upload: UploadFile, source_ext: str) -> None:
+    """Keep the original upload in the object store (best effort, never fatal).
+
+    Text extraction works straight out of the request stream, so without this
+    step the file bytes are gone after the request ends -- on serverless hosts
+    the filesystem is wiped right after. Saving via core.storage keeps the bytes
+    reachable from later code (re-extraction, debugging) and becomes durable in
+    production when S3_UPLOAD_BUCKET is set.
+
+    Deliberately non-fatal: extraction already succeeded, so a storage hiccup
+    must not turn a completed upload into an error for the user. Local dev keeps
+    a plain disk copy under UPLOAD_FOLDER.
+    """
+    if upload is None or not upload.filename:
+        return
+    try:
+        from core.storage import get_upload_store
+
+        key = f"{user}/{uuid.uuid4().hex}-{os.path.basename(upload.filename)}"
+        upload.file.seek(0)
+        get_upload_store().save(key, upload.file, size_hint=size_of(upload))
+    except Exception as exc:
+        print(f"[WARNING] Could not persist original upload '{upload.filename}': {exc}")
+
 #: App-enforced upload ceiling. On Vercel the platform rejected larger bodies
 #: before our code ran; on a persistent host nothing does, so this is what keeps
 #: a request inside MAX_REQUEST_BODY_BYTES (which CSRFMiddleware buffers whole).
@@ -130,6 +155,7 @@ def ingest_resource(
     # had never been stored -- which later failed to generate a quiz. Being sync
     # also means a real failure shows up as an error here instead of as a phantom
     # entry. This handler is a plain def, so the work runs in the threadpool.
+    persist_original_file(user.username, file, source_ext)
     from core.services.ingestion_service import ingest_document
 
     try:
@@ -171,6 +197,7 @@ def upload(
         from core.services.ingestion_service import ingest_document
         doc_res = ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
         doc_id = doc_res.get("document_id") if isinstance(doc_res, dict) else None
+        persist_original_file(user.username, file, source_ext)
     except Exception as exc:
         return reject(f"Could not save this resource: {exc}. Please try another file.")
 

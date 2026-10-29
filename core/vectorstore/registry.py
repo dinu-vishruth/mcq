@@ -42,6 +42,20 @@ def build_vector_store() -> VectorStore:
             from core.vectorstore.sqlite_numpy import SqliteNumpyStore
             return SqliteNumpyStore(model_id, dim)
 
+    if choice == "pgvector":
+        # Degrades the same way chroma/faiss do: a misconfigured Postgres or a
+        # missing pgvector extension must not take down generation, and the
+        # warning should name what was actually attempted.
+        if not config.DATABASE_URL:
+            print("[WARNING] VECTOR_STORE=pgvector but DATABASE_URL is not set; "
+                  "using the sqlite vector store.")
+        else:
+            try:
+                from core.vectorstore.pgvector_store import PgVectorStore
+                return PgVectorStore(model_id, dim)
+            except Exception as e:
+                print(f"[WARNING] pgvector unavailable ({e}); falling back to sqlite store.")
+
     from core.vectorstore.sqlite_numpy import SqliteNumpyStore
     return SqliteNumpyStore(model_id, dim)
 

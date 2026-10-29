@@ -112,6 +112,14 @@ UPLOAD_FOLDER = env_str("UPLOAD_FOLDER", default=os.path.join(DATA_DIR, "uploads
 REPORTS_DIR = env_str("REPORTS_DIR", default=os.path.join(DATA_DIR, "reports"))
 ALLOWED_EXT = {"pdf", "docx", "txt", "pptx"}
 
+# --- Persistent database (production) ---------------------------------------
+# When DATABASE_URL is set (e.g. postgresql://user:pass@host/db, the format
+# every managed Postgres provider hands you), the repository layer talks to
+# Postgres through core/models/pg_adapter.py instead of SQLite. Left unset, the
+# app keeps its local-dev SQLite file at DB_PATH. DB_PATH is ignored while a
+# DATABASE_URL is present.
+DATABASE_URL = env_str("DATABASE_URL", default="")
+
 #: Ceiling on a buffered request body. Vercel enforced ~4.5MB for us before our
 #: own code ran; a persistent host applies no such cap, and CSRFMiddleware has to
 #: hold the whole body in memory to read the token and replay it downstream. On a
@@ -280,6 +288,9 @@ EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "128"))
 # "chroma" (default locally) -> ChromaDB persistent client
 # "sqlite"           -> vectors as BLOBs in mcq.db + numpy cosine (always safe)
 # "faiss"            -> FAISS index (opt-in; needs a compatible wheel)
+# "pgvector"         -> Postgres + pgvector column; requires DATABASE_URL and a
+#                       server with the pgvector extension. Falls back to the
+#                       sqlite store with a warning otherwise.
 # Vercel's read-only FS forces sqlite in the registry regardless of this value.
 # Deployed hosts default to sqlite too: chromadb is deliberately not in
 # requirements.txt (bundle size), so a "chroma" default would only ever reach
@@ -287,6 +298,18 @@ EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "128"))
 # one the config claims.
 VECTOR_STORE = os.getenv("VECTOR_STORE", "sqlite" if IS_DEPLOYED else "chroma").strip().lower()
 CHROMA_PATH = env_str("CHROMA_PATH", default=os.path.join(DATA_DIR, "chroma_db"))
+
+# --- Uploaded-file storage -------------------------------------------------
+# "local"  -> UPLOAD_FOLDER on disk (dev / single-host deployments)
+# "s3"     -> any S3-compatible object store (AWS S3, R2, MinIO). Requires the
+#             optional boto3 dependency.
+# "auto"   -> "s3" when an S3_UPLOAD_BUCKET is configured and boto3 is
+#             importable, else "local".
+UPLOAD_BACKEND = env_str("UPLOAD_BACKEND", default="auto").strip().lower()
+S3_UPLOAD_BUCKET = env_str("S3_UPLOAD_BUCKET")
+S3_UPLOAD_PREFIX = env_str("S3_UPLOAD_PREFIX", default="uploads")
+# Endpoint URL for non-AWS S3-compatible stores (R2/MinIO); empty = AWS itself.
+S3_UPLOAD_ENDPOINT = env_str("S3_UPLOAD_ENDPOINT")
 
 # --- Chunking -------------------------------------------------------------
 # Larger chunks mean fewer embeddings and faster indexing. The overlap stays
