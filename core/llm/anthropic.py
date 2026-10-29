@@ -69,6 +69,7 @@ class AnthropicProvider(LLMProvider):
 
         try:
             data = resp.json()
+            self.last_usage = data.get("usage")
             return "".join(block.get("text", "") for block in data["content"]).strip()
         except (KeyError, IndexError, ValueError) as e:
             raise LLMError(f"Unexpected Anthropic response shape: {e}")

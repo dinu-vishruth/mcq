@@ -144,7 +144,7 @@ DATABASE_URL = env_str("DATABASE_URL", default="")
 #: own code ran; a persistent host applies no such cap, and CSRFMiddleware has to
 #: hold the whole body in memory to read the token and replay it downstream. On a
 #: 512MB instance an unbounded buffer is an outage, so the app enforces its own.
-#: Keep this above the upload limit in routers/documents.py.
+#: Keep this above MAX_UPLOAD_BYTES.
 MAX_REQUEST_BODY_BYTES = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(8 * 1024 * 1024)))
 
 #: Upload ceilings, enforced before any parsing work happens. The request-body
@@ -160,6 +160,16 @@ MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "300"))
 # only created when SEED_DEMO_USERS is explicitly true; local development keeps
 # the historical behaviour so the demo flow still works out of the box.
 SEED_DEMO_USERS = os.getenv("SEED_DEMO_USERS", "").strip().lower() in ("1", "true", "yes", "on")
+
+# --- Observability ----------------------------------------------------------
+# JSON is the default because hosted log stores are queried field-by-field; set
+# LOG_FORMAT=text for a human-readable local stream. No prompt/document text is
+# logged either way -- see docs/observability.md.
+LOG_LEVEL = env_str("LOG_LEVEL", default="INFO").upper()
+LOG_FORMAT = env_str("LOG_FORMAT", default="json").lower()
+#: Optional "module:function" callable receiving every structured event. This is
+#: the integration point for LangSmith/Langfuse/OTLP without adding an SDK here.
+OBSERVABILITY_TRACE_HOOK = env_str("OBSERVABILITY_TRACE_HOOK", default="")
 
 # ---------------------------------------------------------------------------
 # Agentic AI + RAG configuration (Phase 1+). All additive; defaults preserve

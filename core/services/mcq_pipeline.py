@@ -27,6 +27,7 @@ from core.agents.planner import PlannerAgent
 from core.agents.quality_assurance import QualityAssuranceAgent
 from core.agents.question import InsufficientContextError, QuestionAgent
 from core.agents.retriever import RetrieverAgent
+from core.observability import log_event, timed
 from core.services.ingestion_service import ingest_document
 
 
@@ -72,28 +73,40 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
     max_attempts = _max_attempts(num_questions)
     budget = deadline_seconds if deadline_seconds is not None else config.PIPELINE_DEADLINE_SECONDS
     deadline = time.monotonic() + max(1, budget - config.LLM_TIMEOUT)
+    started = time.perf_counter()
 
     while len(collected) < num_questions and attempts < max_attempts:
         if attempts >= 1 and time.monotonic() >= deadline:
+            log_event("pipeline.deadline_reached", attempts=attempts,
+                      collected=len(collected), requested=num_questions)
             break  # out of time budget; return what we have
         attempts += 1
         need = num_questions - len(collected)
 
-        raw = question_agent.run(context, need, difficulty)  # may raise InsufficientContextError
+        with timed("question", attempt=attempts, requested=need) as stage:
+            raw = question_agent.run(context, need, difficulty)  # may raise InsufficientContextError
+            stage["mcqs"] = len(raw) if isinstance(raw, list) else 0
 
         # Structural QA (deterministic contract guard).
-        valid, _rejected = qa.run(raw)
+        with timed("quality_assurance", attempt=attempts) as stage:
+            valid, rejected = qa.run(raw)
+            stage["valid"] = len(valid)
+            stage["rejected"] = len(rejected)
 
         # Fact verification (the new grounding gate) before we accept anything.
         if config.FACT_VERIFICATION_ENABLED and valid:
-            verified, rejected = verifier.run(valid, context)
-            print(f"[mcq_pipeline] Fact Checker: {len(verified)} PASS, {len(rejected)} rejected (attempt {attempts})")
+            with timed("fact_verification", attempt=attempts) as stage:
+                verified, rejected = verifier.run(valid, context)
+                stage["passed"] = len(verified)
+                stage["rejected"] = len(rejected)
             valid = verified
         else:
-            print(f"[mcq_pipeline] Fact Checker: skipped (attempt {attempts})")
+            log_event("stage.fact_verification", attempt=attempts, status="skipped")
 
         # Difficulty match (discard off-level questions).
-        graded = difficulty_agent.run(valid, difficulty)
+        with timed("difficulty", attempt=attempts) as stage:
+            graded = difficulty_agent.run(valid, difficulty)
+            stage["matched"] = len(graded["matched"])
         collected.extend(graded["matched"])
 
         # De-duplicate by question text across attempts.
@@ -111,7 +124,9 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
             except Exception:
                 pass  # progress reporting must never fail generation
 
-    print(f"[mcq_pipeline] Collected {len(collected)}/{num_questions} MCQs in {attempts} attempt(s)")
+    log_event("pipeline.complete", requested=num_questions, collected=len(collected),
+              attempts=attempts, difficulty=difficulty,
+              duration_ms=round((time.perf_counter() - started) * 1000, 2))
     return collected[:num_questions]
 
 
@@ -140,8 +155,8 @@ def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medi
         return _legacy_fallback(text, num_questions, difficulty)
 
     stats = retriever.assess(hits)
-    print(f"[mcq_pipeline] Retriever: {stats['count']} chunks, avg similarity "
-          f"{stats['avg_score']:.3f}{' (low confidence)' if stats['low_confidence'] else ''}")
+    log_event("retrieval.complete", document_id=document_id, chunks=stats["count"],
+              avg_score=stats["avg_score"], low_confidence=stats["low_confidence"])
 
     # 4. Build token-budgeted context (retrieved chunks only).
     context = ContextBuilderAgent().run(hits)
@@ -151,7 +166,8 @@ def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medi
     #     the generator invent facts.
     if config.CONTEXT_VALIDATION_ENABLED:
         verdict = ContextValidationAgent().run(context, num_questions, difficulty)
-        print(f"[mcq_pipeline] Context Validator: {'PASS' if verdict['sufficient'] else 'INSUFFICIENT'}")
+        log_event("context.validated", sufficient=verdict["sufficient"],
+                  reason=verdict.get("reason", ""))
         if not verdict["sufficient"]:
             return _legacy_fallback(text, num_questions, difficulty,
                                     reason=f"insufficient context: {verdict.get('reason', '')}")
@@ -192,8 +208,8 @@ def generate_from_document(document_id: int, num_questions: int = 5,
         raise ValueError("This knowledge source has no indexed content to practice from yet.")
 
     stats = retriever.assess(hits)
-    print(f"[mcq_pipeline] Retriever: {stats['count']} chunks, avg similarity "
-          f"{stats['avg_score']:.3f}{' (low confidence)' if stats['low_confidence'] else ''}")
+    log_event("retrieval.complete", document_id=document_id, chunks=stats["count"],
+              avg_score=stats["avg_score"], low_confidence=stats["low_confidence"])
 
     context = ContextBuilderAgent().run(hits)
 
@@ -216,7 +232,8 @@ def generate_from_document(document_id: int, num_questions: int = 5,
     # rather than silently producing hallucinated questions.
     if config.CONTEXT_VALIDATION_ENABLED:
         verdict = ContextValidationAgent().run(context, num_questions, difficulty)
-        print(f"[mcq_pipeline] Context Validator: {'PASS' if verdict['sufficient'] else 'INSUFFICIENT'}")
+        log_event("context.validated", sufficient=verdict["sufficient"],
+                  reason=verdict.get("reason", ""))
         if not verdict["sufficient"]:
             raise ValueError("This source doesn't have enough indexed content to generate grounded "
                              "questions. Try a broader topic or add more material.")
@@ -241,14 +258,14 @@ def _legacy_from_context(context, num_questions, difficulty) -> list[dict]:
     RAG verification loop). The context is already retrieved + budgeted, so we
     feed it straight to the legacy generator.
     """
-    print(f"[mcq_pipeline] legacy single-shot from context ({len(context)} chars)")
+    log_event("pipeline.legacy_from_context", context_chars=len(context))
     return _legacy_fallback(context, num_questions, difficulty)
 
 
 def _legacy_fallback(text, num_questions, difficulty, reason: str = "") -> list[dict]:
     """Use the original single-shot generator. Import locally to avoid a cycle."""
     if reason:
-        print(f"[mcq_pipeline] RAG fallback to legacy generator: {reason}")
+        log_event("pipeline.legacy_fallback", reason=reason)
     # Temporarily force legacy to avoid recursion back into this pipeline.
     prev = config.AI_PIPELINE
     config.AI_PIPELINE = "legacy"

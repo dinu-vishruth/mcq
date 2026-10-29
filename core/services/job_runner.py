@@ -14,8 +14,11 @@ because results overwrite the same row id.
 from __future__ import annotations
 
 import json
+import logging
+import time
 
 import config
+from core.observability import log_event, timed
 from core.repositories import job_repo
 
 
@@ -53,10 +56,14 @@ def create_job(*, user_id: int, username: str, document_id: int, num_questions: 
         # request cap: a queued job isn't bound by maxDuration.
         "deadline_seconds": deadline_seconds or config.GENERATION_JOB_DEADLINE_SECONDS,
     }
-    return job_repo.create(
+    job_id = job_repo.create(
         user_id=user_id, username=username, document_id=document_id,
         params=params, total=num_questions,
     )
+    log_event("job.created", job_id=job_id, user_id=user_id,
+              document_id=document_id, requested=num_questions,
+              deadline_seconds=params["deadline_seconds"])
+    return job_id
 
 
 def enqueue_job(job_id: str) -> bool:
@@ -68,9 +75,11 @@ def enqueue_job(job_id: str) -> bool:
         queue = _queue()
         timeout = json.loads(job["params_json"]).get("deadline_seconds", 900) + 60
         queue.enqueue(run_generation_job, job_id, job_timeout=timeout)
+        log_event("job.enqueued", job_id=job_id, queue=config.QUEUE_NAME)
         return True
     except Exception as exc:
-        print(f"[jobs] Could not enqueue {job_id} ({exc}); running inline.")
+        log_event("job.enqueue_failed", level=logging.WARNING, job_id=job_id,
+                  error_type=type(exc).__name__, error=str(exc))
         return False
 
 
@@ -91,15 +100,20 @@ def run_generation_job(job_id: str) -> None:
     deadline = int(params.get("deadline_seconds") or config.GENERATION_JOB_DEADLINE_SECONDS)
 
     job_repo.set_running(job_id)
+    started = time.perf_counter()
+    log_event("job.started", job_id=job_id, document_id=job["document_id"],
+              requested=num_questions, difficulty=difficulty, deadline_seconds=deadline)
     try:
-        mcqs = generate_from_document(
-            job["document_id"],
-            num_questions=num_questions,
-            difficulty=difficulty,
-            topic=topic,
-            deadline_seconds=deadline,
-            on_progress=lambda n: job_repo.set_progress(job_id, n),
-        )
+        with timed("job.generate", job_id=job_id, document_id=job["document_id"]) as stage:
+            mcqs = generate_from_document(
+                job["document_id"],
+                num_questions=num_questions,
+                difficulty=difficulty,
+                topic=topic,
+                deadline_seconds=deadline,
+                on_progress=lambda n: job_repo.set_progress(job_id, n),
+            )
+            stage["mcqs"] = len(mcqs)
         if not mcqs:
             raise ValueError("No questions generated. Try different settings.")
 
@@ -112,6 +126,13 @@ def run_generation_job(job_id: str) -> None:
             "count": len(mcqs),
             "mcqs": mcqs,
         })
+        log_event("job.completed", job_id=job_id, document_id=job["document_id"],
+                  count=len(mcqs),
+                  duration_ms=round((time.perf_counter() - started) * 1000, 2))
     except Exception as exc:
         job_repo.set_failed(job_id, str(exc))
+        log_event("job.failed", level=logging.ERROR, job_id=job_id,
+                  document_id=job["document_id"], error_type=type(exc).__name__,
+                  error=str(exc),
+                  duration_ms=round((time.perf_counter() - started) * 1000, 2))
         raise

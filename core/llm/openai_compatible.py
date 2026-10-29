@@ -93,6 +93,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
         try:
             data = resp.json()
+            self.last_usage = data.get("usage")
             return data["choices"][0]["message"]["content"].strip()
         except (KeyError, IndexError, ValueError) as e:
             raise LLMError(f"Unexpected AI API response shape: {e}")

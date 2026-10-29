@@ -11,10 +11,12 @@ the same DATABASE_URL), then blocks on the configured queue.
 from __future__ import annotations
 
 import config
+from core.observability import configure_logging
 from core.services.job_runner import generation_backend
 
 
 def main() -> None:
+    configure_logging()
     if not config.REDIS_URL:
         raise SystemExit("REDIS_URL must be set to run the generation worker.")
     try:

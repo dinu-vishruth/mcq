@@ -26,6 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
 from config import IS_DEPLOYED, SECRET_KEY, UPLOAD_FOLDER
+from core.observability import RequestContextMiddleware, configure_logging
 
 from .database import init_db
 from .deps import RedirectException
@@ -49,7 +50,10 @@ def _log_llm_config() -> None:
     it fails boot here with one actionable line rather than surfacing later as a
     provider 404 on every generation request.
     """
+    import logging
+
     import config
+    from core.observability import log_event
 
     if config.llm_key_present():
         from core.llm import get_llm
@@ -58,18 +62,22 @@ def _log_llm_config() -> None:
         try:
             llm = get_llm()
         except LLMError as exc:
-            print(f"[startup] ERROR: LLM provider/model configuration rejected: {exc}")
+            log_event("llm.config_invalid", level=logging.ERROR, error=str(exc))
             raise
         except Exception as exc:  # e.g. an optional provider package is missing
-            print(f"[startup] WARNING: LLM key present but provider setup failed: {exc}")
+            log_event("llm.setup_failed", level=logging.WARNING, error=str(exc))
             return
-        print(f"[startup] LLM ready: provider={llm.provider_id} model={llm.model}")
+        log_event("llm.ready", provider=getattr(llm, "provider_id", config.LLM_PROVIDER),
+                  model=llm.model)
     else:
-        print(f"[startup] WARNING: {config.missing_key_message()}")
-        print("[startup] Quiz generation will fail until a key is set; the rest of the app works.")
+        log_event("llm.no_credentials", level=logging.WARNING,
+                  message=config.missing_key_message())
+        log_event("llm.quiz_unavailable", level=logging.WARNING,
+                  message="Quiz generation will fail until a key is set; the rest of the app works.")
 
 
 def create_app() -> FastAPI:
+    configure_logging()
     app = FastAPI(
         title="Examly",
         description="AI-powered MCQ generation and exam prep.",
@@ -95,6 +103,9 @@ def create_app() -> FastAPI:
     )
     if IS_DEPLOYED:
         app.add_middleware(HTTPSRedirectMiddleware)
+    # Added last = outermost: every request (including CSRF/redirect failures)
+    # gets a request id, an access log line, and a response header.
+    app.add_middleware(RequestContextMiddleware)
 
     # --- Static files -------------------------------------------------------
     # Mounted at the same prefix Flask served, so /static/dist/app.js and the

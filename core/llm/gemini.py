@@ -59,6 +59,7 @@ class GeminiProvider(LLMProvider):
 
         try:
             data = resp.json()
+            self.last_usage = data.get("usageMetadata")
             return data["candidates"][0]["content"]["parts"][0]["text"].strip()
         except (KeyError, IndexError, ValueError) as e:
             raise LLMError(f"Unexpected Gemini response shape: {e}")
