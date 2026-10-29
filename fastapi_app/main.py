@@ -6,7 +6,7 @@ and sees the request *first*. The adds below are therefore written in reverse of
 the execution order:
 
     execution order            added
-    1. HTTPSRedirect (Vercel)  last
+    1. HTTPSRedirect (deployed) last
     2. Session (decode cookie)  2nd
     3. CSRF (validate token)   first
 
@@ -25,15 +25,13 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from config import SECRET_KEY, UPLOAD_FOLDER
+from config import IS_DEPLOYED, SECRET_KEY, UPLOAD_FOLDER
 
 from .database import init_db
 from .deps import RedirectException
-from .middleware import CSRFMiddleware, HTTPSRedirectOnVercelMiddleware
+from .middleware import CSRFMiddleware, HTTPSRedirectMiddleware
 from .routers import api, auth, documents, google_auth, student, teacher
 from .templating import BASE_DIR
-
-IS_VERCEL = bool(os.environ.get("VERCEL"))
 
 #: 24h, matching the Flask PERMANENT_SESSION_LIFETIME.
 SESSION_MAX_AGE = 60 * 60 * 24
@@ -82,11 +80,11 @@ def create_app() -> FastAPI:
         secret_key=SECRET_KEY,
         max_age=SESSION_MAX_AGE,
         same_site="lax",
-        https_only=IS_VERCEL,
+        https_only=IS_DEPLOYED,
         session_cookie="session",
     )
-    if IS_VERCEL:
-        app.add_middleware(HTTPSRedirectOnVercelMiddleware)
+    if IS_DEPLOYED:
+        app.add_middleware(HTTPSRedirectMiddleware)
 
     # --- Static files -------------------------------------------------------
     # Mounted at the same prefix Flask served, so /static/dist/app.js and the

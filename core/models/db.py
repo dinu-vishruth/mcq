@@ -6,6 +6,9 @@ It reads config.DB_PATH at call time (not import time) so tests that repoint the
 DB continue to work. This module does NOT own schema creation for the legacy
 tables — app.init_db() remains the source of truth for those — it adds the new
 RAG/agentic tables via core.models.migrations, which is safe to call repeatedly.
+
+`open_connection()` is the single place a connection is built, so the bootstrap
+in fastapi_app/database.py gets the same locking behaviour as every repository.
 """
 from __future__ import annotations
 
@@ -13,8 +16,25 @@ import sqlite3
 
 import config
 
+#: Seconds to wait for a write lock before raising. SQLite's 5s default is
+#: guessable: a long generation writes while its own request is still open, so
+#: concurrent requests need to queue rather than fail with "database is locked".
+CONNECT_TIMEOUT_SECONDS = 30
+
+
+def open_connection(db_path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path, timeout=CONNECT_TIMEOUT_SECONDS)
+    conn.row_factory = sqlite3.Row
+    # WAL lets readers proceed while a writer commits. Persistent per file, but
+    # cheap to re-assert and correct even for a database created in journal mode.
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        # Filesystems without the locking WAL needs (some network mounts) fall
+        # back to the default journal instead of failing the request.
+        pass
+    return conn
+
 
 def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(config.DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return open_connection(config.DB_PATH)

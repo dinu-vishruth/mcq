@@ -261,12 +261,17 @@ async def achievements_data(user: CurrentApiUser, conn: Db):
 # --------------------------------------------------------------------------- #
 
 @router.post("/practice/generate")
-async def practice_generate(user: CurrentApiUser, payload: PracticeIn):
+def practice_generate(user: CurrentApiUser, payload: PracticeIn):
     """Generate an MCQ set from an indexed Knowledge document and create a session.
 
     Reuses the RAG/agent pipeline (falling back to legacy when a document has no
     retrievable context). Returns the session_key the Quiz screen loads via the
     existing /student_login flow.
+
+    Deliberately sync rather than async: the pipeline blocks on ``requests.post``,
+    and on a single-worker container an ``async def`` handler would hold the event
+    loop for the whole generation -- including the health check, which the host
+    reads as an unresponsive service. Sync handlers run in the threadpool.
     """
     from core.repositories import document_repo
 

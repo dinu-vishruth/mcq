@@ -9,7 +9,9 @@ from typing import Any, Awaitable, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import RedirectResponse, Response
+from starlette.responses import HTMLResponse, RedirectResponse, Response
+
+from config import MAX_REQUEST_BODY_BYTES
 
 from .security import (CSRF_EXEMPT_PATHS, SAFE_METHODS, csrf_failure_response,
                        validate_csrf)
@@ -34,6 +36,17 @@ def _replayer(messages: list[Message]) -> Receive:
             return {"type": "http.request", "body": b"", "more_body": False}
 
     return receive
+
+
+def _payload_too_large() -> HTMLResponse:
+    """413 in the same plain-HTML shape as the CSRF failure response."""
+    limit_mb = MAX_REQUEST_BODY_BYTES // (1024 * 1024)
+    return HTMLResponse(
+        "<h1>Payload Too Large</h1>"
+        f"<p>This request exceeds the {limit_mb} MB limit for uploads. "
+        "Please split the document or paste its text instead.</p>",
+        status_code=413,
+    )
 
 
 class CSRFMiddleware:
@@ -64,11 +77,19 @@ class CSRFMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Drain the request body into memory so it can be read twice. Vercel caps
-        # request bodies at 4.5MB, so the buffer is bounded.
+        # Drain the request body into memory so it can be read twice. Bounded by
+        # MAX_REQUEST_BODY_BYTES: no platform caps the body for us once this runs
+        # on a persistent host, and buffering a hostile upload would exhaust the
+        # instance's memory before any handler sees it.
         messages: list[Message] = []
+        buffered = 0
         while True:
             message = await receive()
+            if message["type"] == "http.request":
+                buffered += len(message.get("body", b""))
+                if buffered > MAX_REQUEST_BODY_BYTES:
+                    await _payload_too_large()(scope, receive, send)
+                    return
             messages.append(message)
             if message["type"] != "http.request" or not message.get("more_body", False):
                 break
@@ -80,8 +101,8 @@ class CSRFMiddleware:
         await self.app(scope, _replayer(messages), send)
 
 
-class HTTPSRedirectOnVercelMiddleware(BaseHTTPMiddleware):
-    """Force HTTPS behind Vercel's proxy.
+class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
+    """Force HTTPS behind a hosting proxy (Vercel or Render).
 
     The app itself always sees plain HTTP from the proxy, so the original scheme
     has to come from the X-Forwarded-Proto header rather than request.url.

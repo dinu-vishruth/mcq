@@ -1,9 +1,9 @@
-"""Document upload: instant quiz generation (/upload) and store-only (/ingest_resource).
+"""Document upload: /upload and /ingest_resource both store + index a document.
 
 Port of core/routes/documents.py. Both routes share one extraction helper so
-they behave identically on file handling; they differ in what happens next --
-/upload generates a quiz and never saves a resource, /ingest_resource saves a
-resource and never generates a quiz.
+they behave identically on file handling; they differ only in where the user
+lands afterwards -- /upload redirects to the library (/knowledge), where quiz
+settings are chosen, /ingest_resource back to the journey (/journey).
 
 mcq_generator is imported as a MODULE (not the function) so tests patching
 models.mcq_generator.generate_mcqs at the source take effect here. This is also
@@ -12,7 +12,6 @@ where AI_PIPELINE (legacy vs rag) is honoured, since generate_mcqs dispatches.
 from __future__ import annotations
 
 import os
-import threading
 import uuid
 from datetime import datetime
 from typing import Annotated
@@ -34,13 +33,11 @@ from ..uploads import FileStorageAdapter, size_of
 
 router = APIRouter(tags=["documents"])
 
-#: Vercel rejects request bodies over this size before our code ever runs, so we
-#: fail with a useful message rather than letting the platform return a raw 413.
+#: App-enforced upload ceiling. On Vercel the platform rejected larger bodies
+#: before our code ran; on a persistent host nothing does, so this is what keeps
+#: a request inside MAX_REQUEST_BODY_BYTES (which CSRFMiddleware buffers whole).
+#: Staying under it also means the user gets a useful message instead of a raw 413.
 MAX_UPLOAD_BYTES = int(4.5 * 1024 * 1024)
-
-MIN_QUESTIONS, MAX_QUESTIONS = 1, 30
-MIN_TIMER_MINUTES, MAX_TIMER_MINUTES = 1, 180
-VALID_DIFFICULTIES = ("easy", "medium", "hard")
 
 
 class ExtractError(Exception):
@@ -71,7 +68,7 @@ def extract_upload_text(
 
         if size_of(upload) > MAX_UPLOAD_BYTES:
             raise ExtractError(
-                "File is too large! Vercel limits file uploads to 4.5 MB. "
+                "File is too large! Uploads are limited to 4.5 MB. "
                 "Please compress or split your file."
             )
 
@@ -113,34 +110,30 @@ def extract_upload_text(
 
 
 @router.post("/ingest_resource")
-async def ingest_resource(
+def ingest_resource(
     request: Request,
     user: CurrentUser,
     file: UploadFile | None = None,
     title: Annotated[str, Form()] = "",
     extracted_text: Annotated[str, Form()] = "",
 ):
-    """Store + index a document as a saved resource, then route straight to practice."""
+    """Store + index a document as a saved resource, then return to the library."""
     try:
         text, resolved_title, source_ext = extract_upload_text(file, title, extracted_text)
     except ExtractError as exc:
         return render(request, "add_resource.html", error=str(exc))
 
-    # Store-only flow: keep the saved resource in the library and do not start a
-    # quiz generation session as a side effect. The actual indexing work is moved
-    # to a daemon thread so the redirect completes immediately and the user isn't
-    # forced to wait for chunking + embedding before returning to the library.
+    # Indexing runs inline. It used to be handed to a daemon thread so the redirect
+    # could return before chunking + embedding finished, but nothing waits for that
+    # thread: on a serverless host the function is frozen the moment the response
+    # is sent, so the thread died mid-write and the library listed a resource that
+    # had never been stored -- which later failed to generate a quiz. Being sync
+    # also means a real failure shows up as an error here instead of as a phantom
+    # entry. This handler is a plain def, so the work runs in the threadpool.
+    from core.services.ingestion_service import ingest_document
+
     try:
-        from core.services.ingestion_service import ingest_document
-
-        def _run_ingest():
-            try:
-                ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
-            except Exception as exc:
-                print(f"[ingest_resource] background indexing failed: {exc}")
-
-        thread = threading.Thread(target=_run_ingest, daemon=True)
-        thread.start()
+        ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
     except Exception as exc:
         return render(
             request, "add_resource.html",
@@ -156,7 +149,7 @@ async def upload_form(request: Request, user: CurrentUser):
 
 
 @router.post("/upload")
-async def upload(
+def upload(
     request: Request,
     user: CurrentUser,
     file: UploadFile | None = None,

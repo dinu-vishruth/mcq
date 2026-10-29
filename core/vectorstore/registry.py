@@ -3,8 +3,8 @@ Vector store selection.
 
 VECTOR_STORE: "chroma" (default) | "sqlite" | "faiss".
 The store is bound to the active embedder's backend_id and dim so a change in
-embedding model is recorded with the vectors. On Vercel the read-only
-filesystem forces the sqlite store regardless of the configured value, since
+embedding model is recorded with the vectors. On a read-only filesystem
+(Vercel) the sqlite store is forced regardless of the configured value, since
 Chroma/FAISS need writable on-disk indexes outside /tmp.
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ def build_vector_store() -> VectorStore:
     model_id, dim = emb.backend_id, emb.dim
 
     choice = config.VECTOR_STORE
-    if config.IS_VERCEL:
+    if config.IS_SERVERLESS:
         choice = "sqlite"  # read-only FS elsewhere; mcq.db lives in /tmp
 
     if choice == "chroma":

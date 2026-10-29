@@ -190,35 +190,44 @@ class TestGenerationAndQuizFlow(Base):
         from utils.session_manager import create_session_key
         return create_session_key(teacher="teach3", difficulty="medium", timer=120, mcqs=FIXED_MCQS)
 
-    def test_upload_generates_session(self):
+    def test_upload_saves_resource_and_defers_quiz_setup(self):
         c = self.client()
         self._seed_user("uploader", "password123", "teacher")
         self._login(c, "uploader", "password123")
-        # `timer` is submitted in MINUTES and stored as seconds.
         r = c.post("/upload", data={"extracted_text": "Some study material about math and geography.",
-                                    "num_questions": "2", "difficulty": "medium", "timer": "10"})
-        # There is no answer-revealing preview any more: upload hands straight
-        # off to the quiz so the questions are never shown with their answers.
+                                    "title": "Math Geography"})
+        # Upload no longer generates: it stores + indexes, then hands off to the
+        # library where difficulty, count and timer are configured before generating.
         self.assertEqual(r.status_code, 302)
-        self.assertIn("/mcq_test", r.headers["Location"])
-        # Only the session_key lives in the (signed-cookie) session now; timer +
-        # mcqs are re-fetched from the DB. Verify the stored timer is seconds.
-        with c.session_transaction() as sess:
-            key = sess["session_key"]
-            self.assertTrue(key)
-        conn = sqlite3.connect(_DB)
-        stored_timer = conn.execute("SELECT timer FROM sessions WHERE session_key=?", (key,)).fetchone()[0]
-        conn.close()
-        self.assertEqual(stored_timer, 600)
+        self.assertIn("/knowledge", r.headers["Location"])
+        items = c.get("/api/knowledge").get_json()["items"]
+        self.assertTrue(any(it["title"] == "Math Geography" for it in items))
 
-    def test_upload_rejects_out_of_range_timer(self):
+    @staticmethod
+    def _count_sessions():
+        conn = sqlite3.connect(_DB)
+        try:
+            return conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_upload_stops_setting_up_a_quiz(self):
+        """Stale quiz-config fields must not resurrect the old generate-on-upload.
+
+        Regression: the form used to carry num_questions/difficulty/timer and the
+        route generated a session from them, which silently ignored whatever the
+        user later picked on the MakeQuiz screen.
+        """
         c = self.client()
         self._seed_user("uploader2", "password123", "teacher")
         self._login(c, "uploader2", "password123")
+        before = self._count_sessions()
         r = c.post("/upload", data={"extracted_text": "Some study material.",
                                     "num_questions": "2", "difficulty": "medium", "timer": "999"})
-        self.assertEqual(r.status_code, 200)
-        self.assertIn(b"between 1 and 180 minutes", r.data)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(self._count_sessions(), before)
+        with c.session_transaction() as sess:
+            self.assertNotIn("session_key", sess)
 
     def test_full_student_quiz_scoring(self):
         c = self.client()

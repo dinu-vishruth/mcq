@@ -4,10 +4,11 @@ Same schema work the Flask ``init_db()`` did: create the base tables, apply the
 additive ALTERs, ensure login_attempts, seed demo accounts on an empty database,
 then run the agentic/RAG migrations.
 
-Why it runs on every boot: on Vercel the database lives at /tmp/mcq.db, which is
-part of the ephemeral instance. A cold start gets an empty filesystem, so the
-schema has to be (re)created before the first request. Every statement is
-idempotent, so doing this locally against a real file is harmless.
+Why it runs on every boot: every statement is idempotent, and on Vercel the
+database lives in /tmp — part of the ephemeral instance, so a cold start gets an
+empty filesystem and the schema has to be recreated before the first request. On
+a host with a persistent disk (Render) the file survives restarts and this
+upgrade path is what applies new columns to the existing database.
 """
 from __future__ import annotations
 
@@ -15,6 +16,8 @@ import os
 import sqlite3
 
 import config
+
+from core.models.db import open_connection
 
 #: Project root, so data files resolve independently of the process CWD.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -87,8 +90,7 @@ def init_db() -> None:
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir, exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = open_connection(db_path)
     try:
         try:
             if os.path.exists(_SCHEMA_FILE):

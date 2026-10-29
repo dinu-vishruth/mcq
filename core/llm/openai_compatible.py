@@ -30,8 +30,11 @@ class OpenAICompatibleProvider(LLMProvider):
         self.base_url = (base_url or BASE_URLS.get(provider_id, BASE_URLS["groq"])).rstrip("/")
 
     def _complete_once(self, messages, *, temperature=None, max_tokens=None, json_mode=False) -> str:
+        # Imported lazily (and as a module, not names) so patched config values
+        # are read at call time -- tests stub config attributes directly.
+        import config
+
         if not self.api_key:
-            import config
             print(f"[llm] {config.missing_key_message()}")
             raise LLMError(config.USER_FACING_AI_UNAVAILABLE)
 
@@ -45,6 +48,11 @@ class OpenAICompatibleProvider(LLMProvider):
         if json_mode:
             # Supported by Groq, OpenAI and xAI; harmless hint elsewhere.
             payload["response_format"] = {"type": "json_object"}
+        effort = getattr(config, "LLM_REASONING_EFFORT", "low")
+        if effort and "gpt-oss" in (self.model or "").lower():
+            # Only the gpt-oss family takes this knob; sending it elsewhere would
+            # be rejected as an unsupported property.
+            payload["reasoning_effort"] = effort
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",

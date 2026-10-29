@@ -81,6 +81,19 @@ class TestEnvStr(unittest.TestCase):
         self.assertEqual(config.env_str("LLM_API_KEY", default=groq), "gsk_realkey")
 
 
+class TestWritablePaths(unittest.TestCase):
+    def test_runtime_paths_are_never_empty(self):
+        for path in (
+            config.DATA_DIR,
+            config.DB_PATH,
+            config.UPLOAD_FOLDER,
+            config.REPORTS_DIR,
+            config.CHROMA_PATH,
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(path)
+
+
 class TestKeyPresence(unittest.TestCase):
     def setUp(self):
         self._saved = {n: getattr(config, n) for n in
@@ -188,6 +201,40 @@ class TestGroqModelMigration(unittest.TestCase):
                              {"questions": []})
             self.assertEqual(post.call_args.args[0], "https://api.groq.com/openai/v1/chat/completions")
             self.assertEqual(post.call_args.kwargs["json"]["model"], "openai/gpt-oss-20b")
+
+
+class TestReasoningEffort(unittest.TestCase):
+    """gpt-oss must be told to think briefly, or reasoning tokens eat max_tokens
+    before any JSON is emitted and Groq rejects the call with an empty
+    failed_generation (the json_validate_failed quiz-generation outage)."""
+
+    def _sent(self, model, effort):
+        # effort="" models the unset case: config strips the env var to empty.
+        response = Mock(status_code=200)
+        response.json.return_value = {"choices": [{"message": {"content": '{"questions": []}'}}]}
+        with patch.multiple(
+            config, LLM_PROVIDER="groq", LLM_API_KEY="gsk_test", LLM_MODEL=model,
+            LLM_REASONING_EFFORT=effort
+        ), patch("core.llm.openai_compatible.requests.post", return_value=response) as post:
+            registry.build_llm().complete_json([{"role": "user", "content": "Generate JSON quiz questions"}])
+            return post.call_args.kwargs["json"]
+
+    def test_gpt_oss_gets_the_cap(self):
+        payload = self._sent("openai/gpt-oss-20b", "low")
+        self.assertEqual(payload["reasoning_effort"], "low")
+
+    def test_other_models_are_left_alone(self):
+        """Providers that reject unknown parameters must not receive it.
+        Uses model names that survive registry model migration, so the payload
+        really does go out under the model being asserted on."""
+        for model in ("qwen/qwen3.8-27b", "meta-llama/llama-4-scout-17b-16e-instruct"):
+            with self.subTest(model=model):
+                sent = self._sent(model, "low")
+                self.assertEqual(sent["model"], model)
+                self.assertNotIn("reasoning_effort", sent)
+
+    def test_blank_setting_omits_the_parameter(self):
+        self.assertNotIn("reasoning_effort", self._sent("openai/gpt-oss-20b", ""))
 
 
 class TestGenerationGuard(unittest.TestCase):

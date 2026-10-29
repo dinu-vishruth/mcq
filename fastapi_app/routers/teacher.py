@@ -90,8 +90,10 @@ async def download_report(session_key: SessionKey, session_row: OwnedSession):
     """Render this session's MCQ set as a downloadable PDF."""
     from reportlab.pdfgen import canvas
 
-    os.makedirs("reports", exist_ok=True)
-    filename = f"reports/report_{session_key}.pdf"
+    from config import REPORTS_DIR
+
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    filename = os.path.join(REPORTS_DIR, f"report_{session_key}.pdf")
 
     pdf = canvas.Canvas(filename)
     y = 800
