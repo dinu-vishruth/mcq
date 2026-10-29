@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import requests
 
-from core.llm.base import LLMProvider, LLMError, RateLimitError
+from core.llm.base import LLMError, LLMProvider, RateLimitError
 
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 

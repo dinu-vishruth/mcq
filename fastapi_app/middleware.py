@@ -13,8 +13,7 @@ from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from config import MAX_REQUEST_BODY_BYTES
 
-from .security import (CSRF_EXEMPT_PATHS, SAFE_METHODS, csrf_failure_response,
-                       validate_csrf)
+from .security import CSRF_EXEMPT_PATHS, SAFE_METHODS, csrf_failure_response, validate_csrf
 
 Message = dict[str, Any]
 Receive = Callable[[], Awaitable[Message]]

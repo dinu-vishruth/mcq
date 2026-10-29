@@ -10,8 +10,8 @@ generation. Redirects DB/upload dirs to temp locations BEFORE importing app.
 
 Run:  python -m unittest tests.test_features -v
 """
-import os
 import json
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -22,6 +22,7 @@ _UP = os.path.join(_TMP, "uploads")
 os.makedirs(_UP, exist_ok=True)
 
 import config
+
 config.DB_PATH = _DB
 config.UPLOAD_FOLDER = _UP
 config.EMBEDDING_BACKEND = "hashing"
@@ -29,9 +30,11 @@ config.VECTOR_STORE = "sqlite"
 
 import app as app_module
 import utils.session_manager as sm
+
 sm.DB_PATH = _DB
 
 from fastapi_app.database import init_db
+
 init_db()
 
 # Deterministic, offline MCQ generation.

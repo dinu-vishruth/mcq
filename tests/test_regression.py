@@ -13,7 +13,6 @@ Design notes:
   {question, options:[{label,text}*4], answer_text} and the explanations list[str].
 """
 import os
-import json
 import sqlite3
 import tempfile
 import unittest
@@ -25,15 +24,19 @@ _UP = os.path.join(_TMP, "uploads")
 os.makedirs(_UP, exist_ok=True)
 
 import config
+
 config.DB_PATH = _DB
 config.UPLOAD_FOLDER = _UP
 
 import app as app_module
+
 # session_manager also did `from config import DB_PATH`.
 import utils.session_manager as sm
+
 sm.DB_PATH = _DB
 
 from fastapi_app.database import init_db
+
 init_db()
 
 FIXED_MCQS = [
@@ -71,8 +74,8 @@ class Base(unittest.TestCase):
         # Stub the network-calling functions at their SOURCE modules. The
         # routers import these modules (not the names), so patching the
         # module attribute takes effect in the routes.
-        import models.mcq_generator as _mcq
         import models.explanation_engine as _exp
+        import models.mcq_generator as _mcq
         _mcq.generate_mcqs = lambda text, num_questions=5, difficulty="medium": FIXED_MCQS[:num_questions] if num_questions <= len(FIXED_MCQS) else FIXED_MCQS
         _exp.explain_answers = lambda details, document_id=None: [
             ("Correct" if d["is_correct"] else "Wrong: " + d["correct"]) for d in details
@@ -423,8 +426,8 @@ class TestGroqFailedGeneration(unittest.TestCase):
         )
 
     def test_recovers_partial_and_parses(self):
-        from core.llm.openai_compatible import OpenAICompatibleProvider
         from core.llm.base import LLMProvider
+        from core.llm.openai_compatible import OpenAICompatibleProvider
         partial = ('{"questions": [' + self._q(1) + ', ' + self._q(2)
                    + ', {"question": "Q3?", "options": [{"label": "A", "tex')
         resp = self._Resp({"error": {"code": "json_validate_failed", "failed_generation": partial}})

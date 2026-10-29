@@ -17,6 +17,7 @@ _DB = os.path.join(_TMP, "jobs.db")
 os.environ.setdefault("SEED_DEMO_USERS", "true")
 
 import config
+
 config.DB_PATH = _DB
 config.EMBEDDING_BACKEND = "hashing"
 config.VECTOR_STORE = "sqlite"

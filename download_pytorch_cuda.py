@@ -42,7 +42,7 @@ def download_with_resume():
             downloaded = os.path.getsize(FILENAME) if os.path.exists(FILENAME) else 0
             print(f"\n\nConnection lost at {downloaded / 1e9:.2f} GB (attempt {attempt + 1}/{max_retries})")
             print(f"  Error: {e}")
-            print(f"  Retrying in 3 seconds...")
+            print("  Retrying in 3 seconds...")
             time.sleep(3)
 
     print("Failed after all retries.")
@@ -51,7 +51,7 @@ def download_with_resume():
 
 if __name__ == "__main__":
     if download_with_resume():
-        print(f"\nInstalling...")
+        print("\nInstalling...")
         os.system(f"{sys.executable} -m pip install --force-reinstall {FILENAME}")
         print("\nCleaning up wheel file...")
         os.remove(FILENAME)

@@ -189,7 +189,6 @@ def dashboard_data():
 
     total_quizzes = len(rows)
     total_correct = sum(r["score"] or 0 for r in rows)
-    total_answered = sum(r["total"] or 0 for r in rows)
     total_time = sum(r["time_spent"] or 0 for r in rows)
     avg_score = round(sum((r["score"] / r["total"] * 100) if r["total"] else 0 for r in rows) / total_quizzes, 1) if total_quizzes else 0
 

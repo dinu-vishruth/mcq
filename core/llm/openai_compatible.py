@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import requests
 
-from core.llm.base import LLMProvider, LLMError, RateLimitError
+from core.llm.base import LLMError, LLMProvider, RateLimitError
 
 # Canonical base URLs per provider id.
 BASE_URLS = {

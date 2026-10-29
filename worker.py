@@ -11,7 +11,6 @@ the same DATABASE_URL), then blocks on the configured queue.
 from __future__ import annotations
 
 import config
-
 from core.services.job_runner import generation_backend
 
 

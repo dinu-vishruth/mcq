@@ -29,7 +29,7 @@ from werkzeug.security import generate_password_hash
 import config
 
 from ..deps import Db
-from ..templating import flash, render
+from ..templating import render
 
 router = APIRouter(tags=["oauth"])
 

@@ -18,14 +18,16 @@ from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
 
 from config import ALLOWED_EXT, UPLOAD_FOLDER
-from models.pdf_processor import (extract_text_from_docx, extract_text_from_pdf,
-                                  extract_text_from_pptx)
+from models.pdf_processor import (
+    extract_text_from_docx,
+    extract_text_from_pdf,
+    extract_text_from_pptx,
+)
 from utils.text_cleaner import clean_text
 
 from ..deps import CurrentUser
 from ..templating import render
-from ..uploads import (FileStorageAdapter, UploadValidationError, size_of,
-                       validate_upload)
+from ..uploads import FileStorageAdapter, UploadValidationError, size_of, validate_upload
 
 router = APIRouter(tags=["documents"])
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import requests
 
-from core.llm.base import LLMProvider, LLMError, RateLimitError
+from core.llm.base import LLMError, LLMProvider, RateLimitError
 
 URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"

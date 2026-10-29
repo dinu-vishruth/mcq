@@ -16,7 +16,6 @@ import os
 import sqlite3
 
 import config
-
 from core.models.db import open_connection
 
 #: Project root, so data files resolve independently of the process CWD.

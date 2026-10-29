@@ -12,10 +12,10 @@ api.xai.com typo which previously broke every non-Groq key.
 from __future__ import annotations
 
 import config
-from core.llm.base import LLMProvider, LLMError
-from core.llm.openai_compatible import OpenAICompatibleProvider
-from core.llm.gemini import GeminiProvider
 from core.llm.anthropic import AnthropicProvider
+from core.llm.base import LLMError, LLMProvider
+from core.llm.gemini import GeminiProvider
+from core.llm.openai_compatible import OpenAICompatibleProvider
 
 _cached: LLMProvider | None = None
 

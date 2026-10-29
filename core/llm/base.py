@@ -55,6 +55,7 @@ class LLMProvider(abc.ABC):
         """
         # Imported lazily so tests that stub config still see current values.
         import time
+
         import config
 
         max_retries = max(0, int(getattr(config, "LLM_MAX_RETRIES", 3)))

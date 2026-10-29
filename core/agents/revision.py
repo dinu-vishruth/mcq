@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import config
 from core.agents.base import Agent
-from core.llm import get_llm, LLMError
+from core.llm import LLMError, get_llm
 from core.prompts import revision as prompts
 
 
@@ -36,8 +36,8 @@ class RevisionAgent(Agent):
         if not document_id:
             return ""
         try:
-            from core.agents.retriever import RetrieverAgent
             from core.agents.context_builder import ContextBuilderAgent
+            from core.agents.retriever import RetrieverAgent
             hits = RetrieverAgent().run(document_id, " ".join(topics), config.RETRIEVAL_TOP_K, spread=True)
             return ContextBuilderAgent().run(hits, max_chars=6000) if hits else ""
         except Exception:

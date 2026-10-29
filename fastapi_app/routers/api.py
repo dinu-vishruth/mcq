@@ -296,8 +296,12 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
     if throttle_message:
         raise HTTPException(status_code=429, detail=throttle_message)
 
-    from core.services.job_runner import (create_job, enqueue_job,
-                                          generation_backend, run_generation_job)
+    from core.services.job_runner import (
+        create_job,
+        enqueue_job,
+        generation_backend,
+        run_generation_job,
+    )
 
     if generation_backend() == "rq":
         job_id = create_job(

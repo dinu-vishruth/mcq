@@ -15,8 +15,8 @@ from __future__ import annotations
 import sqlite3
 
 import config
-
 from core.models import pg_adapter
+
 
 #: True when DATABASE_URL points the app at Postgres. SQLite remains the
 #: default backend; Postgres is only used when the operator sets DATABASE_URL.

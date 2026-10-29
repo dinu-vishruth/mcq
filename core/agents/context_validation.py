@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import config
 from core.agents.base import Agent
-from core.llm import get_llm, LLMError
+from core.llm import LLMError, get_llm
 from core.prompts import context_validation as prompts
 
 

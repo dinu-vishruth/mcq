@@ -19,14 +19,14 @@ from __future__ import annotations
 import time
 
 import config
-from core.agents.planner import PlannerAgent
-from core.agents.retriever import RetrieverAgent
 from core.agents.context_builder import ContextBuilderAgent
 from core.agents.context_validation import ContextValidationAgent
-from core.agents.question import QuestionAgent, InsufficientContextError
 from core.agents.difficulty import DifficultyAgent
 from core.agents.fact_verification import FactVerificationAgent
+from core.agents.planner import PlannerAgent
 from core.agents.quality_assurance import QualityAssuranceAgent
+from core.agents.question import InsufficientContextError, QuestionAgent
+from core.agents.retriever import RetrieverAgent
 from core.services.ingestion_service import ingest_document
 
 

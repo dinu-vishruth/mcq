@@ -11,7 +11,6 @@ import sqlite3
 from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse, RedirectResponse
 
 from core.models.db import get_db
 

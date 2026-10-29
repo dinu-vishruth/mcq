@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from core.agents.base import Agent
-from core.llm import get_llm, LLMError
+from core.llm import LLMError, get_llm
 from core.prompts import planner as prompts
 
 

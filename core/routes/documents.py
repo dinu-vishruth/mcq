@@ -12,13 +12,17 @@ import os
 import uuid
 from datetime import datetime
 
-from flask import (Blueprint, render_template, request, session, redirect, url_for)
+from flask import Blueprint, redirect, render_template, request, session, url_for
 
 import config
-from config import UPLOAD_FOLDER, ALLOWED_EXT
-from core.models.db import get_db
-from models.pdf_processor import extract_text_from_pdf, extract_text_from_docx, extract_text_from_pptx
 import models.mcq_generator as mcq_generator
+from config import ALLOWED_EXT, UPLOAD_FOLDER
+from core.models.db import get_db
+from models.pdf_processor import (
+    extract_text_from_docx,
+    extract_text_from_pdf,
+    extract_text_from_pptx,
+)
 from utils.session_manager import create_session_key
 from utils.text_cleaner import clean_text
 
@@ -155,7 +159,7 @@ def upload():
             now = datetime.utcnow()
             most_recent = datetime.fromisoformat(recent_sessions[0]["created_at"])
             if (now - most_recent).total_seconds() < cooldown:
-                return render_template("upload.html", error=f"Please wait a few seconds between generation requests.")
+                return render_template("upload.html", error="Please wait a few seconds between generation requests.")
 
             if len(recent_sessions) >= max_per_window:
                 oldest = datetime.fromisoformat(recent_sessions[-1]["created_at"])
