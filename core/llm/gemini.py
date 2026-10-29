@@ -15,6 +15,8 @@ BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
 class GeminiProvider(LLMProvider):
+    provider_id = "gemini"
+
     def _complete_once(self, messages, *, temperature=None, max_tokens=None, json_mode=False) -> str:
         if not self.api_key:
             raise LLMError("API Key is missing. Please set GEMINI_API_KEY in your .env file.")

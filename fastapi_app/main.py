@@ -44,16 +44,26 @@ def _log_llm_config() -> None:
     already picked a file and waited through an upload -- the failure surfaced as
     a mid-flow error on the quiz screen. Logging it at startup means the operator
     sees the problem before any learner does.
+
+    A *misconfigured* provider/model pair is different: it cannot work at all, so
+    it fails boot here with one actionable line rather than surfacing later as a
+    provider 404 on every generation request.
     """
     import config
 
     if config.llm_key_present():
+        from core.llm import get_llm
+        from core.llm.base import LLMError
+
         try:
-            from core.llm import get_llm
             llm = get_llm()
-            print(f"[startup] LLM ready: provider={llm.provider_id} model={llm.model}")
-        except Exception as exc:  # never block boot on provider construction
+        except LLMError as exc:
+            print(f"[startup] ERROR: LLM provider/model configuration rejected: {exc}")
+            raise
+        except Exception as exc:  # e.g. an optional provider package is missing
             print(f"[startup] WARNING: LLM key present but provider setup failed: {exc}")
+            return
+        print(f"[startup] LLM ready: provider={llm.provider_id} model={llm.model}")
     else:
         print(f"[startup] WARNING: {config.missing_key_message()}")
         print("[startup] Quiz generation will fail until a key is set; the rest of the app works.")

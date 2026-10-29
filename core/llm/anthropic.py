@@ -18,6 +18,8 @@ DEFAULT_MAX_TOKENS = 4096
 
 
 class AnthropicProvider(LLMProvider):
+    provider_id = "anthropic"
+
     def _complete_once(self, messages, *, temperature=None, max_tokens=None, json_mode=False) -> str:
         if not self.api_key:
             raise LLMError("API Key is missing. Please set ANTHROPIC_API_KEY in your .env file.")

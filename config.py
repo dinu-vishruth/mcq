@@ -98,7 +98,27 @@ GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
 # and the one-letter difference is easy to mistype, so a key set under either
 # spelling is honoured instead of silently reading as "no key at all".
 GROK_API_KEY = env_str("GROK_API_KEY", "GROQ_API_KEY", "XAI_API_KEY")
-GROK_MODEL = env_str("GROK_MODEL", "GROQ_MODEL", default="grok-2-1212")
+# Legacy per-host model variable. Empty by default: each provider now has its
+# own default model (PROVIDER_DEFAULT_MODELS below), so an unset model resolves
+# to something the resolved provider can actually serve. A stale
+# GROK_MODEL=grok-... can no longer be sent to Groq (it used to 404).
+GROK_MODEL = env_str("GROK_MODEL", "GROQ_MODEL", default="")
+
+#: Model used when the operator hasn't pinned one per provider. Registry
+#: resolution starts here; a configured model only survives if it plausibly
+#: belongs to the resolved provider (see core/llm/registry.py).
+PROVIDER_DEFAULT_MODELS = {
+    "groq": "openai/gpt-oss-20b",
+    "xai": "grok-2-1212",
+    "openai": "gpt-4o-mini",
+    "gemini": "gemini-1.5-flash",
+    "anthropic": "claude-sonnet-5",
+}
+
+
+def default_model_for(provider: str) -> str:
+    """The default model for `provider`; empty string for unknown providers."""
+    return PROVIDER_DEFAULT_MODELS.get((provider or "").strip().lower(), "")
 # --- Writable state ---------------------------------------------------------
 # Everything the app creates at runtime hangs off one anchor. DATA_DIR is the
 # only variable a host needs to persist data: point it at a mounted disk and
@@ -140,7 +160,9 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "auto").strip().lower()
 # Unified key/model. Falls back through every historical spelling, and a blank
 # LLM_API_KEY no longer shadows a working GROK_API_KEY/GROQ_API_KEY.
 LLM_API_KEY = env_str("LLM_API_KEY", default=GROK_API_KEY)
-LLM_MODEL = env_str("LLM_MODEL", default=GROK_MODEL)
+# Model precedence: LLM_MODEL, then the legacy GROK_MODEL/GROQ_MODEL, then the
+# resolved provider's own default. See core/llm/registry.py.
+LLM_MODEL = env_str("LLM_MODEL", "GROK_MODEL", "GROQ_MODEL", default="")
 
 # Per-provider key overrides (optional; only used when explicitly selected).
 OPENAI_API_KEY = env_str("OPENAI_API_KEY")
