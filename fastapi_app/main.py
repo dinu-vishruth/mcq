@@ -30,7 +30,7 @@ from config import IS_DEPLOYED, SECRET_KEY, UPLOAD_FOLDER
 from .database import init_db
 from .deps import RedirectException
 from .middleware import CSRFMiddleware, HTTPSRedirectMiddleware
-from .routers import api, auth, documents, google_auth, student, teacher
+from .routers import api, auth, documents, google_auth, jobs, student, teacher
 from .templating import BASE_DIR
 
 #: 24h, matching the Flask PERMANENT_SESSION_LIFETIME.
@@ -98,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(documents.router)
     app.include_router(teacher.router)
     app.include_router(api.router)
+    app.include_router(jobs.router)
 
     @app.exception_handler(RedirectException)
     async def _handle_redirect(request: Request, exc: RedirectException):

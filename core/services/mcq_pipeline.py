@@ -47,14 +47,20 @@ def _retrieval_query(difficulty: str, topic: str | None) -> str:
     return f"The most important concepts, facts and relationships for {difficulty} exam questions."
 
 
-def _collect_mcqs(context: str, num_questions: int, difficulty: str) -> list[dict]:
+def _collect_mcqs(context: str, num_questions: int, difficulty: str,
+                  *, deadline_seconds: int | None = None, on_progress=None) -> list[dict]:
     """Generate -> QA -> Fact-verify -> Difficulty, regenerating only the
     shortfall, until we have `num_questions` or the retry/time budget runs out.
 
-    Shared by both public entry points. Emits the structured per-stage log from
-    the brief. Raises InsufficientContextError only if the FIRST attempt reports
-    it (so the caller can fall back to the fuller-text path); later attempts that
-    hit it just stop the loop with whatever was collected.
+    Shared by both public entry points. Raises InsufficientContextError only if
+    the FIRST attempt reports it (so the caller can fall back to the fuller-text
+    path); later attempts that hit it just stop the loop with whatever was
+    collected.
+
+    ``deadline_seconds`` overrides the global PIPELINE_DEADLINE_SECONDS for this
+    run, which is how a queued job gets a budget larger than the serverless
+    request cap. ``on_progress(n)`` is called after every attempt with the number
+    of accepted questions so a job can report progress.
     """
     qa = QualityAssuranceAgent()
     question_agent = QuestionAgent()
@@ -64,7 +70,8 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str) -> list[dic
     collected: list[dict] = []
     attempts = 0
     max_attempts = _max_attempts(num_questions)
-    deadline = time.monotonic() + (config.PIPELINE_DEADLINE_SECONDS - config.LLM_TIMEOUT)
+    budget = deadline_seconds if deadline_seconds is not None else config.PIPELINE_DEADLINE_SECONDS
+    deadline = time.monotonic() + max(1, budget - config.LLM_TIMEOUT)
 
     while len(collected) < num_questions and attempts < max_attempts:
         if attempts >= 1 and time.monotonic() >= deadline:
@@ -97,6 +104,12 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str) -> list[dic
                 seen.add(key)
                 deduped.append(q)
         collected = deduped
+
+        if on_progress is not None:
+            try:
+                on_progress(len(collected))
+            except Exception:
+                pass  # progress reporting must never fail generation
 
     print(f"[mcq_pipeline] Collected {len(collected)}/{num_questions} MCQs in {attempts} attempt(s)")
     return collected[:num_questions]
@@ -158,13 +171,18 @@ def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medi
 
 
 def generate_from_document(document_id: int, num_questions: int = 5,
-                           difficulty: str = "medium", *, topic: str | None = None) -> list[dict]:
+                           difficulty: str = "medium", *, topic: str | None = None,
+                           deadline_seconds: int | None = None,
+                           on_progress=None) -> list[dict]:
     """Generate MCQs from an ALREADY-INGESTED document (Practice from Knowledge).
 
     Skips ingestion — the document is already chunked and embedded — and runs the
     same Retriever -> ContextBuilder -> Question -> QA -> Difficulty loop. Returns
     the same MCQ shape as generate_mcqs_rag. Raises ValueError if the document has
     no retrievable context so the caller can surface a clear message.
+
+    ``deadline_seconds`` is per-call so a background job can run longer than a
+    serverless request; ``on_progress`` receives the accepted-question count.
     """
     top_k = max(config.RETRIEVAL_TOP_K, min(num_questions * 2, 40))
     query = _retrieval_query(difficulty, topic)
@@ -204,7 +222,8 @@ def generate_from_document(document_id: int, num_questions: int = 5,
                              "questions. Try a broader topic or add more material.")
 
     try:
-        collected = _collect_mcqs(context, num_questions, difficulty)
+        collected = _collect_mcqs(context, num_questions, difficulty,
+                                  deadline_seconds=deadline_seconds, on_progress=on_progress)
     except InsufficientContextError:
         raise ValueError("This source doesn't have enough indexed content to generate grounded "
                          "questions. Try a broader topic or add more material.")

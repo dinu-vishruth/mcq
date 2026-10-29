@@ -143,6 +143,10 @@ def init_db() -> None:
         try:
             from core.models.migrations import run_migrations
             run_migrations(conn)
+            # Numbered SQL migrations (currently the background-job table) run
+            # after the programmatic schema so both paths stay additive.
+            from core.models.sql_migrations import run_sql_migrations
+            run_sql_migrations(conn, "sqlite")
         except Exception as exc:
             print(f"[WARNING] Agentic/RAG migrations skipped: {exc}")
     finally:

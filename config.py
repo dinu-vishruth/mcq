@@ -221,13 +221,27 @@ def mcq_token_budget(num_questions: int) -> int:
 # the time they actually need.
 PIPELINE_DEADLINE_SECONDS = int(os.getenv("PIPELINE_DEADLINE_SECONDS", "55" if IS_SERVERLESS else "300"))
 
-# --- Upload/generation throttle (app-level, protects the LLM from bursts) --
-# Minimum seconds between two MCQ-generation requests, and the max generations
+# --- Upload/generation throttle (app-level, protects the LLM from bursts) --# Minimum seconds between two MCQ-generation requests, and the max generations
 # allowed per 5-minute window. Set the cooldown to 0 to disable it entirely.
 # Deliberately lenient by default — a single user iterating on their own
 # material shouldn't be blocked; this only guards against runaway loops.
 GENERATION_COOLDOWN_SECONDS = int(os.getenv("GENERATION_COOLDOWN_SECONDS", "3"))
 GENERATION_MAX_PER_5MIN = int(os.getenv("GENERATION_MAX_PER_5MIN", "10"))
+
+# --- Background generation jobs ---------------------------------------------
+# "inline" -> generate inside the HTTP request (the historical behaviour; the
+#             default so local dev and Vercel lose nothing)
+# "rq"     -> hand generation to a Redis Queue worker; POST /api/practice/
+#             generate returns a job_id, results arrive via GET /api/jobs/{id}
+# "auto"   -> "rq" when REDIS_URL is set and the redis+rq packages import,
+#             else "inline".
+GENERATION_BACKEND = env_str("GENERATION_BACKEND", default="auto").strip().lower()
+REDIS_URL = env_str("REDIS_URL", default="")
+QUEUE_NAME = env_str("GENERATION_QUEUE_NAME", default="mcq")
+# Per-job wall-clock budget, in seconds. In queue mode the serverless 60s cap no
+# longer applies -- the worker is a long-lived process -- so the deadline is a
+# job setting the caller can pass on top of the global default below.
+GENERATION_JOB_DEADLINE_SECONDS = int(os.getenv("GENERATION_JOB_DEADLINE_SECONDS", "900"))
 
 # --- AI pipeline selection ------------------------------------------------
 # "legacy"  -> single-shot generate_mcqs (current behaviour, the safe default)
