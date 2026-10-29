@@ -31,7 +31,7 @@ class AnswerEvaluationAgent(Agent):
 
     def run(self, question: str, reference_answer: str, student_answer: str,
             *, context: str = "", document_id: int | None = None) -> dict:
-        """Return the brief's evaluation JSON. Safe, structured fallback on error."""
+        """Return the evaluation JSON. Safe, structured fallback on error."""
         if not (student_answer or "").strip():
             return self._blank(reference_answer, "No answer was provided.")
 

@@ -1,6 +1,6 @@
 """
 Session data access. Backs utils.session_manager (whose public functions are
-preserved) and the Phase 4 pipeline, which needs to link a session to the
+preserved) and the RAG pipeline, which needs to link a session to the
 document it was generated from (sessions.document_id, added in Phase 2).
 """
 from __future__ import annotations
