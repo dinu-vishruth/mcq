@@ -9,15 +9,14 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..deps import CurrentApiUser, Db
-from ..services.dashboard import (build_dashboard, level_for_xp, load_prefs,
-                                  study_recommendations)
+from ..services.dashboard import build_dashboard, level_for_xp, load_prefs
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -287,6 +286,15 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
     doc = document_repo.get(payload.document_id)
     if doc is None or doc["owner"] != user.username:
         raise HTTPException(status_code=404, detail="not found")
+
+    # Per-user throttle before any costly work (queue mode included: enqueuing is
+    # cheap but the job still burns LLM calls). Uses its own connection because
+    # this is a sync handler running in the threadpool -- see rate_limits.
+    from ..rate_limits import check_generation_throttle_for_user
+
+    throttle_message = check_generation_throttle_for_user(user.username)
+    if throttle_message:
+        raise HTTPException(status_code=429, detail=throttle_message)
 
     from core.services.job_runner import (create_job, enqueue_job,
                                           generation_backend, run_generation_job)

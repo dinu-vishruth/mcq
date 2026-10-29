@@ -154,7 +154,15 @@ def init_db() -> None:
 
 
 def _seed_demo_users(conn: sqlite3.Connection) -> None:
-    """Seed teacher/student demo accounts, but only into an empty users table."""
+    """Seed teacher/student demo accounts, only into an empty users table.
+
+    Hosted deployments skip this unless SEED_DEMO_USERS is explicitly true:
+    'teacher'/'teacher123' on a public URL is an account takeover waiting to
+    happen. Local dev keeps the seeded pair for the documented demo flow.
+    """
+    if config.IS_DEPLOYED and not config.SEED_DEMO_USERS:
+        print("[startup] Demo users not seeded (set SEED_DEMO_USERS=true to opt in).")
+        return
     try:
         from werkzeug.security import generate_password_hash
 

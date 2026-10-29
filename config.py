@@ -147,6 +147,20 @@ DATABASE_URL = env_str("DATABASE_URL", default="")
 #: Keep this above the upload limit in routers/documents.py.
 MAX_REQUEST_BODY_BYTES = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(8 * 1024 * 1024)))
 
+#: Upload ceilings, enforced before any parsing work happens. The request-body
+#: limit above bounds the raw HTTP body; these bound what the document pipeline
+#: will accept so a small-but-pathological file (thousands of PDF pages) can't
+#: monopolise the instance.
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(int(4.5 * 1024 * 1024))))
+MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "300"))
+
+# --- Demo accounts ----------------------------------------------------------
+# The seeded "teacher"/"student" accounts (teacher123 / student123) are a local
+# convenience and a liability anywhere public. On a hosted deployment they are
+# only created when SEED_DEMO_USERS is explicitly true; local development keeps
+# the historical behaviour so the demo flow still works out of the box.
+SEED_DEMO_USERS = os.getenv("SEED_DEMO_USERS", "").strip().lower() in ("1", "true", "yes", "on")
+
 # ---------------------------------------------------------------------------
 # Agentic AI + RAG configuration (Phase 1+). All additive; defaults preserve
 # the existing behaviour so nothing changes until a feature flag is flipped.

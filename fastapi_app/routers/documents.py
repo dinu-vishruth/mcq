@@ -5,31 +5,27 @@ they behave identically on file handling; they differ only in where the user
 lands afterwards -- /upload redirects to the library (/knowledge), where quiz
 settings are chosen, /ingest_resource back to the journey (/journey).
 
-mcq_generator is imported as a MODULE (not the function) so tests patching
-models.mcq_generator.generate_mcqs at the source take effect here. This is also
-where AI_PIPELINE (legacy vs rag) is honoured, since generate_mcqs dispatches.
+Uploads are validated (size, magic bytes, PDF page count/encryption) before any
+parser runs, then the extracted text is indexed inline by the ingestion service.
 """
 from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
 
-import config
-import models.mcq_generator as mcq_generator
 from config import ALLOWED_EXT, UPLOAD_FOLDER
 from models.pdf_processor import (extract_text_from_docx, extract_text_from_pdf,
                                   extract_text_from_pptx)
-from utils.session_manager import create_session_key
 from utils.text_cleaner import clean_text
 
-from ..deps import CurrentUser, Db
+from ..deps import CurrentUser
 from ..templating import render
-from ..uploads import FileStorageAdapter, size_of
+from ..uploads import (FileStorageAdapter, UploadValidationError, size_of,
+                       validate_upload)
 
 router = APIRouter(tags=["documents"])
 
@@ -58,13 +54,8 @@ def persist_original_file(user: str, upload: UploadFile, source_ext: str) -> Non
     except Exception as exc:
         print(f"[WARNING] Could not persist original upload '{upload.filename}': {exc}")
 
-#: App-enforced upload ceiling. On Vercel the platform rejected larger bodies
-#: before our code ran; on a persistent host nothing does, so this is what keeps
-#: a request inside MAX_REQUEST_BODY_BYTES (which CSRFMiddleware buffers whole).
-#: Staying under it also means the user gets a useful message instead of a raw 413.
-MAX_UPLOAD_BYTES = int(4.5 * 1024 * 1024)
-
-
+#: App-enforced upload ceiling lives in config.MAX_UPLOAD_BYTES so the limit and
+#: the error message can't drift apart. Enforced by uploads.validate_upload.
 class ExtractError(Exception):
     """Carries a user-safe message when text can't be pulled from an upload."""
 
@@ -91,15 +82,14 @@ def extract_upload_text(
         if upload is None or not upload.filename or "." not in upload.filename:
             raise ExtractError("Please upload a valid file.")
 
-        if size_of(upload) > MAX_UPLOAD_BYTES:
-            raise ExtractError(
-                "File is too large! Uploads are limited to 4.5 MB. "
-                "Please compress or split your file."
-            )
-
         ext = upload.filename.rsplit(".", 1)[1].lower()
         if ext not in ALLOWED_EXT:
             raise ExtractError("Unsupported file type.")
+        # Size, magic bytes, PDF page count / encryption -- all before parsing.
+        try:
+            validate_upload(upload, ext)
+        except UploadValidationError as exc:
+            raise ExtractError(str(exc)) from exc
         source_ext = ext
         if not source_title:
             source_title = upload.filename.rsplit(".", 1)[0].strip() or upload.filename
@@ -207,35 +197,12 @@ def upload(
 
 
 def _check_generation_throttle(conn, username: str) -> str | None:
-    """Rate-limit MCQ generation; returns an error message or None.
+    """Deprecated alias kept for the legacy core/routes module.
 
-    Protects the LLM from request bursts. Only counts sessions that actually
-    triggered generation: weak-topic REVIEW sessions (difficulty='review') are
-    rebuilt from stored data with no LLM call, so they must not count. Lenient by
-    default so a single user iterating on their own material isn't blocked.
+    The FastAPI app uses fastapi_app.rate_limits.check_generation_throttle, which
+    is actually wired into /api/practice/generate; this shim keeps the old
+    import path working without duplicating the window logic.
     """
-    cooldown = config.GENERATION_COOLDOWN_SECONDS
-    max_per_window = config.GENERATION_MAX_PER_5MIN
-    if cooldown <= 0:
-        return None
+    from ..rate_limits import check_generation_throttle
 
-    recent = conn.execute(
-        "SELECT created_at FROM sessions WHERE teacher=? AND COALESCE(difficulty,'') != 'review' "
-        "ORDER BY created_at DESC LIMIT ?",
-        (username, max_per_window),
-    ).fetchall()
-    if not recent:
-        return None
-
-    now = datetime.utcnow()
-    if (now - datetime.fromisoformat(recent[0]["created_at"])).total_seconds() < cooldown:
-        return "Please wait a few seconds between generation requests."
-
-    if len(recent) >= max_per_window:
-        oldest = datetime.fromisoformat(recent[-1]["created_at"])
-        if (now - oldest).total_seconds() < 300:
-            return (
-                f"You can only generate {max_per_window} quiz sets every 5 minutes. "
-                "Please wait a moment."
-            )
-    return None
+    return check_generation_throttle(conn, username)
