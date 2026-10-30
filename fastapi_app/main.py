@@ -31,7 +31,7 @@ from core.observability import RequestContextMiddleware, configure_logging
 from .database import init_db
 from .deps import RedirectException
 from .middleware import CSRFMiddleware, HTTPSRedirectMiddleware
-from .routers import api, auth, documents, google_auth, jobs, student, teacher
+from .routers import api, auth, documents, github_auth, google_auth, jobs, student, teacher
 from .templating import BASE_DIR
 
 #: 24h, matching the Flask PERMANENT_SESSION_LIFETIME.
@@ -126,6 +126,7 @@ def create_app() -> FastAPI:
     # --- Routers (one per former Flask blueprint) ---------------------------
     app.include_router(auth.router)
     app.include_router(google_auth.router)
+    app.include_router(github_auth.router)
     app.include_router(student.router)
     app.include_router(documents.router)
     app.include_router(teacher.router)

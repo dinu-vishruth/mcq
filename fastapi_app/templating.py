@@ -37,6 +37,7 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # signup.html use it to decide whether to render the Google button as a working
 # link or an inert placeholder.
 templates.env.globals["google_oauth_enabled"] = config.GOOGLE_OAUTH_ENABLED
+templates.env.globals["github_oauth_enabled"] = config.GITHUB_OAUTH_ENABLED
 
 
 def flash(request: Request, message: str, category: str = "message") -> None:

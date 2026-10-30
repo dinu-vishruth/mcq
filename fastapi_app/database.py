@@ -69,6 +69,7 @@ _ADD_COLUMNS = [
     # Google sign-in: OAuth accounts have no password, so password_hash gets a
     # placeholder and these columns carry the provider identity instead.
     ("users", "google_id", "TEXT"),
+    ("users", "github_id", "TEXT"),
     ("users", "picture", "TEXT"),
     ("users", "auth_provider", "TEXT DEFAULT 'local'"),
 ]
@@ -169,8 +170,8 @@ def _seed_demo_users(conn: sqlite3.Connection) -> None:
             conn.executemany(
                 "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                 [
-                    ("teacher", generate_password_hash("teacher123"), "teacher"),
-                    ("student", generate_password_hash("student123"), "student"),
+                    ("demo_teacher", generate_password_hash("TeachPass123"), "teacher"),
+                    ("demo_student", generate_password_hash("StudentPass123"), "student"),
                 ],
             )
             conn.commit()

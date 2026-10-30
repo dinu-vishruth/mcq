@@ -54,7 +54,7 @@ def _redirect_uri(request: Request) -> str:
     if config.GOOGLE_REDIRECT_URI:
         return config.GOOGLE_REDIRECT_URI
     base = str(request.base_url).rstrip("/")
-    if request.headers.get("X-Forwarded-Proto") == "https":
+    if config.IS_DEPLOYED or request.headers.get("X-Forwarded-Proto") == "https":
         base = base.replace("http://", "https://", 1)
     return f"{base}{CALLBACK_PATH}"
 

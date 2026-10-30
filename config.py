@@ -78,20 +78,28 @@ if not SECRET_KEY:
             "stay valid across restarts and instances."
         )
     SECRET_KEY = secrets.token_hex(32)
-# --- Google sign-in (OAuth 2.0) -------------------------------------------
-# Create these at https://console.cloud.google.com/apis/credentials by making an
-# "OAuth client ID" of type "Web application", then add the callback URL to its
-# Authorized redirect URIs:
+# --- OAuth sign-in (Google + GitHub) ---------------------------------------
+# Each provider is independently enabled by setting its client id/secret. Leave
+# them blank to hide the corresponding button on the login page.
+#
+# Google: create an "OAuth client ID" (Web application) at
+#   https://console.cloud.google.com/apis/credentials
+# and add the callback URL to its Authorized redirect URIs:
 #   local:  http://localhost:8000/auth/google/callback
 #   hosted: https://<your-domain>/auth/google/callback
-# Sign-in is simply hidden when these are unset, so the app runs fine without
-# them and the Google button only appears once it can actually work.
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-# Optional explicit override. When empty the callback URL is derived from the
-# incoming request, which keeps preview deployments working without new config.
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "")
 GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+# GitHub: register an OAuth App at https://github.com/settings/developers and
+# set the callback URL to:
+#   local:  http://localhost:8000/auth/github/callback
+#   hosted: https://<your-domain>/auth/github/callback
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
+GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "")
+GITHUB_OAUTH_ENABLED = bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET)
 
 # Accept GROQ_* and GROK_* interchangeably. These are two different companies --
 # Groq (keys look like `gsk_...`) is the inference host, Grok is xAI's model --
@@ -155,7 +163,7 @@ MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(int(4.5 * 1024 * 1024))
 MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "300"))
 
 # --- Demo accounts ----------------------------------------------------------
-# The seeded "teacher"/"student" accounts (teacher123 / student123) are a local
+# The seeded "demo_teacher"/"demo_student" accounts (TeachPass123 / StudentPass123) are a local
 # convenience and a liability anywhere public. On a hosted deployment they are
 # only created when SEED_DEMO_USERS is explicitly true; local development keeps
 # the historical behaviour so the demo flow still works out of the box.
