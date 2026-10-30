@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('teacher', 'student')),
+    role TEXT NOT NULL DEFAULT 'user',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS sessions (
@@ -170,8 +170,7 @@ def _seed_demo_users(conn: sqlite3.Connection) -> None:
             conn.executemany(
                 "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                 [
-                    ("demo_teacher", generate_password_hash("TeachPass123"), "teacher"),
-                    ("demo_student", generate_password_hash("StudentPass123"), "student"),
+                    ("demo_user", generate_password_hash("DemoPass123"), "user"),
                 ],
             )
             conn.commit()

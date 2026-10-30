@@ -187,14 +187,14 @@ def _upsert_github_user(conn, profile: dict) -> dict:
     try:
         cursor = conn.execute(
             "INSERT INTO users (username, email, password_hash, role, github_id, picture, "
-            "auth_provider) VALUES (?, ?, ?, 'student', ?, ?, 'github')",
+            "auth_provider) VALUES (?, ?, ?, 'user', ?, ?, 'github')",
             (username, email, generate_password_hash(secrets.token_urlsafe(32)),
              github_id, picture),
         )
     except Exception:
         cursor = conn.execute(
             "INSERT INTO users (username, email, password_hash, role, picture, "
-            "auth_provider) VALUES (?, ?, ?, 'student', ?, 'github')",
+            "auth_provider) VALUES (?, ?, ?, 'user', ?, 'github')",
             (username, email, generate_password_hash(secrets.token_urlsafe(32)), picture),
         )
     conn.commit()

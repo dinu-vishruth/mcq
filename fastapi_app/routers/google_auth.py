@@ -187,7 +187,7 @@ def _upsert_google_user(conn, profile: dict) -> dict:
     username = _unique_username(conn, profile, email)
     cursor = conn.execute(
         "INSERT INTO users (username, email, password_hash, role, google_id, picture, "
-        "auth_provider) VALUES (?, ?, ?, 'student', ?, ?, 'google')",
+        "auth_provider) VALUES (?, ?, ?, 'user', ?, ?, 'google')",
         (username, email, generate_password_hash(secrets.token_urlsafe(32)),
          google_id, picture),
     )

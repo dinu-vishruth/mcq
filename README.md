@@ -168,7 +168,7 @@ OBSERVABILITY_BACKEND=auto  # auto | langsmith | langfuse | hook | none
 
 Deployed-only:
 ```dotenv
-SEED_DEMO_USERS=false     # set true to create demo_teacher/TeachPass123 + demo_student/StudentPass123
+SEED_DEMO_USERS=false     # set true to create demo_user/DemoPass123
 ```
 
 Notes:

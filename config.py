@@ -163,10 +163,10 @@ MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(int(4.5 * 1024 * 1024))
 MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "300"))
 
 # --- Demo accounts ----------------------------------------------------------
-# The seeded "demo_teacher"/"demo_student" accounts (TeachPass123 / StudentPass123) are a local
-# convenience and a liability anywhere public. On a hosted deployment they are
-# only created when SEED_DEMO_USERS is explicitly true; local development keeps
-# the historical behaviour so the demo flow still works out of the box.
+# The seeded "demo_user" account (DemoPass123) is a local convenience and a
+# liability anywhere public. On a hosted deployment it is only created when
+# SEED_DEMO_USERS is explicitly true; local development keeps the historical
+# behaviour so the demo flow still works out of the box.
 SEED_DEMO_USERS = os.getenv("SEED_DEMO_USERS", "").strip().lower() in ("1", "true", "yes", "on")
 
 # --- Observability ----------------------------------------------------------
