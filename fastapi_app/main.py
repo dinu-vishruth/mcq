@@ -112,6 +112,17 @@ def create_app() -> FastAPI:
     # rest of the prebuilt React bundle resolve without touching any template.
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
+    # --- Health checks (used by hosts and load balancers) --------------------
+    @app.get("/health")
+    @app.get("/healthz")
+    @app.get("/readyz")
+    async def health():
+        return {"status": "ok"}
+
+    @app.get("/api/health")
+    async def api_health():
+        return {"status": "ok", "service": "mcq-generator"}
+
     # --- Routers (one per former Flask blueprint) ---------------------------
     app.include_router(auth.router)
     app.include_router(google_auth.router)
