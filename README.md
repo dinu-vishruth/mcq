@@ -163,6 +163,7 @@ Observability:
 LOG_LEVEL=INFO
 LOG_FORMAT=json           # or text
 OBSERVABILITY_TRACE_HOOK=  # optional module:function, e.g. my_observability:on_event
+OBSERVABILITY_BACKEND=auto  # auto | langsmith | langfuse | hook | none
 ```
 
 Deployed-only:

@@ -171,6 +171,10 @@ LOG_FORMAT = env_str("LOG_FORMAT", default="json").lower()
 #: the integration point for LangSmith/Langfuse/OTLP without adding an SDK here.
 OBSERVABILITY_TRACE_HOOK = env_str("OBSERVABILITY_TRACE_HOOK", default="")
 
+# Backend selector for tracing (auto | langsmith | langfuse | hook | none). In
+# "auto" mode the sink is picked from whichever credentials are present.
+OBSERVABILITY_BACKEND = env_str("OBSERVABILITY_BACKEND", default="auto")
+
 # ---------------------------------------------------------------------------
 # Agentic AI + RAG configuration (Phase 1+). All additive; defaults preserve
 # the existing behaviour so nothing changes until a feature flag is flipped.

@@ -47,3 +47,6 @@ deployment.txt
 .continue/
 CLAUDE.md
 PROJECT_REVIEW.md
+
+# Personal agent configuration
+.qoder/

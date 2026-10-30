@@ -93,6 +93,17 @@ outage cannot fail a generation request. Hooks run synchronously; keep them
 cheap or buffer to a background thread. The same mechanism works for an OTLP
 exporter or a custom warehouse sink.
 
+## Built-in LangSmith / Langfuse sinks
+
+Set `OBSERVABILITY_BACKEND=langsmith` (and `LANGSMITH_API_KEY`) or
+`OBSERVABILITY_BACKEND=langfuse` (and `LANGFUSE_PUBLIC_KEY` /
+`LANGFUSE_SECRET_KEY`, optionally `LANGFUSE_HOST`) and events are forwarded
+through the optional SDKs. With `OBSERVABILITY_BACKEND=auto` (the default) the
+backend is chosen from whichever credentials are present. Neither SDK is a
+dependency: if it is not installed, or the call fails, tracing is silently
+disabled and JSON logging continues. `OBSERVABILITY_BACKEND=none` turns all
+tracing off.
+
 ## Local development
 
 ```bash

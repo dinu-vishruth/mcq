@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(cd \"C:\\\\Users\\\\Dinu\\\\Documents\\\\mcq_generator\" && git status --short && git log -3 -p --stat -- core/llm/registry.py | head -60)",
-      "Bash(cd /c/Users/Dinu/Documents/mcq_generator && grep -n \"_seed_user\\\\|def client\\\\|document_repo\\\\|def _seed_doc\\\\|ingest_document\\\\|documents'\" tests/test_regression.py | head -25)"
-    ]
-  }
-}

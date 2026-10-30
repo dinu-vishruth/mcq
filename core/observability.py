@@ -128,14 +128,20 @@ def log_event(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
         fields.setdefault("request_id", request_id)
     logger.log(level, event, extra={"fields": fields})
 
-    hook = _trace_hook()
-    if hook is not None:
+    # Tracing backends (LangSmith/Langfuse/OTLP) are optional and env-gated.
+    try:
+        from core import observability_backends
+
+        sink = observability_backends.resolve_sink()
+    except Exception:
+        sink = None
+    if sink is not None:
         payload = {"event": event, "request_id": request_id, **fields}
         try:
-            hook(payload)
+            sink(payload)
         except Exception:
             # Tracing is best-effort; never let it break a request.
-            logger.debug("trace_hook_failed", extra={"fields": {"event": event}})
+            logger.debug("trace_sink_failed", extra={"fields": {"event": event}})
 
 
 @contextmanager
