@@ -255,6 +255,9 @@ Tests cover:
 - weak-topic evaluation/review flow
 - verification and grading logic
 - persistence, background jobs, model resolution, security, retrieval, eval scoring
+- observability (JSON logging, request ids, stage timing, LLM usage)
+- upload storage (local + S3-compatible, faked client)
+- live provider generation (credential-gated, deselected by default)
 
 Commands:
 
@@ -295,6 +298,14 @@ Performance:
 - chunking balances retrieval quality and indexing speed
 - caching reduces redundant processing
 
+## Observability
+
+Structured JSON logging (one object per line) with request ids, stage timings,
+and LLM token usage. Configure via `LOG_LEVEL`, `LOG_FORMAT`, and the optional
+`OBSERVABILITY_BACKEND` / `OBSERVABILITY_TRACE_HOOK`. See
+`docs/observability.md` for the event schema and LangSmith/Langfuse/OTLP hook
+examples.
+
 ## Compatibility Notes
 
 - Public API routes are unchanged. The only response-shape change is in queue
@@ -311,11 +322,14 @@ Performance:
 A short screencast of upload -> quiz configuration -> quiz -> results would
 belong here. Not yet recorded; tracked as a follow-up.
 
-- FastAPI Backend: API server, auth, session management | FastAPI, SQLite, CSRF
+## Project Summary
+
+- FastAPI Backend: API server, auth, session management | FastAPI, SQLite/Postgres, CSRF
 - React Frontend: UI, visualization | React, TypeScript, Vite
-- AI Pipeline: MCQ generation, RAG retrieval | Groq/xAI/OpenAI, ChromaDB
+- AI Pipeline: MCQ generation, RAG retrieval | Groq/xAI/OpenAI/Gemini/Anthropic, ChromaDB/SQLite/pgvector
 - Document Processing: extraction, cleaning | Custom NLP, chunking
-- Learning Analytics: performance tracking, weak topics | SQLite, custom algorithms
+- Learning Analytics: performance tracking, weak topics | SQLite/Postgres, custom algorithms
+- Observability: structured JSON logs, request ids, tracing hooks | stdlib logging
 
 ## Getting Started
 
