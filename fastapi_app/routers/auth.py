@@ -195,21 +195,8 @@ async def profile(
 
 @router.post("/delete_account")
 async def delete_account(request: Request, user: CurrentUser, conn: Db):
-    # A single user may own generated sessions (by username) and quiz results
-    # (by user_id), plus learning data. Remove all of it.
-    conn.execute(
-        "DELETE FROM results WHERE session_key IN "
-        "(SELECT session_key FROM sessions WHERE teacher=?)",
-        (user.username,),
-    )
-    conn.execute("DELETE FROM sessions WHERE teacher=?", (user.username,))
-    for table in ("results", "learning_history", "weak_topics", "user_prefs"):
-        try:
-            conn.execute(f"DELETE FROM {table} WHERE user_id=?", (user.id,))
-        except sqlite3.OperationalError:
-            pass  # additive table not present on an older database
-    conn.execute("DELETE FROM users WHERE id=?", (user.id,))
-    conn.commit()
+    from core.services.account_data import delete_account_data
+    delete_account_data(conn, user.id, user.username)
 
     request.session.clear()
     # flash() writes to the session, so it must come after clear().
