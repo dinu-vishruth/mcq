@@ -44,8 +44,12 @@ def ingest_document(raw_text: str, *, owner: str = "", title: str = "",
         )
 
     document_repo.set_status(document_id, "chunked", chunk_count=len(processed.chunks))
-    embed_stats = EmbeddingAgent().run(document_id, processed.chunks)
-    document_repo.set_status(document_id, "ready", chunk_count=len(processed.chunks))
+    try:
+        embed_stats = EmbeddingAgent().run(document_id, processed.chunks)
+        document_repo.set_status(document_id, "ready", chunk_count=len(processed.chunks))
+    except Exception:
+        document_repo.set_status(document_id, "failed")
+        raise
 
     return {"document_id": document_id, "reused": False,
             "chunk_count": len(processed.chunks), "embed_stats": embed_stats}

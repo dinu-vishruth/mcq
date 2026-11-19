@@ -140,13 +140,14 @@ async def knowledge_list(user: CurrentApiUser):
     items = []
     for doc in document_repo.list_by_owner(user.username):
         chunk_count = doc.get("chunk_count") or 0
+        status = document_repo.display_status(doc)
         items.append({
             "id": doc["id"],
             "title": doc.get("title") or "Untitled",
             "subject": (doc.get("source_type") or "document").upper(),
             "created_at": doc.get("created_at"),
-            "indexed": doc.get("status") == "ready",
-            "status": doc.get("status"),
+            "indexed": status == "ready",
+            "status": status,
             "topic_count": chunk_count,
             # Estimate study time: ~1.5 min per chunk of material.
             "est_minutes": max(5, round(chunk_count * 1.5)),
