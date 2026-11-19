@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS documents (
     status        TEXT DEFAULT 'pending',   -- pending | chunked | embedded | ready | error
     created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
     meta_json     TEXT,                     -- arbitrary metadata (page count, etc.)
+    status_updated_at TEXT,
     -- Dedup is PER OWNER, not global. A global UNIQUE(doc_hash) meant the second
     -- user to upload the same material got the first user's row back and no row
     -- of their own, so their library rendered empty.
@@ -100,6 +101,7 @@ CREATE INDEX IF NOT EXISTS idx_weak_user         ON weak_topics(user_id);
 
 # Additive columns on existing tables: (table, column, definition).
 _ADD_COLUMNS = [
+    ("documents", "status_updated_at", "TEXT"),
     ("sessions", "document_id", "INTEGER"),
     ("user_prefs", "last_active_date", "TEXT"),  # YYYY-MM-DD of last study day (streak calc)
 ]
@@ -124,7 +126,7 @@ CREATE TABLE IF NOT EXISTS user_prefs (
 #: explicitly (rather than SELECT *) so the copy is insensitive to column order.
 _DOC_COLUMNS = (
     "id, doc_hash, owner, title, source_type, char_count, chunk_count, "
-    "status, created_at, meta_json"
+    "status, created_at, meta_json, status_updated_at"
 )
 
 
@@ -183,6 +185,7 @@ def _rebuild_documents_for_owner_scoped_dedup(conn: sqlite3.Connection) -> None:
             status        TEXT DEFAULT 'pending',
             created_at    TEXT DEFAULT CURRENT_TIMESTAMP,
             meta_json     TEXT,
+            status_updated_at TEXT,
             UNIQUE(doc_hash, owner)
         )
     """)

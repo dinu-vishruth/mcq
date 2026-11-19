@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timedelta, timezone
 
 from core.models.db import get_db
 
@@ -57,11 +58,13 @@ def create(dh, owner, title, source_type, char_count, meta=None) -> int:
 def set_status(document_id, status, chunk_count=None) -> None:
     conn = get_db()
     try:
+        now = datetime.now(timezone.utc).isoformat()
         if chunk_count is None:
-            conn.execute("UPDATE documents SET status=? WHERE id=?", (status, document_id))
+            conn.execute("UPDATE documents SET status=?, status_updated_at=? WHERE id=?",
+                         (status, now, document_id))
         else:
-            conn.execute("UPDATE documents SET status=?, chunk_count=? WHERE id=?",
-                         (status, chunk_count, document_id))
+            conn.execute("UPDATE documents SET status=?, chunk_count=?, status_updated_at=? WHERE id=?",
+                         (status, chunk_count, now, document_id))
         conn.commit()
     finally:
         conn.close()
@@ -95,13 +98,30 @@ def list_by_owner(owner: str) -> list[dict]:
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT id, title, source_type, char_count, chunk_count, status, created_at, meta_json "
+            "SELECT id, title, source_type, char_count, chunk_count, status, created_at, meta_json, status_updated_at "
             "FROM documents WHERE owner=? ORDER BY created_at DESC",
             (owner,),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+def display_status(document: dict) -> str:
+    """Report abandoned ingestion as failed after ten minutes without progress."""
+    status = document.get("status")
+    if status not in ("pending", "chunked", "embedded"):
+        return status
+    stamp = document.get("status_updated_at") or document.get("created_at")
+    try:
+        updated = datetime.fromisoformat(str(stamp))
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return "failed"  # Invalid timestamps cannot imply work is still active.
+    if datetime.now(timezone.utc) - updated > timedelta(minutes=10):
+        return "failed"
+    return status
 
 
 def delete(document_id, owner: str) -> bool:
