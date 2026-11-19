@@ -153,17 +153,28 @@ async def profile(
     except ValueError as exc:
         return render(request, "profile.html", user=row, error=str(exc))
 
-    if new_password:
-        conn.execute(
-            "UPDATE users SET username=?, email=?, password_hash=? WHERE id=?",
-            (new_username, new_email, generate_password_hash(new_password), user.id),
-        )
-    else:
-        conn.execute(
-            "UPDATE users SET username=?, email=? WHERE id=?",
-            (new_username, new_email, user.id),
-        )
-    conn.commit()
+    try:
+        if new_password:
+            conn.execute(
+                "UPDATE users SET username=?, email=?, password_hash=? WHERE id=?",
+                (new_username, new_email, generate_password_hash(new_password), user.id),
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET username=?, email=? WHERE id=?",
+                (new_username, new_email, user.id),
+            )
+        if new_username != row["username"]:
+            # Preserve the existing username ownership model consistently. All
+            # dependent names change in the SAME transaction as the account.
+            for table, column in (("sessions", "teacher"), ("documents", "owner"),
+                                  ("generation_jobs", "username")):
+                conn.execute(f"UPDATE {table} SET {column}=? WHERE {column}=?",
+                             (new_username, row["username"]))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
     request.session["username"] = new_username
     flash(request, "Profile updated successfully!", "success")
