@@ -7,8 +7,9 @@ are declared once on the model and FastAPI returns a 422 automatically.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
@@ -60,7 +61,7 @@ async def get_prefs(user: CurrentApiUser, conn: Db):
 
 @router.post("/prefs")
 async def save_prefs(user: CurrentApiUser, conn: Db, payload: PrefsIn):
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     exists = conn.execute("SELECT 1 FROM user_prefs WHERE user_id=?", (user.id,)).fetchone()
     if exists:
         conn.execute(
@@ -117,13 +118,29 @@ async def export_data(user: CurrentApiUser, conn: Db):
     except sqlite3.OperationalError:
         weak = []
 
+    sessions = conn.execute(
+        "SELECT s.session_key, s.timer, s.difficulty, s.mcqs_json, d.title "
+        "FROM sessions s LEFT JOIN documents d ON s.document_id=d.id AND d.owner=? "
+        "WHERE s.teacher=? ORDER BY s.created_at",
+        (user.username, user.username),
+    ).fetchall()
+    documents = conn.execute(
+        "SELECT id, title, source_type, created_at FROM documents WHERE owner=? ORDER BY created_at",
+        (user.username,),
+    ).fetchall()
+
     return JSONResponse(
         {
             "account": dict(account) if account else {},
             "prefs": prefs,
             "results": [dict(r) for r in results],
             "weak_topics": [dict(w) for w in weak],
-            "exported_at": datetime.utcnow().isoformat(),
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "sessions": [{"session_key": row["session_key"],
+                          "title": row["title"] or f"Quiz {row['session_key']}",
+                          "timer": row["timer"], "difficulty": row["difficulty"],
+                          "questions": json.loads(row["mcqs_json"] or "[]")} for row in sessions],
+            "documents": [dict(row) for row in documents],
         },
         headers={"Content-Disposition": 'attachment; filename="mcq_generator_data.json"'},
     )

@@ -71,5 +71,6 @@ class ChromaStore(VectorStore):
     def delete_document(self, document_id: int) -> None:
         try:
             self._client.delete_collection(name=f"doc_{document_id}")
-        except Exception:
-            pass
+        except Exception as exc:
+            if type(exc).__name__ != "NotFoundError":
+                raise

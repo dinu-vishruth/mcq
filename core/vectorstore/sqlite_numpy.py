@@ -119,10 +119,21 @@ class SqliteNumpyStore(VectorStore):
         finally:
             conn.close()
 
-    def delete_document(self, document_id: int) -> None:
-        conn = get_db()
+    def delete_document(self, document_id: int, *, connection=None) -> None:
+        """Remove only this document's vectors; join an account transaction if supplied."""
+        conn = connection if connection is not None else get_db()
         try:
+            hashes = [row[0] for row in conn.execute(
+                "SELECT DISTINCT content_hash FROM chunks WHERE document_id=?", (document_id,)
+            ).fetchall()]
             conn.execute("DELETE FROM chunks WHERE document_id=?", (document_id,))
-            conn.commit()
+            for content_hash in hashes:
+                conn.execute(
+                    "DELETE FROM embeddings WHERE content_hash=? AND NOT EXISTS "
+                    "(SELECT 1 FROM chunks WHERE content_hash=?)", (content_hash, content_hash),
+                )
+            if connection is None:
+                conn.commit()
         finally:
-            conn.close()
+            if connection is None:
+                conn.close()

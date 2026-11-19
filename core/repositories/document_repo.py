@@ -126,16 +126,18 @@ def display_status(document: dict) -> str:
 
 def delete(document_id, owner: str) -> bool:
     """Delete a document and its chunks, scoped to the owner. Returns True if a
-    row was removed. Embeddings are content-hash keyed and shared/cached, so we
-    leave them (harmless orphans, reused on re-ingest)."""
+    row was removed. Shared embedding references are preserved."""
     conn = get_db()
     try:
         row = conn.execute("SELECT owner FROM documents WHERE id=?", (document_id,)).fetchone()
         if row is None or row["owner"] != owner:
             return False
-        conn.execute("DELETE FROM chunks WHERE document_id=?", (document_id,))
-        conn.execute("DELETE FROM documents WHERE id=?", (document_id,))
+        from core.services.account_data import delete_documents
+        delete_documents(conn, [document_id])
         conn.commit()
         return True
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
