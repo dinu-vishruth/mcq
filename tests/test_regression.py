@@ -127,7 +127,7 @@ class TestPublicRoutes(Base):
 
     def test_signup_rejects_short_password(self):
         r = self.client().post("/signup", data={"username": "x1", "password": "short", "role": "teacher"})
-        self.assertIn(b"at least 8 characters", r.data)
+        self.assertIn(b"at least 10 characters", r.data)
 
     def test_signup_then_login(self):
         # Single unified "User" role: signup no longer takes a role and login
