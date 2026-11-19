@@ -13,6 +13,7 @@ upgrade path is what applies new columns to the existing database.
 from __future__ import annotations
 
 import os
+import secrets
 import sqlite3
 
 import config
@@ -154,25 +155,22 @@ def init_db() -> None:
 
 
 def _seed_demo_users(conn: sqlite3.Connection) -> None:
-    """Seed teacher/student demo accounts, only into an empty users table.
-
-    Hosted deployments skip this unless SEED_DEMO_USERS is explicitly true:
-    'teacher'/'teacher123' on a public URL is an account takeover waiting to
-    happen. Local dev keeps the seeded pair for the documented demo flow.
-    """
-    if config.IS_DEPLOYED and not config.SEED_DEMO_USERS:
-        print("[startup] Demo users not seeded (set SEED_DEMO_USERS=true to opt in).")
+    """Explicit opt-in for an empty local database; print random passwords once."""
+    if not config.SEED_DEMO_USERS:
         return
     try:
         from werkzeug.security import generate_password_hash
 
         if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
+            accounts = [(name, secrets.token_urlsafe(24)) for name in ("teacher", "student")]
             conn.executemany(
                 "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                 [
-                    ("demo_user", generate_password_hash("DemoPass123"), "user"),
+                    (name, generate_password_hash(password), "user") for name, password in accounts
                 ],
             )
             conn.commit()
+            for name, password in accounts:
+                print(f"[local demo] username={name} password={password}")
     except Exception as exc:
         print(f"[WARNING] Failed to seed default users: {exc}")
