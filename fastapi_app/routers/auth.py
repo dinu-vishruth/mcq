@@ -11,7 +11,7 @@ noting while reading:
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Form, Request
@@ -26,7 +26,17 @@ router = APIRouter(tags=["auth"])
 #: Failed logins allowed per IP/username before a temporary lockout.
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_WINDOW = timedelta(minutes=5)
-MIN_PASSWORD_LENGTH = 8
+MIN_PASSWORD_LENGTH = 10
+
+
+def _password_error(password: str) -> str | None:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return f"Password must be at least {MIN_PASSWORD_LENGTH} characters long."
+    classes = (any(c.islower() for c in password), any(c.isupper() for c in password),
+               any(c.isdigit() for c in password), any(not c.isalnum() for c in password))
+    if sum(classes) < 2:
+        return "Password must use at least two of lowercase letters, uppercase letters, numbers or symbols."
+    return None
 
 
 @router.get("/")
@@ -48,14 +58,15 @@ async def signup(
     username: Annotated[str, Form()] = "",
     password: Annotated[str, Form()] = "",
 ):
-    username, password = username.strip(), password.strip()
+    username = username.strip()
 
     if not username or not password:
         return render(request, "signup.html", error="All fields are required.")
-    if len(password) < MIN_PASSWORD_LENGTH:
+    password_error = _password_error(password)
+    if password_error:
         return render(
             request, "signup.html",
-            error=f"Password must be at least {MIN_PASSWORD_LENGTH} characters long.",
+            error=password_error,
         )
 
     # Single unified "User" role. The DB role column has a legacy CHECK
@@ -80,14 +91,14 @@ async def login(
     username: Annotated[str, Form()] = "",
     password: Annotated[str, Form()] = "",
 ):
-    username, password = username.strip(), password.strip()
+    username = username.strip()
     ip = request.client.host if request.client else None
 
-    window_start = (datetime.utcnow() - LOCKOUT_WINDOW).isoformat()
+    window_start = (datetime.now(timezone.utc) - LOCKOUT_WINDOW).isoformat()
     failures = conn.execute(
         """
         SELECT COUNT(*) FROM login_attempts
-        WHERE (ip=? OR username=?) AND success=0 AND attempt_time > ?
+        WHERE ip=? AND username=? AND success=0 AND attempt_time > ?
         """,
         (ip, username, window_start),
     ).fetchone()[0]
@@ -103,7 +114,7 @@ async def login(
 
     conn.execute(
         "INSERT INTO login_attempts (ip, username, attempt_time, success) VALUES (?, ?, ?, ?)",
-        (ip, username, datetime.utcnow().isoformat(), 1 if ok else 0),
+        (ip, username, datetime.now(timezone.utc).isoformat(), 1 if ok else 0),
     )
     conn.commit()
 
@@ -137,7 +148,7 @@ async def profile(
     password: Annotated[str, Form()] = "",
 ):
     row = conn.execute("SELECT * FROM users WHERE id=?", (user.id,)).fetchone()
-    new_username, new_email, new_password = username.strip(), email.strip(), password.strip()
+    new_username, new_email, new_password = username.strip(), email.strip(), password
 
     try:
         if not new_username:
@@ -148,8 +159,9 @@ async def profile(
             ).fetchone()
             if taken:
                 raise ValueError("Username already exists.")
-        if new_password and len(new_password) < MIN_PASSWORD_LENGTH:
-            raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long.")
+        password_error = _password_error(new_password) if new_password else None
+        if password_error:
+            raise ValueError(password_error)
     except ValueError as exc:
         return render(request, "profile.html", user=row, error=str(exc))
 

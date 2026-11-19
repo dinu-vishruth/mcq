@@ -96,7 +96,7 @@ export default function Settings({ data }: { data: SettingsData }) {
             </div>
             <div>
               <label className="text-text-2 text-sm block mb-1.5">New Password <span className="text-text-3">(leave blank to keep current)</span></label>
-              <input type="password" name="password" placeholder="At least 8 characters"
+              <input type="password" name="password" placeholder="At least 10 characters, two character types"
                 className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
             </div>
             <Button type="submit" leftIcon={<Check className="w-4 h-4" />}>Save Changes</Button>

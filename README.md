@@ -82,6 +82,13 @@ AI/ML:
 
 ## Key Runtime Behavior
 
+Passwords are preserved exactly, including leading/trailing spaces. New accounts
+and password changes require at least 10 characters and two of lowercase,
+uppercase, numbers or symbols. Existing passwords remain usable at login.
+Login lockout applies to a `(username, IP)` pair after five failures in five
+minutes. With SQLite on Vercel this protection is instance-local until the
+database becomes persistent; persistent hosting is a separate follow-up.
+
 Environment variable compatibility:
 - `GROQ_API_KEY` and `GROK_API_KEY` both accepted
 - `GROQ_MODEL` and `GROK_MODEL` both accepted
