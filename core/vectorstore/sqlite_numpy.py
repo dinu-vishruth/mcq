@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 
 from core.models.db import get_db
-from core.vectorstore.base import VectorStore, SearchHit
+from core.vectorstore.base import SearchHit, VectorStore
 
 
 def _to_blob(vector) -> bytes:

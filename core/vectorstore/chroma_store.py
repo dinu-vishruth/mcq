@@ -11,7 +11,7 @@ registry forces the SQLite store there regardless of VECTOR_STORE.
 from __future__ import annotations
 
 import config
-from core.vectorstore.base import VectorStore, SearchHit
+from core.vectorstore.base import SearchHit, VectorStore
 
 
 class ChromaStore(VectorStore):

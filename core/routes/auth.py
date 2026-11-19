@@ -10,9 +10,8 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timedelta
 
-from flask import (Blueprint, render_template, request, session, redirect,
-                   url_for, flash)
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from core.models.db import get_db
 

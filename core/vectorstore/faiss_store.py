@@ -14,7 +14,7 @@ import numpy as np
 
 import config
 from core.models.db import get_db
-from core.vectorstore.base import VectorStore, SearchHit
+from core.vectorstore.base import SearchHit, VectorStore
 
 
 class FaissStore(VectorStore):

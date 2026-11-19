@@ -64,7 +64,7 @@ async def signup(
     try:
         conn.execute(
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-            (username, generate_password_hash(password), "student"),
+            (username, generate_password_hash(password), "user"),
         )
         conn.commit()
     except sqlite3.IntegrityError:

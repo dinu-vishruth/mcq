@@ -6,7 +6,7 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { csrfToken } from "@/bootstrap";
 
 interface Option { label: string; text: string; }
-interface Question { question: string; options: Option[]; answer_text: string; }
+interface Question { question: string; options: Option[]; }
 export interface QuizData {
   mcqs: Question[];
   timer: number;

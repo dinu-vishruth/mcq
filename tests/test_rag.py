@@ -18,11 +18,11 @@ config.DB_PATH = os.path.join(_TMP, "rag.db")
 config.EMBEDDING_BACKEND = "hashing"
 config.VECTOR_STORE = "sqlite"
 
+from core.embeddings import get_embedder, reset_embedder
 from core.models.migrations import run_migrations
 from core.rag.chunker import chunk_text
-from core.embeddings import get_embedder, reset_embedder
-from core.vectorstore import get_vector_store, reset_vector_store
 from core.services.ingestion_service import ingest_document
+from core.vectorstore import get_vector_store, reset_vector_store
 
 
 def _init_db():

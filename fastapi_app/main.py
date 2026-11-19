@@ -6,7 +6,7 @@ and sees the request *first*. The adds below are therefore written in reverse of
 the execution order:
 
     execution order            added
-    1. HTTPSRedirect (Vercel)  last
+    1. HTTPSRedirect (deployed) last
     2. Session (decode cookie)  2nd
     3. CSRF (validate token)   first
 
@@ -25,15 +25,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from config import SECRET_KEY, UPLOAD_FOLDER
+from config import IS_DEPLOYED, SECRET_KEY, UPLOAD_FOLDER
+from core.observability import RequestContextMiddleware, configure_logging
 
 from .database import init_db
 from .deps import RedirectException
-from .middleware import CSRFMiddleware, HTTPSRedirectOnVercelMiddleware
-from .routers import api, auth, documents, google_auth, student, teacher
+from .middleware import CSRFMiddleware, HTTPSRedirectMiddleware
+from .routers import api, auth, documents, github_auth, google_auth, jobs, student, teacher
 from .templating import BASE_DIR
-
-IS_VERCEL = bool(os.environ.get("VERCEL"))
 
 #: 24h, matching the Flask PERMANENT_SESSION_LIFETIME.
 SESSION_MAX_AGE = 60 * 60 * 24
@@ -46,22 +45,39 @@ def _log_llm_config() -> None:
     already picked a file and waited through an upload -- the failure surfaced as
     a mid-flow error on the quiz screen. Logging it at startup means the operator
     sees the problem before any learner does.
+
+    A *misconfigured* provider/model pair is different: it cannot work at all, so
+    it fails boot here with one actionable line rather than surfacing later as a
+    provider 404 on every generation request.
     """
+    import logging
+
     import config
+    from core.observability import log_event
 
     if config.llm_key_present():
+        from core.llm import get_llm
+        from core.llm.base import LLMError
+
         try:
-            from core.llm import get_llm
             llm = get_llm()
-            print(f"[startup] LLM ready: provider={llm.provider_id} model={llm.model}")
-        except Exception as exc:  # never block boot on provider construction
-            print(f"[startup] WARNING: LLM key present but provider setup failed: {exc}")
+        except LLMError as exc:
+            log_event("llm.config_invalid", level=logging.ERROR, error=str(exc))
+            raise
+        except Exception as exc:  # e.g. an optional provider package is missing
+            log_event("llm.setup_failed", level=logging.WARNING, error=str(exc))
+            return
+        log_event("llm.ready", provider=getattr(llm, "provider_id", config.LLM_PROVIDER),
+                  model=llm.model)
     else:
-        print(f"[startup] WARNING: {config.missing_key_message()}")
-        print("[startup] Quiz generation will fail until a key is set; the rest of the app works.")
+        log_event("llm.no_credentials", level=logging.WARNING,
+                  message=config.missing_key_message())
+        log_event("llm.quiz_unavailable", level=logging.WARNING,
+                  message="Quiz generation will fail until a key is set; the rest of the app works.")
 
 
 def create_app() -> FastAPI:
+    configure_logging()
     app = FastAPI(
         title="Examly",
         description="AI-powered MCQ generation and exam prep.",
@@ -82,24 +98,40 @@ def create_app() -> FastAPI:
         secret_key=SECRET_KEY,
         max_age=SESSION_MAX_AGE,
         same_site="lax",
-        https_only=IS_VERCEL,
+        https_only=IS_DEPLOYED,
         session_cookie="session",
     )
-    if IS_VERCEL:
-        app.add_middleware(HTTPSRedirectOnVercelMiddleware)
+    if IS_DEPLOYED:
+        app.add_middleware(HTTPSRedirectMiddleware)
+    # Added last = outermost: every request (including CSRF/redirect failures)
+    # gets a request id, an access log line, and a response header.
+    app.add_middleware(RequestContextMiddleware)
 
     # --- Static files -------------------------------------------------------
     # Mounted at the same prefix Flask served, so /static/dist/app.js and the
     # rest of the prebuilt React bundle resolve without touching any template.
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
+    # --- Health checks (used by hosts and load balancers) --------------------
+    @app.get("/health")
+    @app.get("/healthz")
+    @app.get("/readyz")
+    async def health():
+        return {"status": "ok"}
+
+    @app.get("/api/health")
+    async def api_health():
+        return {"status": "ok", "service": "mcq-generator"}
+
     # --- Routers (one per former Flask blueprint) ---------------------------
     app.include_router(auth.router)
     app.include_router(google_auth.router)
+    app.include_router(github_auth.router)
     app.include_router(student.router)
     app.include_router(documents.router)
     app.include_router(teacher.router)
     app.include_router(api.router)
+    app.include_router(jobs.router)
 
     @app.exception_handler(RedirectException)
     async def _handle_redirect(request: Request, exc: RedirectException):

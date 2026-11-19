@@ -9,15 +9,14 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..deps import CurrentApiUser, Db
-from ..services.dashboard import (build_dashboard, level_for_xp, load_prefs,
-                                  study_recommendations)
+from ..services.dashboard import build_dashboard, level_for_xp, load_prefs
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -44,6 +43,9 @@ class PracticeIn(BaseModel):
     topic: str | None = None
     #: Seconds. Upper bound matches the 180-minute limit on /upload.
     timer: int = Field(600, ge=30, le=10800)
+    #: Optional per-job pipeline budget (queue mode only). Not sent by the
+    #: current frontend; defaults to GENERATION_JOB_DEADLINE_SECONDS.
+    deadline_seconds: int | None = Field(None, ge=60, le=3600)
 
 
 # --------------------------------------------------------------------------- #
@@ -261,19 +263,64 @@ async def achievements_data(user: CurrentApiUser, conn: Db):
 # --------------------------------------------------------------------------- #
 
 @router.post("/practice/generate")
-async def practice_generate(user: CurrentApiUser, payload: PracticeIn):
+def practice_generate(user: CurrentApiUser, payload: PracticeIn):
     """Generate an MCQ set from an indexed Knowledge document and create a session.
 
     Reuses the RAG/agent pipeline (falling back to legacy when a document has no
     retrievable context). Returns the session_key the Quiz screen loads via the
     existing /student_login flow.
+
+    Deliberately sync rather than async: the pipeline blocks on ``requests.post``,
+    and on a single-worker container an ``async def`` handler would hold the event
+    loop for the whole generation -- including the health check, which the host
+    reads as an unresponsive service. Sync handlers run in the threadpool.
+
+    Queue mode (GENERATION_BACKEND=rq): the work is enqueued and this endpoint
+    returns ``{"ok": true, "job_id": ..., "status": "queued"}`` instead of a
+    session_key; the client polls GET /api/jobs/{id}. The default inline mode
+    keeps the original response shape unchanged -- see README "Compatibility".
     """
-    from core.repositories import document_repo
+    from core.repositories import document_repo, job_repo
 
     # Ownership: only practice from your own knowledge.
     doc = document_repo.get(payload.document_id)
     if doc is None or doc["owner"] != user.username:
         raise HTTPException(status_code=404, detail="not found")
+
+    # Per-user throttle before any costly work (queue mode included: enqueuing is
+    # cheap but the job still burns LLM calls). Uses its own connection because
+    # this is a sync handler running in the threadpool -- see rate_limits.
+    from ..rate_limits import check_generation_throttle_for_user
+
+    throttle_message = check_generation_throttle_for_user(user.username)
+    if throttle_message:
+        raise HTTPException(status_code=429, detail=throttle_message)
+
+    from core.services.job_runner import (
+        create_job,
+        enqueue_job,
+        generation_backend,
+        run_generation_job,
+    )
+
+    if generation_backend() == "rq":
+        job_id = create_job(
+            user_id=user.id, username=user.username, document_id=payload.document_id,
+            num_questions=payload.num_questions, difficulty=payload.difficulty,
+            topic=(payload.topic or "").strip() or None, timer=payload.timer,
+            deadline_seconds=payload.deadline_seconds,
+        )
+        if enqueue_job(job_id):
+            return {"ok": True, "job_id": job_id, "status": "queued"}
+        # Redis/queue hiccup: still do the work rather than fail the request.
+        try:
+            run_generation_job(job_id)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        job = job_repo.get(job_id) or {}
+        result = job_repo.public_view(job).get("result") or {}
+        return {"ok": True, "session_key": result.get("session_key"),
+                "count": result.get("count", 0), "job_id": job_id}
 
     try:
         from core.services.mcq_pipeline import generate_from_document

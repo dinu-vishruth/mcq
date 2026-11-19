@@ -10,11 +10,10 @@ generation. Redirects DB/upload dirs to temp locations BEFORE importing app.
 
 Run:  python -m unittest tests.test_features -v
 """
-import os
 import json
+import os
 import sqlite3
 import tempfile
-import time
 import unittest
 
 _TMP = tempfile.mkdtemp(prefix="mcq_feat_")
@@ -23,6 +22,7 @@ _UP = os.path.join(_TMP, "uploads")
 os.makedirs(_UP, exist_ok=True)
 
 import config
+
 config.DB_PATH = _DB
 config.UPLOAD_FOLDER = _UP
 config.EMBEDDING_BACKEND = "hashing"
@@ -30,9 +30,11 @@ config.VECTOR_STORE = "sqlite"
 
 import app as app_module
 import utils.session_manager as sm
+
 sm.DB_PATH = _DB
 
 from fastapi_app.database import init_db
+
 init_db()
 
 # Deterministic, offline MCQ generation.
@@ -103,7 +105,7 @@ class TestUploadAutoSavesResource(Base):
 
 class TestStoreOnlyResourceUpload(Base):
     """Learning Journey's Add Resource flow: /ingest_resource stores + indexes a
-    document WITHOUT generating a quiz, and redirects straight to practice."""
+    document WITHOUT generating a quiz, then returns to the library."""
 
     def _count_sessions(self):
         conn = sqlite3.connect(_DB)
@@ -139,29 +141,57 @@ class TestStoreOnlyResourceUpload(Base):
         self.assertNotIn("/practice", r.headers["Location"])
         self.assertNotIn("/journey", r.headers["Location"])  # bounced to home
 
-    def test_ingest_resource_returns_fast_without_blocking_on_indexing(self):
-        """Saving to the library should not block the user on embeddings."""
+    def test_ingest_resource_finishes_indexing_before_responding(self):
+        """Indexing must complete before the redirect, not in a background thread.
+
+        Regression: the work was handed to a daemon thread so the redirect could
+        return early, but nothing joined it. On a host that freezes the process
+        once the response is sent, the thread died mid-write and the library
+        listed a resource that had never actually been stored.
+        """
         c = self._client_factory()
         self._seed_and_login(c, "bg1")
 
         import core.services.ingestion_service as ing
         original = ing.ingest_document
+        calls = []
 
-        def slow_ingest(*args, **kwargs):
-            time.sleep(0.8)
+        def recording_ingest(*args, **kwargs):
+            calls.append(kwargs.get("title"))
             return {"document_id": 99, "reused": False, "chunk_count": 1, "embed_stats": None}
 
         try:
-            ing.ingest_document = slow_ingest
-            start = time.perf_counter()
+            ing.ingest_document = recording_ingest
             r = c.post("/ingest_resource", data={
-                "extracted_text": "Background indexing should not block the redirect. " * 20,
-                "title": "Background Test",
+                "extracted_text": "Indexing must happen before the redirect. " * 20,
+                "title": "Inline Test",
             })
-            elapsed = time.perf_counter() - start
             self.assertEqual(r.status_code, 302)
             self.assertIn("/journey", r.headers["Location"])
-            self.assertLess(elapsed, 0.5, "save route should return immediately without waiting for indexing")
+            self.assertEqual(calls, ["Inline Test"], "indexing should run before the response")
+        finally:
+            ing.ingest_document = original
+
+    def test_ingest_resource_surfaces_indexing_failure(self):
+        """A failed index is an error on the form, not a phantom library entry."""
+        c = self._client_factory()
+        self._seed_and_login(c, "bg2")
+
+        import core.services.ingestion_service as ing
+        original = ing.ingest_document
+        try:
+            def boom(*args, **kwargs):
+                raise RuntimeError("embedding model unavailable")
+
+            ing.ingest_document = boom
+            r = c.post("/ingest_resource", data={
+                "extracted_text": "Failure should be reported, not swallowed. " * 20,
+                "title": "Broken Test",
+            })
+            self.assertEqual(r.status_code, 200)
+            self.assertIn(b"Could not save this resource", r.data)
+            items = c.get("/api/knowledge").get_json()["items"]
+            self.assertFalse(any(it["title"] == "Broken Test" for it in items))
         finally:
             ing.ingest_document = original
 

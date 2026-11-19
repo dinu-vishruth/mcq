@@ -12,6 +12,8 @@ frontend/tsconfig.tsbuildinfo
 # Python cache
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
 
 # Environment variables
 .env
@@ -45,3 +47,6 @@ deployment.txt
 .continue/
 CLAUDE.md
 PROJECT_REVIEW.md
+
+# Personal agent configuration
+.qoder/

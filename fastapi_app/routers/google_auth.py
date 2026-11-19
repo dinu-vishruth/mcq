@@ -29,7 +29,7 @@ from werkzeug.security import generate_password_hash
 import config
 
 from ..deps import Db
-from ..templating import flash, render
+from ..templating import render
 
 router = APIRouter(tags=["oauth"])
 
@@ -54,7 +54,7 @@ def _redirect_uri(request: Request) -> str:
     if config.GOOGLE_REDIRECT_URI:
         return config.GOOGLE_REDIRECT_URI
     base = str(request.base_url).rstrip("/")
-    if request.headers.get("X-Forwarded-Proto") == "https":
+    if config.IS_DEPLOYED or request.headers.get("X-Forwarded-Proto") == "https":
         base = base.replace("http://", "https://", 1)
     return f"{base}{CALLBACK_PATH}"
 
@@ -187,7 +187,7 @@ def _upsert_google_user(conn, profile: dict) -> dict:
     username = _unique_username(conn, profile, email)
     cursor = conn.execute(
         "INSERT INTO users (username, email, password_hash, role, google_id, picture, "
-        "auth_provider) VALUES (?, ?, ?, 'student', ?, ?, 'google')",
+        "auth_provider) VALUES (?, ?, ?, 'user', ?, ?, 'google')",
         (username, email, generate_password_hash(secrets.token_urlsafe(32)),
          google_id, picture),
     )

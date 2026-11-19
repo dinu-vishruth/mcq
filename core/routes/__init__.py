@@ -8,11 +8,11 @@ student.student_dashboard, student.mcq_test, student.student_login); all in-code
 url_for() calls use those names. Templates use hardcoded paths, so they are
 untouched.
 """
-from core.routes.auth import auth_bp
-from core.routes.teacher import teacher_bp
-from core.routes.student import student_bp
-from core.routes.documents import documents_bp
 from core.routes.api import api_bp
+from core.routes.auth import auth_bp
+from core.routes.documents import documents_bp
+from core.routes.student import student_bp
+from core.routes.teacher import teacher_bp
 
 
 def register_blueprints(app):

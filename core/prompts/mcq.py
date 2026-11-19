@@ -3,7 +3,7 @@ MCQ generation prompts.
 
 `legacy_prompt` reproduces the exact wording the current single-shot generator
 uses, so behaviour is identical when AI_PIPELINE=legacy. `rag_prompt` is the
-retrieval-grounded variant used by the QuestionAgent in Phase 4: it forbids the
+retrieval-grounded variant used by the QuestionAgent: it forbids the
 model from inventing facts beyond the supplied context chunks.
 """
 
@@ -68,7 +68,7 @@ Each MCQ object must have exactly the following structure:
 def rag_prompt(context: str, num_questions: int, difficulty: str) -> str:
     """Retrieval-grounded prompt. The model may only use the provided context.
 
-    Enforces the brief's generation contract: draw ONLY on the context, never
+    Enforces the generation contract: draw ONLY on the context, never
     invent facts, obey strict distractor rules, ground the explanation, and
     self-verify before returning. If the context cannot support the request,
     the model returns a single INSUFFICIENT_CONTEXT marker instead of guessing.
