@@ -87,13 +87,13 @@ class TestDemoSeeding(unittest.TestCase):
         config.IS_DEPLOYED = True
         config.SEED_DEMO_USERS = True
         init_db()
-        self.assertEqual(_count_users(self._db), 1)
+        self.assertEqual(_count_users(self._db), 2)
 
-    def test_local_development_keeps_demo_accounts(self):
+    def test_local_development_requires_explicit_opt_in(self):
         config.IS_DEPLOYED = False
         config.SEED_DEMO_USERS = False
         init_db()
-        self.assertEqual(_count_users(self._db), 1)
+        self.assertEqual(_count_users(self._db), 0)
 
 
 class TestUploadValidation(unittest.TestCase):
