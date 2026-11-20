@@ -46,6 +46,8 @@ database/                 # SQLite database and schema files, numbered migration
 evals/                    # Evaluation dataset, harness and latest report
 ```
 
+The older engineering walkthrough is archived in [docs/project_explanation.md](docs/project_explanation.md). It describes its recorded baseline; current behavior is defined by the FastAPI handlers and tests.
+
 ## Tech Stack
 
 Backend:

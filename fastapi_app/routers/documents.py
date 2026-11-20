@@ -196,15 +196,3 @@ def upload(
     if doc_id:
         return RedirectResponse(f"/knowledge?doc={doc_id}", status_code=302)
     return RedirectResponse("/knowledge", status_code=302)
-
-
-def _check_generation_throttle(conn, username: str) -> str | None:
-    """Deprecated alias kept for the legacy core/routes module.
-
-    The FastAPI app uses fastapi_app.rate_limits.check_generation_throttle, which
-    is actually wired into /api/practice/generate; this shim keeps the old
-    import path working without duplicating the window logic.
-    """
-    from ..rate_limits import check_generation_throttle
-
-    return check_generation_throttle(conn, username)
