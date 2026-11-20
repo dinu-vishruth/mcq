@@ -5,7 +5,7 @@ never sent to another, and an unrecoverable mismatch fails fast (LLMError)
 rather than at request time.
 """
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import config
 from core.llm import registry
@@ -67,6 +67,34 @@ class TestProviderDefaults(unittest.TestCase):
     def test_auto_groq_key_ignores_stale_xai_model(self):
         provider, model = registry._resolve_auto("gsk_x", "grok-2-1212")
         self.assertEqual((provider, model), ("groq", "openai/gpt-oss-20b"))
+
+    def test_retired_compound_models_use_default_in_json_request(self):
+        for provider in ("auto", "groq"):
+            for retired in ("groq/compound-mini", "groq/compound"):
+                with self.subTest(provider=provider, model=retired), patch.multiple(
+                    config, LLM_PROVIDER=provider, LLM_API_KEY="gsk_test",
+                    LLM_MODEL=retired,
+                ), patch("core.llm.openai_compatible.requests.post") as post:
+                    post.return_value = Mock(status_code=200)
+                    post.return_value.json.return_value = {
+                        "choices": [{"message": {"content": '{"questions": []}'}}],
+                    }
+                    llm = registry.build_llm()
+                    result = llm.complete_json([
+                        {"role": "user", "content": "Return questions as JSON."},
+                    ])
+                    self.assertEqual(result, {"questions": []})
+                    self.assertEqual(post.call_args.args[0],
+                                     "https://api.groq.com/openai/v1/chat/completions")
+                    self.assertEqual(post.call_args.kwargs["json"]["model"],
+                                     "openai/gpt-oss-20b")
+
+    def test_active_groq_models_remain_selectable(self):
+        for model in ("openai/gpt-oss-20b", "openai/gpt-oss-120b"):
+            with self.subTest(model=model), patch.multiple(
+                config, LLM_PROVIDER="groq", LLM_API_KEY="gsk_test", LLM_MODEL=model,
+            ):
+                self.assertEqual(registry.build_llm().model, model)
 
 
 class TestValidation(unittest.TestCase):
