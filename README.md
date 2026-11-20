@@ -1,345 +1,233 @@
-# Agentic RAG MCQ Generator
+# Examly — MCQ Generator
 
-## Overview
+A learning application that turns uploaded study material into configurable quizzes. It combines a FastAPI backend, React and TypeScript screens, a personal resource library, and an optional retrieval-augmented generation (RAG) pipeline.
 
-An AI-powered learning platform for generating and managing MCQ assessments from uploaded study material. The application features a progressive RAG pipeline that falls back to legacy single-shot generation when retrieval is unavailable or models fail.
+This README describes the code in this branch. A deployed application's behavior depends on the deployed commit, environment variables, and configured services.
 
-## What the App Does
+## Features
 
-- File Processing: Upload PDF, DOCX, PPTX, or TXT files
-- Text Extraction: Clean and extract source text from documents
-- Library Management: Save resources to per-user libraries
-- Content Indexing: Index resource text for intelligent retrieval
-- MCQ Generation:
-  - Upload material to save and index a resource, then configure a quiz
-  - Generate from retrieved library content; verification stages run when `AI_PIPELINE=rag`
-- Session Tracking: Monitor quiz sessions and student results
-- Learning Analytics: Identify weak topics after quizzes
-- Explanation Generation: Create revision guidance from source material
-- Cross-Platform: local and Vercel deployments
+- Upload PDF, DOCX, PPTX, or TXT files, or paste study text.
+- Save and index resources in a personal Library; repeated saves are deduplicated per owner.
+- Configure quizzes with 1–30 questions, easy/medium/hard difficulty, an optional topic, and a timer from 30 seconds to 180 minutes.
+- Take timed quizzes, view results, identify weak topics, and generate revision practice.
+- Track learning progress, preferences, XP, streaks, and achievements.
+- Sign in with a password or optionally Google/GitHub OAuth. Accounts use a unified user experience; demo names confer no special privileges.
+- Export account data, update profile details, and delete owned account records.
+- Use Groq, xAI, OpenAI, Gemini, or Anthropic through a shared provider interface.
 
-## Current Architecture
+## How quiz creation works
 
-```text
-app.py                    # FastAPI entry point
-worker.py                 # RQ background worker for MCQ generation (optional)
-fastapi_app/              # FastAPI app, routers, deps, middleware, DB bootstrap
-config.py                 # Environment configuration and runtime defaults
-core/
-  llm/                    # LLM providers and provider auto-detection
-  embeddings/             # Hashing / SentenceTransformer / remote backends
-  vectorstore/            # Chroma, SQLite+NumPy, FAISS, pgvector
-  rag/                    # Chunking, retrieval, context-building
-  agents/                 # Planner, retriever, fact-checking, evaluation, etc.
-  services/                # Orchestration for generation and learning flows
-  repositories/           # SQLite/Postgres data access
-  storage/                # Upload object storage (local or S3-compatible)
-  observability.py        # Structured JSON logging and tracing hooks
-  prompts/                # Prompts for MCQ generation and verification
-  models/                 # Database migrations and schema helpers
-models/                   # Legacy generation fallback path
-utils/                    # Text cleaning and session helpers
-frontend/                 # Vite + React + TypeScript UI source
-static/dist/              # Built frontend assets
-templates/                # Server-rendered shell templates
-database/                 # SQLite database and schema files, numbered migrations
-evals/                    # Evaluation dataset, harness and latest report
+1. Upload material through **Make Quiz & Test**, or add a resource to the Library.
+2. The server extracts and cleans the text, chunks it, and indexes it before responding. Uploading does not generate a quiz.
+3. A successful quiz upload redirects to `/knowledge?doc=<id>` for configuration. The uploaded source remains in the Library.
+4. Choose the quiz settings and request generation through `/api/practice/generate`.
+5. The server creates a quiz session; the learner opens it and submits answers for server-side grading.
+6. Results feed the progress and weak-topic views.
+
+Failed indexing is reported to the user. Unfinished resources older than the ingestion timeout are exposed as failed rather than remaining indefinitely pending. Generation can return fewer questions when its retry or time budget is exhausted.
+
+## Recent updates
+
+- Correct answers are excluded from quiz-page bootstrap data. Grading uses answers stored on the server.
+- Demo accounts require explicit local opt-in and receive random passwords; deployed demo seeding is disabled.
+- Renaming an account retains ownership of resources and quiz sessions.
+- Login failures are tracked by `(username, IP)` pair. Passwords retain their exact leading and trailing whitespace.
+- Account deletion covers owned database records and vector cleanup while preserving other learners' results and shared embeddings. Export includes sessions and document metadata.
+- Regression coverage verifies upload → configuration → generation, timer validation, and playable quiz sessions.
+- CI checks the backend, frontend typecheck/build, and freshness of committed frontend assets. The inactive Flask route tree has been removed.
+- Retired Groq `groq/compound` and `groq/compound-mini` overrides resolve to the existing `openai/gpt-oss-20b` default.
+
+## Local setup
+
+The CI configuration uses Python 3.13 and Node.js 24.14.0. Node is needed when rebuilding the frontend; committed assets let the backend serve the UI without a Node process.
+
+From the repository root, using PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
 
-The older engineering walkthrough is archived in [docs/project_explanation.md](docs/project_explanation.md). It describes its recorded baseline; current behavior is defined by the FastAPI handlers and tests.
+Edit `.env` with your own session secret and provider key. A minimal Groq configuration is:
 
-## Tech Stack
-
-Backend:
-- FastAPI (Python 3.10+)
-- SQLite by default; Postgres via `DATABASE_URL` (psycopg)
-- Signed cookies with CSRF protection
-
-Frontend:
-- React + TypeScript
-- Vite
-- Tailwind CSS
-- Framer Motion
-- Lucide React
-- Recharts
-
-AI/ML:
-- LLM Providers: Groq, xAI, OpenAI, Gemini, Anthropic (one default model per provider)
-- Embedding Backends: SentenceTransformers, remote APIs, hashing fallback
-- Vector Stores: ChromaDB, SQLite+NumPy, FAISS, pgvector
-- Document Parsing: PDF, Word, PowerPoint, TXT
-- Background Jobs: RQ + Redis (optional; inline by default)
-- Deployment: Vercel/Render-ready and local Uvicorn compatible
-
-## Typical User Flow
-
-1. Upload or Library: user uploads file or saves study resource
-2. Content Processing: text cleaned and divided into chunks
-3. Embedding Generation: vectors created/stored
-4. Quiz Configuration: choose a saved resource, difficulty, question count, topic focus, and timer
-   - New uploads redirect to this configuration step after indexing
-   - Generation retrieves source content and uses the configured legacy or RAG pipeline
-5. Quiz Creation: session created and student answers recorded
-6. Learning Analysis: weak-topic analysis and revision guidance generated
-
-## Key Runtime Behavior
-
-Passwords are preserved exactly, including leading/trailing spaces. New accounts
-and password changes require at least 10 characters and two of lowercase,
-uppercase, numbers or symbols. Existing passwords remain usable at login.
-Login lockout applies to a `(username, IP)` pair after five failures in five
-minutes. With SQLite on Vercel this protection is instance-local until the
-database becomes persistent; persistent hosting is a separate follow-up.
-
-Environment variable compatibility:
-- `GROQ_API_KEY` and `GROK_API_KEY` both accepted
-- `GROQ_MODEL` and `GROK_MODEL` both accepted
-- Blank values treated as unset, preventing silent overrides
-
-Vercel:
-- Uses `/tmp` for writable storage
-- Forces SQLite vector-store fallback (read-only filesystem)
-- Reads environment variables directly from platform
-- Maintains working state without local `.env`
-
-Library:
-- Adding a resource saves and indexes it inline; the library lists it once indexing finishes.
-- Uploading through Make Quiz & Test saves and indexes the resource, then redirects to quiz configuration.
-- Failed indexing surfaces as an error instead of a phantom library entry.
-
-## Environment Variables
-
-Minimal (local dev):
 ```dotenv
-SECRET_KEY=your_long_random_secret
-GROK_API_KEY=gsk_your_key_here
-# or GROQ_API_KEY=gsk_your_key_here
-LLM_PROVIDER=auto
+SECRET_KEY=replace_with_a_long_random_secret
+GROQ_API_KEY=gsk_your_key_here
+LLM_PROVIDER=groq
+LLM_MODEL=openai/gpt-oss-20b
 AI_PIPELINE=legacy
+EMBEDDING_BACKEND=hashing
+VECTOR_STORE=sqlite
 ```
 
-Common provider/model settings:
-```dotenv
-GROQ_API_KEY=
-GROK_API_KEY=
-GROQ_MODEL=
-GROK_MODEL=
-XAI_API_KEY=
-OPENAI_API_KEY=
-GEMINI_API_KEY=
-ANTHROPIC_API_KEY=
-LLM_API_KEY=
-LLM_MODEL=            # empty = provider's own default model
+Generate a session secret with:
+
+```powershell
+python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Storage/persistence:
-```dotenv
-DATABASE_URL=         # empty = SQLite at DB_PATH; set for Postgres
-DATA_DIR=             # default: project dir locally, /tmp on serverless
-DB_PATH=              # default: $DATA_DIR/database/mcq.db
-UPLOAD_BACKEND=local  # or s3
-S3_UPLOAD_BUCKET=
-S3_UPLOAD_REGION=
-S3_UPLOAD_PREFIX=uploads
-S3_UPLOAD_ENDPOINT_URL=
-```
+Start the application:
 
-RAG/retrieval:
-```dotenv
-EMBEDDING_BACKEND=auto
-VECTOR_STORE=          # default: chroma locally, sqlite on serverless
-CHUNK_SIZE=1500
-CHUNK_OVERLAP=80
-RETRIEVAL_TOP_K=8
-CONTEXT_MAX_CHARS=12000
-```
-
-Generation limits:
-```dotenv
-GENERATION_COOLDOWN_SECONDS=3
-GENERATION_MAX_PER_5MIN=10
-GENERATION_JOB_DEADLINE_SECONDS=900
-GENERATION_BACKEND=auto   # auto | inline | rq
-QUEUE_NAME=mcq
-REDIS_URL=                # required when GENERATION_BACKEND=rq
-MAX_UPLOAD_BYTES=4718592
-MAX_PDF_PAGES=300
-MAX_REQUEST_BODY_BYTES=8388608
-```
-
-Observability:
-```dotenv
-LOG_LEVEL=INFO
-LOG_FORMAT=json           # or text
-OBSERVABILITY_TRACE_HOOK=  # optional module:function, e.g. my_observability:on_event
-OBSERVABILITY_BACKEND=auto  # auto | langsmith | langfuse | hook | none
-```
-
-Deployed-only:
-```dotenv
-SEED_DEMO_USERS=false     # local opt-in only; random passwords printed once
-```
-
-Notes:
-- Each provider has its own default model (see `config.PROVIDER_DEFAULT_MODELS`).
-  `LLM_MODEL` is no longer aliased to `GROK_MODEL`; a foreign model name is
-  replaced with the resolved provider's default rather than sent to the wrong API.
-- `SECRET_KEY` is required when `VERCEL` or `RENDER` is set; the app refuses to
-  boot without it rather than using a per-process random key.
-
-## Local Setup
-
-```bash
-pip install -r requirements.txt
-copy .env.example .env
+```powershell
 python app.py
 ```
 
-Then `http://127.0.0.1:8000/`.
+Open <http://127.0.0.1:8000/> and create an account. New passwords require at least 10 characters and two of lowercase letters, uppercase letters, numbers, or symbols. Existing passwords remain usable at login.
 
-Tests:
-```bash
-pip install pytest ruff
-pytest -q
+On macOS/Linux, activate the environment with `source .venv/bin/activate` and copy the example using `cp .env.example .env`; the remaining Python commands are the same.
+
+## Frontend development
+
+```powershell
+cd frontend
+npm ci
+npm run typecheck
+npm run build
+cd ..
+```
+
+Vite writes stable filenames to `static/dist/`, which FastAPI serves through the HTML templates. Commit rebuilt assets with frontend source changes: Vercel's configured Python build does not run a Node build. `npm run dev` runs a watching build; use the backend URL to view the application.
+
+## Configuration
+
+See [.env.example](.env.example) for examples and [config.py](config.py) for all defaults.
+
+| Setting | Behavior |
+| --- | --- |
+| `SECRET_KEY` | Signs sessions; required when `VERCEL` or `RENDER` is set. Use a stable value across instances. |
+| `LLM_PROVIDER` | `auto` (default), `groq`, `xai`, `openai`, `gemini`, or `anthropic`. |
+| `LLM_API_KEY` | Unified credential; historical `GROK_API_KEY`, `GROQ_API_KEY`, and `XAI_API_KEY` spellings are also accepted. Other providers support `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `ANTHROPIC_API_KEY`. |
+| `LLM_MODEL` | Model override. Precedence: `LLM_MODEL`, then `GROK_MODEL`, then `GROQ_MODEL`, then the resolved provider's default. Blank model/key aliases are treated as unset. |
+| `LLM_REASONING_EFFORT` | Defaults to `low`; sent for GPT-OSS models to limit reasoning token overhead. |
+| `AI_PIPELINE` | `legacy` by default; `rag` enables the multi-stage verification pipeline. |
+| `EMBEDDING_BACKEND` | `auto`, `hashing`, `sentence_transformer`, or `remote`. Auto uses SentenceTransformers when available, otherwise hashing. |
+| `VECTOR_STORE` | `chroma` locally by default; `sqlite` on deployed hosts. Optional `faiss` and `pgvector` adapters exist. Vercel forces the SQLite-backed store. |
+| `DATA_DIR` | Writable state root: repository directory locally, `/tmp` on Vercel. |
+| `DB_PATH` | SQLite path; defaults to `<DATA_DIR>/database/mcq.db`. |
+| `DATABASE_URL` | Selects the Postgres database adapter when set. Provisioning and data migration are separate operational steps. |
+| `UPLOAD_BACKEND` | `local` by default; `s3` enables optional S3-compatible upload storage. |
+| `GENERATION_BACKEND` | `auto`, `inline`, or `rq`. Auto chooses RQ only when Redis is configured and the optional packages are installed. |
+| `REDIS_URL` | Redis connection for queued generation. |
+| `GENERATION_QUEUE_NAME` | Queue name; defaults to `mcq`. |
+| `GENERATION_JOB_DEADLINE_SECONDS` | Queued pipeline budget; defaults to 900 seconds. |
+| `PIPELINE_DEADLINE_SECONDS` | Inline pipeline budget; defaults to 55 seconds on Vercel and 300 elsewhere. |
+| `MAX_UPLOAD_BYTES` / `MAX_PDF_PAGES` | Default upload limit is 4.5 MiB and PDF limit is 300 pages. |
+| `GENERATION_COOLDOWN_SECONDS` / `GENERATION_MAX_PER_5MIN` | Default generation throttle: 3 seconds between requests and 10 generations per five minutes. |
+| `SEED_DEMO_USERS` | Unset/disabled by default. `1` enables local demo seeding with random passwords printed once. |
+
+Retrieval defaults are `CHUNK_SIZE=1500`, `CHUNK_OVERLAP=80`, `RETRIEVAL_TOP_K=8`, and `CONTEXT_MAX_CHARS=12000`.
+
+### Groq model errors
+
+`groq/compound` and `groq/compound-mini` were retired. If an older deployment returns `model_not_found`, set:
+
+```dotenv
+LLM_PROVIDER=groq
+LLM_MODEL=openai/gpt-oss-20b
+```
+
+Restart the local server or redeploy the hosted application after changing configuration. `LLM_MODEL` takes precedence over `GROQ_MODEL`, so changing only the latter may leave a stale override active. The registry migrates the retired Compound IDs in the updated code; it does not guarantee access to every model for every provider account.
+
+### Optional OAuth
+
+Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, or `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`. Register the corresponding callback with the provider:
+
+- `http://localhost:8000/auth/google/callback`
+- `http://localhost:8000/auth/github/callback`
+
+Use the application's actual HTTPS domain for hosted callbacks. `GOOGLE_REDIRECT_URI` and `GITHUB_REDIRECT_URI` can pin the callback; otherwise it is derived from the request. Use a consistent local hostname for login and callback.
+
+## Generation architecture
+
+The default `legacy` mode uses the existing generator without the full verification chain. Generating from a Library resource still retrieves budgeted source context.
+
+With `AI_PIPELINE=rag`, the pipeline retrieves document chunks, builds bounded context, generates questions, applies structural QA, optionally verifies grounding, and checks difficulty. It deduplicates questions and attempts to fill a shortfall within the time budget. Selected failure paths fall back to legacy generation; missing credentials or unavailable provider models can still prevent generation.
+
+Embeddings support hashing, local SentenceTransformers, and remote APIs. Chroma, SQLite/NumPy, FAISS, and pgvector adapters are available. SentenceTransformers, Chroma, and FAISS require optional dependencies; they are not bundled in the lightweight requirements.
+
+## Deployment and persistence
+
+[vercel.json](vercel.json) routes requests to the FastAPI application exported by [app.py](app.py). [Procfile](Procfile) defines a two-worker Uvicorn process for a persistent host. Configure a stable `SECRET_KEY` and provider credentials on the hosting platform.
+
+Default storage locations:
+
+| State | Local | Vercel |
+| --- | --- | --- |
+| SQLite database | `database/mcq.db` | `/tmp/database/mcq.db` |
+| Original uploads | `uploads/` | `/tmp/uploads/` |
+| Reports | Under `DATA_DIR` | Under `/tmp` |
+
+Vercel's `/tmp` state is temporary and instance-local. Accounts, preferences, resources, results, and login lockouts stored there do not have durable multi-instance persistence. Database adapters and optional storage hooks are available, but they do not provision services or migrate existing production data.
+
+For a persistent host, point `DATA_DIR` at the mounted disk. Postgres can be selected with `DATABASE_URL`; original-file storage can use `UPLOAD_BACKEND=s3` and `S3_UPLOAD_BUCKET`, `S3_UPLOAD_REGION`, `S3_UPLOAD_PREFIX`, and optionally `S3_UPLOAD_ENDPOINT_URL` (requires `boto3`). Vercel currently forces the SQLite-backed vector store even if another vector backend is requested.
+
+Account deletion cleans database records and vectors; physical original-upload object cleanup is not included. External vector deletion cannot share a distributed transaction with the account database.
+
+Health endpoints are `/health`, `/healthz`, `/readyz`, and `/api/health`. A successful probe does not establish that OAuth, provider model access, or durable storage works end to end. Deploy the intended commit and verify those flows separately.
+
+## Optional background worker
+
+Install the optional queue dependencies:
+
+```powershell
+python -m pip install redis rq
+```
+
+Configure these values for both the web process and a separately running worker, with access to the same application state:
+
+```dotenv
+GENERATION_BACKEND=rq
+REDIS_URL=redis://localhost:6379/0
+GENERATION_QUEUE_NAME=mcq
+```
+
+Start the worker using `python worker.py`. Inline generation returns `{ok, session_key, count}`; queued generation returns `{ok, job_id, status}`. Job state is available through `GET /api/jobs/{id}` and events through `GET /api/jobs/{id}/events`. A durable production queue and worker deployment require operational setup beyond enabling these settings.
+
+## Testing and CI
+
+From an activated Python environment:
+
+```powershell
+python -m pip install pytest ruff
+python -m pytest -q tests
 ruff check .
 ```
-`pytest` deselects `live` tests by default; run them with `pytest -m live` (needs
-real credentials).
 
-## Vercel / Render
+Tests use fake provider responses and cover upload/indexing, resource ownership, model selection, quiz generation and grading, login security, account deletion/export, retrieval, verification, background jobs, storage, and observability. Tests marked `live` are excluded by default; `python -m pytest -m live` explicitly enables credential-dependent provider calls.
 
-Vercel-ready via `vercel.json` and `app.py`; set env vars in project settings and
-read platform env vars; no additional config changes. Render works the same way
-with `DATA_DIR` pointed at the mounted disk. `SECRET_KEY` is required on both.
+[GitHub Actions](.github/workflows/ci.yml) runs offline backend tests and Ruff with demo seeding disabled. Its frontend job uses locked dependencies, typechecks, rebuilds, and rejects tracked changes or new uncommitted files in `static/dist/`.
 
-## Database / Storage
-
-Local:
-- DB: `database/mcq.db` (SQLite)
-- Uploads: `uploads/`
-
-Vercel:
-- DB: `/tmp/mcq.db` (ephemeral)
-- Uploads: `/tmp/uploads/`
-
-Production (persistent):
-- Set `DATABASE_URL` to a Postgres instance (optionally with pgvector) and
-  `DATA_DIR` to a persistent disk. Uploads can go to S3-compatible storage via
-  `UPLOAD_BACKEND=s3`.
-
-Vercel storage is temporary and is not a durable database for user accounts,
-resources, or results. A production deployment needs persistent database/storage
-services.
-
-Persisted:
-- document metadata
-- chunked text content
-- cached embeddings
-- vector index entries
-- generation job history
-
-## Background Worker (optional)
-
-By default generation runs inline in the web process. For long generations on a
-persistent host you can move it to a worker:
-
-```bash
-GENERATION_BACKEND=rq REDIS_URL=redis://... python worker.py
-```
-
-With `GENERATION_BACKEND=auto` the app picks RQ when `REDIS_URL` is set and the
-`redis`/`rq` packages are installed, otherwise it stays inline. Queue mode
-changes the `POST /api/practice/generate` response from
-`{"ok": true, "session_key": ..., "count": N}` to
-`{"ok": true, "job_id": ..., "status": "queued"}`; results are fetched from
-`GET /api/jobs/{id}` or streamed from `GET /api/jobs/{id}/events`. Inline mode
-keeps the original shape.
-
-## Testing
-
-Tests cover:
-- resource save-to-library behavior
-- no-duplicate resource saves per user
-- MCQ generation flow (fake LLM)
-- weak-topic evaluation/review flow
-- verification and grading logic
-- persistence, background jobs, model resolution, security, retrieval, eval scoring
-- observability (JSON logging, request ids, stage timing, LLM usage)
-- upload storage (local + S3-compatible, faked client)
-- live provider generation (credential-gated, deselected by default)
-
-Commands:
-
-```bash
-pytest -q
-ruff check .
-```
-
-`pytest` deselects `live` tests by default; run them with `pytest -m live` (needs
-real credentials).
-
-## Evaluation
-
-The repository ships an evaluation harness and a small dataset:
-
-```bash
-# deterministic, no credentials (verifies the harness only)
-python evals/run_eval.py --dry-run
-
-# real provider (costs tokens)
-python evals/run_eval.py
-```
-
-It writes `evals/results/latest.json` and `evals/results/latest.md`. See
-`docs/observability.md` for log schema and tracing.
-
-## Deployment Notes
-
-Graceful degradation:
-- degrades gracefully when AI services or retrieval unavailable
-- safe fallback paths prevent hard failures
-- explicit handling for env var mistakes
-- blank overrides and Groq/Grok naming conflicts resolved
-
-Performance:
-- LLM rate limiting
-- pipeline deadline enforcement for serverless environments
-- chunking balances retrieval quality and indexing speed
-- caching reduces redundant processing
+The evaluation harness can run offline using `python evals/run_eval.py --dry-run`. Running without `--dry-run` calls the configured provider. Results are written to `evals/results/latest.json` and `latest.md`.
 
 ## Observability
 
-Structured JSON logging (one object per line) with request ids, stage timings,
-and LLM token usage. Configure via `LOG_LEVEL`, `LOG_FORMAT`, and the optional
-`OBSERVABILITY_BACKEND` / `OBSERVABILITY_TRACE_HOOK`. See
-`docs/observability.md` for the event schema and LangSmith/Langfuse/OTLP hook
-examples.
+Structured application events include request IDs, stage timings, and provider token usage. Configure `LOG_LEVEL`, `LOG_FORMAT`, and optionally `OBSERVABILITY_BACKEND` or `OBSERVABILITY_TRACE_HOOK`. See [docs/observability.md](docs/observability.md) for tracing adapters and event details.
 
-## Compatibility Notes
+## Repository guide
 
-- Public API routes are unchanged. The only response-shape change is in queue
-  mode (see Background Worker); inline mode keeps the original shape.
-- `.env`, `uploads/`, `database/*.db`, `chroma_db/` are gitignored; never commit
-  secrets or local databases.
-- Orchestration is hand-rolled (no LangChain); `AI_PIPELINE=rag` opts into the
-  retrieval-grounded path, `legacy` (default) keeps single-shot generation.
-- New runtime dependencies are limited to `psycopg[binary]` (Postgres); Redis/RQ,
-  boto3 and sentence-transformers remain optional.
+```text
+app.py                    FastAPI entry point
+fastapi_app/              Routers, authentication, middleware, database bootstrap
+core/llm/                 Provider adapters and model resolution
+core/agents/              Retrieval, generation, and verification stages
+core/services/            Ingestion, generation, learning, and account operations
+core/repositories/        Data access
+core/embeddings/          Embedding backends
+core/vectorstore/         Vector storage adapters
+core/storage/             Local and optional S3-compatible upload storage
+core/models/              Schema and migration helpers
+models/                   Legacy generation implementation
+frontend/                 React, TypeScript, Vite, Tailwind sources
+static/dist/              Committed frontend build output
+templates/                Server-rendered pages and React bootstrap shells
+database/migrations/      Numbered database migrations
+tests/                    Offline regressions and opt-in live tests
+evals/                    Evaluation harness and dataset
+worker.py                 Optional RQ worker entry point
+```
 
-## Demo GIF (TODO)
+The earlier [engineering walkthrough](docs/project_explanation.md) is a historical snapshot and predates the latest security fixes. Current handlers, configuration, and tests define present behavior.
 
-A short screencast of upload -> quiz configuration -> quiz -> results would
-belong here. Not yet recorded; tracked as a follow-up.
-
-## Project Summary
-
-- FastAPI Backend: API server, auth, session management | FastAPI, SQLite/Postgres, CSRF
-- React Frontend: UI, visualization | React, TypeScript, Vite
-- AI Pipeline: MCQ generation, RAG retrieval | Groq/xAI/OpenAI/Gemini/Anthropic, ChromaDB/SQLite/pgvector
-- Document Processing: extraction, cleaning | Custom NLP, chunking
-- Learning Analytics: performance tracking, weak topics | SQLite/Postgres, custom algorithms
-- Observability: structured JSON logs, request ids, tracing hooks | stdlib logging
-
-## Getting Started
-
-Clone, install requirements, configure `.env`, run `python app.py`, access localhost.
+Keep `.env`, API keys, local databases, uploaded material, and generated private reports out of Git.
