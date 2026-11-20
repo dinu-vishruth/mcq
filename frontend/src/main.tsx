@@ -8,6 +8,7 @@ const { page, bootstrap } = readRoot();
 // Lazy-load each screen so the initial bundle only carries what a page needs.
 const SCREENS: Record<string, React.LazyExoticComponent<React.ComponentType<{ data: any }>>> = {
   dashboard: React.lazy(() => import("./screens/Dashboard")),
+  onboarding: React.lazy(() => import("./screens/OnboardingPage")),
   // "knowledge" and "practice" both mount the Make Quiz & Test hub: knowledge is
   // its nav home; practice is the deep-link (/practice?doc=ID) used to make a
   // quiz from a saved Learning Journey resource.

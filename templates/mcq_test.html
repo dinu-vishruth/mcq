@@ -23,6 +23,13 @@
        data-bootstrap='{{ {
          "mcqs": mcqs,
          "timer": timer,
+         "deadline": deadline,
+         "server_now": server_now,
+         "session_key": session_key,
+         "user_id": user_id,
+         "answers": answers,
+         "confidence": confidence,
+         "question_index": question_index,
          "username": session.username or "Learner"
        } | tojson }}'></div>
 

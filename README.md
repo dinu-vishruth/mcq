@@ -11,7 +11,7 @@ An AI-powered learning platform for generating and managing MCQ assessments from
 - Library Management: Save resources to per-user libraries
 - Content Indexing: Index resource text for intelligent retrieval
 - MCQ Generation:
-  - Upload material to save and index a resource, then configure a quiz
+  - Upload temporary quiz material, then configure a quiz without saving it to Library
   - Generate from retrieved library content; verification stages run when `AI_PIPELINE=rag`
 - Session Tracking: Monitor quiz sessions and student results
 - Learning Analytics: Identify weak topics after quizzes
@@ -71,11 +71,11 @@ AI/ML:
 
 ## Typical User Flow
 
-1. Upload or Library: user uploads file or saves study resource
-2. Content Processing: text cleaned and divided into chunks
-3. Embedding Generation: vectors created/stored
+1. Upload or Library: user uploads temporary quiz material or explicitly saves a reusable resource
+2. Content Processing: extract and clean source text
+3. Library resources are chunked and indexed; one-off quiz uploads stay temporary
 4. Quiz Configuration: choose a saved resource, difficulty, question count, topic focus, and timer
-   - New uploads redirect to this configuration step after indexing
+   - New quiz uploads redirect to this configuration step without entering Library
    - Generation retrieves source content and uses the configured legacy or RAG pipeline
 5. Quiz Creation: session created and student answers recorded
 6. Learning Analysis: weak-topic analysis and revision guidance generated
@@ -95,8 +95,21 @@ Vercel:
 
 Library:
 - Adding a resource saves and indexes it inline; the library lists it once indexing finishes.
-- Uploading through Make Quiz & Test saves and indexes the resource, then redirects to quiz configuration.
+- Uploading through Make Quiz & Test prepares temporary input and redirects to quiz configuration. It never adds a Library resource or saves an original file. Input expires after 24 hours and is removed immediately after successful generation; failed attempts retain input for retry until expiry. Expired rows are purged on the next upload.
+- Only Add Resource in Library saves and indexes reusable material.
 - Failed indexing surfaces as an error instead of a phantom library entry.
+
+Onboarding and personalization:
+- First login opens a dedicated onboarding page. A successful database save marks the account complete; later logins and Dashboard visits do not repeat it.
+- Failed saves stay visible and can be retried. Settings allows users to change their preferences voluntarily.
+- Saved goal, learning style and daily time guide quiz prompts, answer explanations and AI study recommendations, including background generation.
+- Vercel needs persistent Postgres through `DATABASE_URL` to retain accounts, answers and Library resources across instances/deployments. Default `/tmp` SQLite cannot provide that guarantee.
+
+AI configuration:
+- `/api/generation/status` checks configuration for authenticated users before generation starts. Missing credentials return HTTP 503 instead of attempting generation or consuming the user's generation allowance.
+- This check does not call the provider; invalid/revoked keys or provider outages can still fail at generation time.
+- The "AI service isn't configured" error means the running deployment has no supported credential. Local `.env` files are excluded from Vercel uploads. Set `GROQ_API_KEY` (or a supported provider-specific key) in the correct Vercel project's Production environment and create a new production deployment.
+- See [learning flow deployment checks](docs/learning-flows.md) before deploying these changes.
 
 ## Environment Variables
 
@@ -307,6 +320,9 @@ and LLM token usage. Configure via `LOG_LEVEL`, `LOG_FORMAT`, and the optional
 examples.
 
 ## Compatibility Notes
+
+For production Google and GitHub sign-in setup, see
+[OAuth on Vercel](docs/oauth-vercel.md).
 
 - Public API routes are unchanged. The only response-shape change is in queue
   mode (see Background Worker); inline mode keeps the original shape.

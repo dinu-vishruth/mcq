@@ -10,12 +10,15 @@ interface Detail {
   selected: string;
   correct: string;
   is_correct: boolean;
+  confidence?: "know" | "maybe" | "no_idea" | null;
 }
 export interface ResultData {
   score: number;
   total: number;
   details: Detail[];
   explanations: string[];
+  xp_awarded?: number;
+  notice?: string | null;
 }
 
 function ScoreRing({ pct }: { pct: number }) {
@@ -104,10 +107,12 @@ export default function Result({ data }: { data: ResultData }) {
         </div>
 
         {/* Score hero */}
+        {data.notice && <p role="status" className="mb-4 text-warning">{data.notice}</p>}
         <Card pad="lg" className="text-center mb-6">
           <p className="text-accent-2 text-sm font-medium mb-4">{headline}</p>
           <ScoreRing pct={pct} />
           <div className="text-text-3 text-sm mt-2">{score} / {total} correct</div>
+          {!!data.xp_awarded && <p className="mt-2 text-success">+{data.xp_awarded} XP earned</p>}
         </Card>
 
         {/* Summary stats */}
@@ -178,6 +183,7 @@ export default function Result({ data }: { data: ResultData }) {
                 </div>
                 <p className="text-[1.02rem] mb-3">{d.question}</p>
                 <p className="text-sm text-text-2"><strong className="text-text">Your answer:</strong> {d.selected || "Not answered"}</p>
+                {d.confidence && <p className="mt-1 text-sm text-text-3">Confidence: {{ know: "I Know", maybe: "Maybe", no_idea: "No Idea" }[d.confidence]}</p>}
                 {!d.is_correct && (
                   <p className="text-sm text-text-2 mt-1"><strong className="text-text">Correct answer:</strong> <span className="text-success">{d.correct}</span></p>
                 )}

@@ -105,14 +105,16 @@ def run_generation_job(job_id: str) -> None:
               requested=num_questions, difficulty=difficulty, deadline_seconds=deadline)
     try:
         with timed("job.generate", job_id=job_id, document_id=job["document_id"]) as stage:
-            mcqs = generate_from_document(
-                job["document_id"],
-                num_questions=num_questions,
-                difficulty=difficulty,
-                topic=topic,
-                deadline_seconds=deadline,
-                on_progress=lambda n: job_repo.set_progress(job_id, n),
-            )
+            from core.services.personalization import learning_profile
+            with learning_profile(job["user_id"]):
+                mcqs = generate_from_document(
+                    job["document_id"],
+                    num_questions=num_questions,
+                    difficulty=difficulty,
+                    topic=topic,
+                    deadline_seconds=deadline,
+                    on_progress=lambda n: job_repo.set_progress(job_id, n),
+                )
             stage["mcqs"] = len(mcqs)
         if not mcqs:
             raise ValueError("No questions generated. Try different settings.")

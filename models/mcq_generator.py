@@ -13,6 +13,7 @@ When config.AI_PIPELINE == "rag" it routes to the retrieval pipeline instead
 import config
 from core.llm import LLMError, get_llm
 from core.prompts import mcq as mcq_prompts
+from core.services.personalization import system_prompt
 from utils.text_cleaner import clean_text
 
 
@@ -95,7 +96,7 @@ def generate_mcqs(text, num_questions=5, difficulty="medium"):
 
         prompt = mcq_prompts.legacy_prompt(text, need, difficulty)
         messages = [
-            {"role": "system", "content": mcq_prompts.SYSTEM},
+            {"role": "system", "content": system_prompt(mcq_prompts.SYSTEM)},
             {"role": "user", "content": prompt},
         ]
         try:

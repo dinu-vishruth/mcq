@@ -16,6 +16,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 # --- Redirect DB + upload dir to temp locations BEFORE importing app ---
 _TMP = tempfile.mkdtemp(prefix="mcq_test_")
@@ -76,10 +77,15 @@ class Base(unittest.TestCase):
         # module attribute takes effect in the routes.
         import models.explanation_engine as _exp
         import models.mcq_generator as _mcq
-        _mcq.generate_mcqs = lambda text, num_questions=5, difficulty="medium": FIXED_MCQS[:num_questions] if num_questions <= len(FIXED_MCQS) else FIXED_MCQS
-        _exp.explain_answers = lambda details, document_id=None: [
-            ("Correct" if d["is_correct"] else "Wrong: " + d["correct"]) for d in details
-        ]
+        for target, name, replacement in (
+            (_mcq, "generate_mcqs", lambda text, num_questions=5, difficulty="medium": FIXED_MCQS[:num_questions]),
+            (_exp, "explain_answers", lambda details, document_id=None: [
+                ("Correct" if d["is_correct"] else "Wrong: " + d["correct"]) for d in details
+            ]),
+        ):
+            stub = patch.object(target, name, replacement)
+            stub.start()
+            cls.addClassCleanup(stub.stop)
 
     def setUp(self):
         # Re-pin config in case another test module (e.g. test_rag) mutated these
@@ -130,13 +136,12 @@ class TestPublicRoutes(Base):
         self.assertIn(b"at least 8 characters", r.data)
 
     def test_signup_then_login(self):
-        # Single unified "User" role: signup no longer takes a role and login
-        # always lands on the unified dashboard.
+        # A newly created account first saves its learning preferences.
         c = self.client()
         c.post("/signup", data={"username": "newuser", "password": "password123"})
         r = self._login(c, "newuser", "password123")
         self.assertEqual(r.status_code, 302)
-        self.assertIn("/dashboard", r.headers["Location"])
+        self.assertIn("/onboarding", r.headers["Location"])
 
     def test_login_bad_credentials(self):
         r = self._login(self.client(), "nobody", "wrongpass")
@@ -175,6 +180,7 @@ class TestAuthGating(Base):
         c = self.client()
         self._seed_user("stud2", "password123", "student")
         self._login(c, "stud2", "password123")
+        c.post("/api/prefs", json={"goal": "college", "style": "mixed", "daily_minutes": 30})
         r = c.get("/dashboard")
         self.assertEqual(r.status_code, 200)
         # Dashboard is a React island; assert the mount shell is served.
@@ -193,18 +199,17 @@ class TestGenerationAndQuizFlow(Base):
         from utils.session_manager import create_session_key
         return create_session_key(teacher="teach3", difficulty="medium", timer=120, mcqs=FIXED_MCQS)
 
-    def test_upload_saves_resource_and_defers_quiz_setup(self):
+    def test_upload_prepares_temporary_material_and_defers_quiz_setup(self):
         c = self.client()
         self._seed_user("uploader", "password123", "teacher")
         self._login(c, "uploader", "password123")
         r = c.post("/upload", data={"extracted_text": "Some study material about math and geography.",
                                     "title": "Math Geography"})
-        # Upload no longer generates: it stores + indexes, then hands off to the
-        # library where difficulty, count and timer are configured before generating.
+        # Upload prepares a temporary source and hands off to quiz settings.
         self.assertEqual(r.status_code, 302)
-        self.assertIn("/knowledge", r.headers["Location"])
+        self.assertIn("/knowledge?upload=", r.headers["Location"])
         items = c.get("/api/knowledge").get_json()["items"]
-        self.assertTrue(any(it["title"] == "Math Geography" for it in items))
+        self.assertFalse(any(it["title"] == "Math Geography" for it in items))
 
     @staticmethod
     def _count_sessions():
@@ -266,7 +271,9 @@ class TestGenerationAndQuizFlow(Base):
         conn.close()
         self.assertEqual(row[0], 2)
         self.assertEqual(row[1], 2)
-        self.assertEqual(row[2], 42)
+        # Elapsed time comes from the persisted attempt, never the form field.
+        self.assertGreaterEqual(row[2], 0)
+        self.assertLessEqual(row[2], 120)
 
     def test_duplicate_attempt_blocked(self):
         c = self.client()

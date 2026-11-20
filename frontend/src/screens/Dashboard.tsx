@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/Badge";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { StatCard } from "@/components/ui/StatCard";
 import { TrendChart } from "@/components/charts/TrendChart";
-import { Onboarding } from "./Onboarding";
 import { AppShell } from "@/components/AppShell";
 import { apiGet } from "@/bootstrap";
 
@@ -35,19 +34,17 @@ const REC_HREF: Record<string, string> = {
 // which on a cold serverless start meant staring at the spinner for seconds.
 // Only fall back to fetching if the payload is absent (a route that rendered the
 // template without it).
-export default function Dashboard({ data }: { data: Partial<DashboardApi> & { username: string } }) {
+export default function Dashboard({ data }: { data: Partial<DashboardApi> & { username: string; error?: string } }) {
   const preloaded = typeof data.total_quizzes === "number" ? (data as DashboardApi) : null;
 
   const [d, setD] = useState<DashboardApi | null>(preloaded);
   const [loading, setLoading] = useState(preloaded === null);
-  const [showOnboarding, setShowOnboarding] = useState(Boolean(preloaded?.needs_onboarding));
 
   useEffect(() => {
     if (preloaded) return;
     apiGet<DashboardApi>("/api/dashboard")
       .then((res) => {
         setD(res);
-        if (res.needs_onboarding) setShowOnboarding(true);
       })
       .catch(() => setD(null))
       .finally(() => setLoading(false));
@@ -69,9 +66,9 @@ export default function Dashboard({ data }: { data: Partial<DashboardApi> & { us
 
   return (
     <AppShell active="dashboard" username={username} streak={d?.streak} xp={d?.xp}>
-      {showOnboarding && <Onboarding onDone={() => setShowOnboarding(false)} initial={null} />}
 
       <div className="max-w-6xl mx-auto px-5 md:px-8 py-8 md:py-10">
+        {data.error && <div role="alert" className="mb-6 rounded-md border border-danger/30 bg-danger/10 p-4 text-danger">{data.error}</div>}
         {/* Hero — what should I study today? */}
         <motion.header initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }} className="mb-8">
           <p className="text-accent-2 text-sm font-medium mb-2 flex items-center gap-1.5">

@@ -87,18 +87,18 @@ if not SECRET_KEY:
 # and add the callback URL to its Authorized redirect URIs:
 #   local:  http://localhost:8000/auth/google/callback
 #   hosted: https://<your-domain>/auth/google/callback
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "")
+GOOGLE_CLIENT_ID = env_str("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = env_str("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = env_str("GOOGLE_REDIRECT_URI")
 GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
 
 # GitHub: register an OAuth App at https://github.com/settings/developers and
 # set the callback URL to:
 #   local:  http://localhost:8000/auth/github/callback
 #   hosted: https://<your-domain>/auth/github/callback
-GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
-GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
-GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "")
+GITHUB_CLIENT_ID = env_str("GITHUB_CLIENT_ID")
+GITHUB_CLIENT_SECRET = env_str("GITHUB_CLIENT_SECRET")
+GITHUB_REDIRECT_URI = env_str("GITHUB_REDIRECT_URI")
 GITHUB_OAUTH_ENABLED = bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET)
 
 # Accept GROQ_* and GROK_* interchangeably. These are two different companies --
@@ -216,9 +216,9 @@ def llm_key_present() -> bool:
 #: server configuration detail should not leak to learners. The operator-facing
 #: detail goes to the logs via missing_key_message().
 USER_FACING_AI_UNAVAILABLE = (
-    "Quiz generation is temporarily unavailable because the AI service isn't "
-    "configured. Your document was not lost - please try again shortly, or "
-    "contact whoever administers this site."
+    "Quiz generation is unavailable because the AI service isn't configured. "
+    "The site administrator needs to configure it before quizzes can be generated. "
+    "Your saved Library resources are unaffected."
 )
 
 

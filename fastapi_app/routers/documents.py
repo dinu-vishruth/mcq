@@ -1,12 +1,8 @@
-"""Document upload: /upload and /ingest_resource both store + index a document.
+"""Validated uploads with separate Library and temporary quiz-input paths.
 
-Port of core/routes/documents.py. Both routes share one extraction helper so
-they behave identically on file handling; they differ only in where the user
-lands afterwards -- /upload redirects to the library (/knowledge), where quiz
-settings are chosen, /ingest_resource back to the journey (/journey).
-
-Uploads are validated (size, magic bytes, PDF page count/encryption) before any
-parser runs, then the extracted text is indexed inline by the ingestion service.
+Both routes share extraction and validation. /ingest_resource explicitly saves
+and indexes a Library resource; /upload prepares temporary text for quiz settings
+without saving an original file or indexing a Library document.
 """
 from __future__ import annotations
 
@@ -174,8 +170,7 @@ def upload(
     title: Annotated[str, Form()] = "",
     extracted_text: Annotated[str, Form()] = "",
 ):
-    """Upload a document, save it to the library, then redirect to MakeQuiz
-    where the user configures difficulty, question count, and timer before generating."""
+    """Prepare temporary quiz input without adding it to the Library."""
     def reject(message: str):
         return render(request, "upload.html", error=message)
 
@@ -184,18 +179,13 @@ def upload(
     except ExtractError as exc:
         return reject(str(exc))
 
-    doc_id = None
     try:
-        from core.services.ingestion_service import ingest_document
-        doc_res = ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
-        doc_id = doc_res.get("document_id") if isinstance(doc_res, dict) else None
-        persist_original_file(user.username, file, source_ext)
+        from core.repositories import quiz_upload_repo
+        upload_id = quiz_upload_repo.create(user.id, resolved_title, text)
     except Exception as exc:
-        return reject(f"Could not save this resource: {exc}. Please try another file.")
+        return reject(f"Could not prepare this quiz material: {exc}. Please try again.")
 
-    if doc_id:
-        return RedirectResponse(f"/knowledge?doc={doc_id}", status_code=302)
-    return RedirectResponse("/knowledge", status_code=302)
+    return RedirectResponse(f"/knowledge?upload={upload_id}", status_code=302)
 
 
 def _check_generation_throttle(conn, username: str) -> str | None:

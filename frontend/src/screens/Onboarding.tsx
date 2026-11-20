@@ -5,7 +5,7 @@ import {
   Dumbbell, RotateCcw, Lightbulb, Layers, ArrowRight, Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { csrfToken } from "@/bootstrap";
+import { apiSend } from "@/bootstrap";
 import type { UserPrefs } from "@/types";
 
 const GOALS = [
@@ -33,33 +33,23 @@ export function Onboarding({ onDone, initial }: { onDone: () => void; initial: U
   const [style, setStyle] = useState(initial?.style ?? "");
   const [minutes, setMinutes] = useState(initial?.daily_minutes ?? 30);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  async function finish() {
+  async function finish(skip = false) {
     setSaving(true);
+    setError("");
     try {
-      await fetch("/api/prefs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
-        body: JSON.stringify({ goal, style, daily_minutes: minutes }),
+      await apiSend("/api/prefs", "POST", {
+        goal: skip ? goal || "" : goal,
+        style: skip ? style || "" : style,
+        daily_minutes: minutes,
       });
-    } catch {
-      /* best-effort; onboarding shouldn't block the app */
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save your preferences. Please try again.");
+    } finally {
+      setSaving(false);
     }
-    onDone();
-  }
-
-  async function skip() {
-    setSaving(true);
-    try {
-      await fetch("/api/prefs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
-        body: JSON.stringify({ goal: goal || "", style: style || "", daily_minutes: minutes }),
-      });
-    } catch {
-      /* best-effort */
-    }
-    onDone();
   }
 
   const canNext = step === 0 ? !!goal : step === 1 ? !!style : true;
@@ -162,9 +152,10 @@ export function Onboarding({ onDone, initial }: { onDone: () => void; initial: U
           </motion.div>
         </AnimatePresence>
 
+        {error && <p role="alert" className="text-danger text-sm mt-4">{error}</p>}
         <div className="flex items-center justify-between mt-7">
           <button
-            onClick={() => (step === 0 ? skip() : setStep(step - 1))}
+            onClick={() => (step === 0 ? finish(true) : setStep(step - 1))}
             disabled={saving}
             className="text-text-3 text-sm hover:text-text-2 transition-colors"
           >
@@ -175,7 +166,7 @@ export function Onboarding({ onDone, initial }: { onDone: () => void; initial: U
               Next
             </Button>
           ) : (
-            <Button disabled={saving} leftIcon={<Check className="w-4 h-4" />} onClick={finish}>
+            <Button disabled={saving} leftIcon={<Check className="w-4 h-4" />} onClick={() => finish()}>
               {saving ? "Saving…" : "Finish"}
             </Button>
           )}

@@ -90,6 +90,14 @@ def create_app() -> FastAPI:
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     init_db()
     _log_llm_config()
+    import config
+    if config.IS_SERVERLESS and not config.DATABASE_URL:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Serverless SQLite is temporary. Configure DATABASE_URL with persistent "
+            "Postgres to retain accounts, onboarding answers and Library resources "
+            "across cold starts and deployments."
+        )
 
     # --- Middleware -- added in REVERSE of execution order, see docstring ----
     app.add_middleware(CSRFMiddleware)

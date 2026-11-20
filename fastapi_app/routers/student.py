@@ -14,17 +14,19 @@ from __future__ import annotations
 import json
 import random
 import sqlite3
+import time
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel, Field
 
 import models.explanation_engine as explanation_engine
 from core.repositories import session_repo
 from utils.session_manager import validate_session_key
 
-from ..deps import CurrentUser, Db
+from ..deps import CurrentApiUser, CurrentUser, Db
 from ..services.dashboard import build_dashboard, load_prefs
 from ..templating import render
 
@@ -35,6 +37,65 @@ router = APIRouter(tags=["student"])
 DEFAULT_TIMER_SECONDS = 600
 
 _OPTION_LABELS = ("A", "B", "C", "D")
+SUBMISSION_GRACE_SECONDS = 5  # Allow the automatic timeout form to reach the server.
+
+
+def _dashboard_response(request, user, conn, error=None):
+    data = build_dashboard(conn, user.id, user.username)
+    data["error"] = error
+    return render(request, "dashboard.html", bootstrap=data, error=error)
+
+
+def _start_attempt(conn, key, user_id, duration):
+    now = time.time()
+    conn.execute(
+        "INSERT INTO quiz_attempts (session_key, user_id, started_at, deadline) "
+        "VALUES (?, ?, ?, ?) ON CONFLICT (session_key, user_id) DO NOTHING",
+        (key, user_id, now, now + max(1, duration or DEFAULT_TIMER_SECONDS)),
+    )
+    conn.commit()
+    return conn.execute(
+        "SELECT * FROM quiz_attempts WHERE session_key=? AND user_id=?", (key, user_id)
+    ).fetchone()
+
+
+class QuizDraft(BaseModel):
+    session_key: str
+    answers: dict[str, str] = Field(default_factory=dict)
+    confidence: dict[str, str] = Field(default_factory=dict)
+    question_index: int = Field(default=0, ge=0)
+
+
+def _clean_draft(questions, answers, confidence):
+    clean_answers, clean_confidence = {}, {}
+    for i, question in enumerate(questions):
+        key = str(i)
+        selected = answers.get(key)
+        if selected in [option["text"] for option in question["options"]]:
+            clean_answers[key] = selected
+        if confidence.get(key) in ("know", "maybe", "no_idea"):
+            clean_confidence[key] = confidence[key]
+    return clean_answers, clean_confidence
+
+
+@router.post("/api/quiz-attempt")
+async def save_quiz_draft(draft: QuizDraft, user: CurrentApiUser, conn: Db):
+    row = session_repo.get(draft.session_key)
+    if not row:
+        raise HTTPException(404, "Quiz not found")
+    questions = json.loads(row["mcqs_json"])
+    answers, confidence = _clean_draft(questions, draft.answers, draft.confidence)
+    updated = conn.execute(
+        "UPDATE quiz_attempts SET answers_json=?, confidence_json=?, question_index=? "
+        "WHERE session_key=? AND user_id=? AND submitted=0 AND deadline>=? RETURNING user_id",
+        (json.dumps(answers), json.dumps(confidence),
+         min(draft.question_index, max(0, len(questions) - 1)),
+         draft.session_key, user.id, time.time()),
+    ).fetchone()
+    conn.commit()
+    if not updated:
+        raise HTTPException(409, "Quiz has expired or is not active")
+    return {"saved": True}
 
 
 def _already_attempted(conn: sqlite3.Connection, key: str, user_id: int) -> bool:
@@ -52,9 +113,19 @@ async def student_alias():
 @router.get("/dashboard")
 async def dashboard(request: Request, user: CurrentUser, conn: Db):
     data = build_dashboard(conn, user.id, user.username)
+    if data["needs_onboarding"]:
+        return RedirectResponse("/onboarding", status_code=302)
     # Embedded in data-bootstrap by the template, so the React island has
     # everything it needs on first paint -- no follow-up request, no spinner.
     return render(request, "dashboard.html", **data, bootstrap=data)
+
+
+@router.get("/onboarding")
+async def onboarding(request: Request, user: CurrentUser, conn: Db):
+    prefs = load_prefs(conn, user.id)
+    if prefs and prefs.get("onboarded"):
+        return RedirectResponse("/dashboard", status_code=302)
+    return render(request, "onboarding.html", prefs=prefs)
 
 
 @router.get("/progress")
@@ -167,8 +238,8 @@ async def achievements(request: Request, user: CurrentUser):
 # --- Quiz flow -------------------------------------------------------------- #
 
 @router.get("/student_login")
-async def student_login_form(request: Request, user: CurrentUser):
-    return render(request, "dashboard.html")
+async def student_login_form(request: Request, user: CurrentUser, conn: Db):
+    return _dashboard_response(request, user, conn)
 
 
 @router.post("/student_login")
@@ -182,7 +253,7 @@ async def student_login(
     key = session_key.strip()
 
     def reject(message: str):
-        return render(request, "dashboard.html", error=message)
+        return _dashboard_response(request, user, conn, message)
 
     if not key.isalnum():
         return reject("Invalid session key format")
@@ -190,13 +261,13 @@ async def student_login(
         return reject("Invalid session key")
     if _already_attempted(conn, key, user.id):
         return reject("You have already taken this test.")
-    if conn.execute(
-        "SELECT 1 FROM sessions WHERE session_key=?", (key,)
-    ).fetchone() is None:
+    quiz = session_repo.get(key)
+    if quiz is None:
         return reject("Session not found")
 
     # Only the key goes in the cookie; mcqs + timer are re-read from the DB.
     request.session["session_key"] = key
+    _start_attempt(conn, key, user.id, quiz["timer"])
     return RedirectResponse("/mcq_test", status_code=302)
 
 
@@ -210,25 +281,30 @@ async def mcq_test(request: Request, user: CurrentUser, conn: Db):
     if not row:
         return RedirectResponse("/student_login", status_code=302)
     if _already_attempted(conn, key, user.id):
-        return render(request, "dashboard.html", error="You have already taken this test.")
+        return _dashboard_response(request, user, conn, "You have already taken this test.")
 
-    # Shuffle option ORDER only. Question order and answer_text are untouched,
-    # which is what lets /submit rebuild the quiz from the DB and still score it.
+    attempt = _start_attempt(conn, key, user.id, row["timer"])
+
+    # Send only question and option text. Answers stay in the database until grading.
     randomized = []
     for question in json.loads(row["mcqs_json"]):
-        options = list(question["options"])
+        options = [{"text": option["text"]} for option in question["options"]]
         random.shuffle(options)
         for index, option in enumerate(options):
             option["label"] = _OPTION_LABELS[index]
         randomized.append({
             "question": question["question"],
             "options": options,
-            "answer_text": question["answer_text"],
         })
 
+    now = time.time()
     return render(
         request, "mcq_test.html",
-        mcqs=randomized, timer=row["timer"] or DEFAULT_TIMER_SECONDS,
+        mcqs=randomized, timer=max(0, attempt["deadline"] - now),
+        deadline=attempt["deadline"], server_now=now, session_key=key,
+        answers=json.loads(attempt["answers_json"]),
+        confidence=json.loads(attempt["confidence_json"]),
+        question_index=attempt["question_index"], user_id=user.id,
     )
 
 
@@ -250,19 +326,32 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     ]
 
     if _already_attempted(conn, key, user.id):
-        return render(request, "dashboard.html", error="You have already taken this test.")
+        return _dashboard_response(request, user, conn, "You have already taken this test.")
+
+    attempt = conn.execute(
+        "SELECT * FROM quiz_attempts WHERE session_key=? AND user_id=?", (key, user.id)
+    ).fetchone()
+    if not attempt:
+        return _dashboard_response(request, user, conn, "Please join the quiz before submitting.")
 
     form = await request.form()
     student_name = (form.get("student_name") or "").strip() or user.username or "Student"
-    try:
-        time_spent = int(form.get("time_spent") or 0)
-    except (TypeError, ValueError):
-        time_spent = 0
+    now = time.time()
+    time_spent = max(0, int(min(now, attempt["deadline"]) - attempt["started_at"]))
+    # After the deadline only the last draft saved on time can be scored.
+    late = now > attempt["deadline"] + SUBMISSION_GRACE_SECONDS
+    saved_answers = json.loads(attempt["answers_json"])
+    saved_confidence = json.loads(attempt["confidence_json"])
 
     details: list[dict[str, Any]] = []
     score = 0
     for index, question in enumerate(questions):
-        selected = form.get(f"q-{index}") or ""
+        selected = (saved_answers.get(str(index), "") if late
+                    else form.get(f"q-{index}") or "")
+        confidence = (saved_confidence.get(str(index)) if late
+                      else form.get(f"confidence-{index}"))
+        if confidence not in ("know", "maybe", "no_idea"):
+            confidence = None
         is_correct = selected == question["answer_text"]
         score += int(is_correct)
         details.append({
@@ -270,10 +359,19 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
             "selected": selected,
             "correct": question["answer_text"],
             "is_correct": is_correct,
+            "confidence": confidence,
         })
 
-    # Module-level call so tests can patch the source.
-    explanations = explanation_engine.explain_answers(details)
+    # Claim the attempt in the same transaction as the result, including when
+    # two tabs submit at once. A failed insert rolls the claim back too.
+    claimed = conn.execute(
+        "UPDATE quiz_attempts SET submitted=1 WHERE session_key=? AND user_id=? AND submitted=0 "
+        "RETURNING user_id",
+        (key, user.id),
+    ).fetchone()
+    if not claimed:
+        conn.rollback()
+        return _dashboard_response(request, user, conn, "You have already taken this test.")
 
     conn.execute(
         "INSERT INTO results (session_key, student_name, user_id, score, total, "
@@ -282,6 +380,14 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
          datetime.utcnow().isoformat(), json.dumps(details), time_spent),
     )
     conn.commit()
+
+    # Explanation failures must never discard an already completed assessment.
+    from core.services.personalization import learning_profile
+    try:
+        with learning_profile(user.id):
+            explanations = explanation_engine.explain_answers(details)
+    except Exception:
+        explanations = ["Explanation is temporarily unavailable." for _ in details]
 
     # Weak-concept detection. Best-effort: wrapped so any failure here can never
     # affect the student's score or result page.
@@ -299,13 +405,17 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
 
     # Gamification: 10 XP per correct answer + 5 completion bonus, and advance
     # the daily streak. Best-effort -- never affects scoring.
+    xp_awarded = 0
     try:
         from core.repositories import prefs_repo
         prefs_repo.record_activity(user.id, xp_gain=score * 10 + 5)
+        xp_awarded = score * 10 + 5
     except Exception as exc:
         print(f"[WARNING] XP/streak update skipped: {exc}")
 
     return render(
         request, "result.html",
         score=score, total=len(questions), details=details, explanations=explanations,
+        xp_awarded=xp_awarded,
+        notice=("Time expired. Only answers saved before the deadline were scored." if late else None),
     )

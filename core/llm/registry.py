@@ -155,6 +155,11 @@ def build_llm() -> LLMProvider:
 
     validate_provider_model(provider, model)
 
+    # The provider-specific credential must also reach OpenAI-compatible
+    # providers. Previously OPENAI_API_KEY selected OpenAI but sent an empty key.
+    if provider == "openai":
+        key = config.OPENAI_API_KEY or key
+
     if provider in ("groq", "xai", "openai", "together"):
         return OpenAICompatibleProvider(key, model, timeout, temp, provider_id=provider)
     if provider == "gemini":

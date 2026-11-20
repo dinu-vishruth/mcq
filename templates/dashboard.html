@@ -42,8 +42,8 @@
          "prefs": none
        }) | tojson }}'></div>
 
-  {% if error %}
-  <div id="flash-error" data-message="{{ error }}" style="display:none"></div>
+  {% if error and not (bootstrap is defined and bootstrap.error) %}
+  <div role="alert" style="padding:1rem; color:#ef4444">{{ error }}</div>
   {% endif %}
 
   <script type="module" src="/static/dist/app.js"></script>

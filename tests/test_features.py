@@ -15,6 +15,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 _TMP = tempfile.mkdtemp(prefix="mcq_feat_")
 _DB = os.path.join(_TMP, "feat.db")
@@ -59,7 +60,12 @@ class Base(unittest.TestCase):
         from tests._client import make_client_factory
         cls._client_factory = staticmethod(make_client_factory(app_module.app, SECRET_KEY))
         import models.mcq_generator as _mcq
-        _mcq.generate_mcqs = lambda text, num_questions=5, difficulty="medium": FIXED_MCQS[:num_questions]
+        generator = patch.object(
+            _mcq, "generate_mcqs",
+            lambda text, num_questions=5, difficulty="medium": FIXED_MCQS[:num_questions],
+        )
+        generator.start()
+        cls.addClassCleanup(generator.stop)
 
     def setUp(self):
         config.DB_PATH = _DB
@@ -83,11 +89,10 @@ class Base(unittest.TestCase):
         c.post("/login", data={"username": username, "password": "password123"})
 
 
-class TestUploadAutoSavesResource(Base):
-    """Upload saves the resource to the library and redirects to the MakeQuiz page
-    where the user configures difficulty, question count, and timer before generating."""
+class TestTemporaryQuizUpload(Base):
+    """One-off quiz input must not become a saved Library resource."""
 
-    def test_upload_saves_resource_and_redirects_to_knowledge(self):
+    def test_upload_keeps_library_unchanged_and_redirects_to_quiz_settings(self):
         c = self._client_factory()
         self._seed_and_login(c, "ku1")
         r = c.post("/upload", data={
@@ -95,12 +100,11 @@ class TestUploadAutoSavesResource(Base):
             "title": "One-off Quiz Material",
         })
         self.assertEqual(r.status_code, 302)
-        self.assertIn("/knowledge", r.headers["Location"])
+        self.assertIn("/knowledge?upload=", r.headers["Location"])
 
-        # The material is automatically saved as a resource.
+        # Only explicitly saved resources belong in the Library.
         items = c.get("/api/knowledge").get_json()["items"]
-        self.assertTrue(any(it["title"] == "One-off Quiz Material" for it in items),
-                        f"upload should be saved to library: {items}")
+        self.assertFalse(any(it["title"] == "One-off Quiz Material" for it in items))
 
 
 class TestStoreOnlyResourceUpload(Base):

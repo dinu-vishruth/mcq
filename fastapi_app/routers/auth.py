@@ -112,6 +112,10 @@ async def login(
 
     request.session["user_id"] = user["id"]
     request.session["username"] = user["username"]
+    from ..services.dashboard import load_prefs
+    prefs = load_prefs(conn, user["id"]) or {}
+    if not prefs.get("onboarded"):
+        return RedirectResponse("/onboarding", status_code=302)
     return RedirectResponse("/dashboard", status_code=302)
 
 
@@ -180,7 +184,7 @@ async def delete_account(request: Request, user: CurrentUser, conn: Db):
         (user.username,),
     )
     conn.execute("DELETE FROM sessions WHERE teacher=?", (user.username,))
-    for table in ("results", "learning_history", "weak_topics", "user_prefs"):
+    for table in ("results", "learning_history", "weak_topics", "user_prefs", "quiz_uploads"):
         try:
             conn.execute(f"DELETE FROM {table} WHERE user_id=?", (user.id,))
         except sqlite3.OperationalError:

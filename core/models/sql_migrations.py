@@ -25,13 +25,11 @@ _TRACKING_TABLE = "sql_migrations"
 
 
 def _applied(conn) -> set[str]:
-    rows = conn.execute(
+    conn.execute(
         f"CREATE TABLE IF NOT EXISTS {_TRACKING_TABLE} ("
         "name TEXT PRIMARY KEY, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)"
     )
-    # CREATE ... IF NOT EXISTS produces no rows on PostgreSQL's dict cursor; the
-    # fetch is pure bookkeeping for sqlite3's cursor anyway.
-    rows.fetchall()
+    # PostgreSQL rejects fetchall() on DDL because it produces no result set.
     applied = conn.execute(f"SELECT name FROM {_TRACKING_TABLE}").fetchall()
     return {row["name"] for row in applied}
 

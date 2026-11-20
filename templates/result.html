@@ -22,7 +22,9 @@
          "score": score,
          "total": total,
          "details": details,
-         "explanations": explanations
+         "explanations": explanations,
+         "xp_awarded": xp_awarded | default(0),
+         "notice": notice | default(none)
        } | tojson }}'></div>
 
   <script type="module" src="/static/dist/app.js"></script>

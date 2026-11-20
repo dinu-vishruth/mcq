@@ -15,13 +15,14 @@ import config
 from core.agents.base import Agent
 from core.llm import LLMError, get_llm
 from core.prompts import explanation as prompts
+from core.services.personalization import system_prompt
 
 
 class ExplanationAgent(Agent):
     name = "explanation"
 
     def run(self, details: list[dict], *, document_id: int | None = None) -> list[str]:
-        if not config.LLM_API_KEY:
+        if not config.llm_key_present():
             return self._static(details)
 
         wrong = [d for d in details if not d["is_correct"] and d["selected"]]
@@ -40,7 +41,7 @@ class ExplanationAgent(Agent):
 
         try:
             data = get_llm().complete_json([
-                {"role": "system", "content": prompts.SYSTEM},
+                {"role": "system", "content": system_prompt(prompts.SYSTEM)},
                 {"role": "user", "content": user},
             ])
             ai = data.get("explanations", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])

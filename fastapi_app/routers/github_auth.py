@@ -9,7 +9,7 @@ the user profile endpoint may not expose a verified email, so we fetch
 from __future__ import annotations
 
 import secrets
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from fastapi import APIRouter, Request
@@ -53,12 +53,21 @@ async def github_login(request: Request):
             error="GitHub sign-in isn't configured on this server.",
         )
 
+    redirect_uri = _redirect_uri(request)
+    callback = urlsplit(redirect_uri)
+    if callback.netloc.lower() != request.url.netloc.lower():
+        # Start on the callback host so the session cookie returns with state.
+        # This also moves Vercel preview visitors to the registered production URL.
+        target = callback._replace(path="/auth/github", query="", fragment="")
+        return RedirectResponse(target.geturl(), status_code=302)
+
     state = secrets.token_urlsafe(32)
     request.session[_STATE_SESSION_KEY] = state
+    request.session[_STATE_SESSION_KEY + "_redirect_uri"] = redirect_uri
 
     query = urlencode({
         "client_id": config.GITHUB_CLIENT_ID,
-        "redirect_uri": _redirect_uri(request),
+        "redirect_uri": redirect_uri,
         "scope": GITHUB_SCOPES,
         "state": state,
     })
@@ -74,6 +83,7 @@ async def github_callback(
     error: str | None = None,
 ):
     expected_state = request.session.pop(_STATE_SESSION_KEY, None)
+    redirect_uri = request.session.pop(_STATE_SESSION_KEY + "_redirect_uri", None)
 
     def fail(message: str):
         return render(request, "login.html", error=message)
@@ -86,7 +96,7 @@ async def github_callback(
         return fail("GitHub sign-in failed: invalid state. Please try again.")
 
     try:
-        profile = await _fetch_github_profile(code, _redirect_uri(request))
+        profile = await _fetch_github_profile(code, redirect_uri or _redirect_uri(request))
     except httpx.HTTPError as exc:
         return fail(f"Could not reach GitHub to complete sign-in: {exc}")
     except ValueError as exc:
@@ -129,26 +139,28 @@ async def _fetch_github_profile(code: str, redirect_uri: str) -> dict:
             raise ValueError("Could not read your GitHub profile.")
         profile = profile_response.json()
 
-        # GitHub hides the email when it's set to private; fetch the verified
-        # primary address from the emails endpoint in that case.
-        if not profile.get("email"):
-            emails_response = await client.get(
-                GITHUB_EMAILS_ENDPOINT,
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Accept": "application/json",
-                },
-            )
-            if emails_response.status_code == 200:
+        if not profile.get("id"):
+            raise ValueError("GitHub did not return a complete account profile. Please try again.")
+        # Only verified addresses may link an existing local account. The public
+        # profile's email field does not include its verification status.
+        profile["email"] = ""
+        emails_response = await client.get(
+            GITHUB_EMAILS_ENDPOINT,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+            },
+        )
+        if emails_response.status_code == 200:
+            for entry in emails_response.json():
+                if entry.get("primary") and entry.get("verified"):
+                    profile["email"] = entry.get("email")
+                    break
+            if not profile.get("email"):
                 for entry in emails_response.json():
-                    if entry.get("primary") and entry.get("verified"):
+                    if entry.get("verified"):
                         profile["email"] = entry.get("email")
                         break
-                if not profile.get("email"):
-                    for entry in emails_response.json():
-                        if entry.get("verified"):
-                            profile["email"] = entry.get("email")
-                            break
         return profile
 
 
@@ -159,46 +171,30 @@ def _upsert_github_user(conn, profile: dict) -> dict:
     email = (profile.get("email") or "").strip()
     picture = profile.get("avatar_url") or ""
 
-    existing = None
-    try:
-        existing = conn.execute("SELECT * FROM users WHERE github_id=?", (github_id,)).fetchone()
-    except Exception:
-        existing = None
+    existing = conn.execute("SELECT * FROM users WHERE github_id=?", (github_id,)).fetchone()
 
     if existing is None and email:
         existing = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
         if existing is not None:
-            try:
-                conn.execute(
-                    "UPDATE users SET github_id=?, picture=?, auth_provider='github' WHERE id=?",
-                    (github_id, picture, existing["id"]),
-                )
-            except Exception:
-                conn.execute(
-                    "UPDATE users SET picture=?, auth_provider='github' WHERE id=?",
-                    (picture, existing["id"]),
-                )
+            conn.execute(
+                "UPDATE users SET github_id=?, picture=?, auth_provider='github' WHERE id=?",
+                (github_id, picture, existing["id"]),
+            )
             conn.commit()
 
     if existing is not None:
         return {"id": existing["id"], "username": existing["username"]}
 
     username = _unique_username(conn, name or login or "github-user")
-    try:
-        cursor = conn.execute(
-            "INSERT INTO users (username, email, password_hash, role, github_id, picture, "
-            "auth_provider) VALUES (?, ?, ?, 'user', ?, ?, 'github')",
-            (username, email, generate_password_hash(secrets.token_urlsafe(32)),
-             github_id, picture),
-        )
-    except Exception:
-        cursor = conn.execute(
-            "INSERT INTO users (username, email, password_hash, role, picture, "
-            "auth_provider) VALUES (?, ?, ?, 'user', ?, 'github')",
-            (username, email, generate_password_hash(secrets.token_urlsafe(32)), picture),
-        )
+    cursor = conn.execute(
+        "INSERT INTO users (username, email, password_hash, role, github_id, picture, "
+        "auth_provider) VALUES (?, ?, ?, 'user', ?, ?, 'github') RETURNING id",
+        (username, email, generate_password_hash(secrets.token_urlsafe(32)),
+         github_id, picture),
+    )
+    user_id = cursor.fetchone()["id"]
     conn.commit()
-    return {"id": cursor.lastrowid, "username": username}
+    return {"id": user_id, "username": username}
 
 
 def _unique_username(conn, base: str) -> str:

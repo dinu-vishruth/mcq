@@ -13,7 +13,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ..deps import CurrentApiUser, Db
 from ..services.dashboard import build_dashboard, level_for_xp, load_prefs
@@ -37,7 +37,8 @@ class ReviewIn(BaseModel):
 
 
 class PracticeIn(BaseModel):
-    document_id: int
+    document_id: int | None = Field(None, ge=1)
+    upload_id: str | None = Field(None, pattern=r"^[a-f0-9]{32}$")
     num_questions: int = Field(5, ge=1, le=30)
     difficulty: Literal["easy", "medium", "hard"] = "medium"
     topic: str | None = None
@@ -46,6 +47,12 @@ class PracticeIn(BaseModel):
     #: Optional per-job pipeline budget (queue mode only). Not sent by the
     #: current frontend; defaults to GENERATION_JOB_DEADLINE_SECONDS.
     deadline_seconds: int | None = Field(None, ge=60, le=3600)
+
+    @model_validator(mode="after")
+    def one_source(self):
+        if (self.document_id is None) == (self.upload_id is None):
+            raise ValueError("Choose exactly one saved resource or temporary upload.")
+        return self
 
 
 # --------------------------------------------------------------------------- #
@@ -262,6 +269,24 @@ async def achievements_data(user: CurrentApiUser, conn: Db):
 # Practice generation
 # --------------------------------------------------------------------------- #
 
+@router.get("/generation/status")
+def generation_status(user: CurrentApiUser):
+    import config
+    from core.services.generation_status import generation_available
+    available = generation_available()
+    return {"available": available,
+            "message": "" if available else config.USER_FACING_AI_UNAVAILABLE}
+
+
+@router.get("/quiz-uploads/{upload_id}")
+def quiz_upload(upload_id: str, user: CurrentApiUser):
+    from core.repositories import quiz_upload_repo
+    source = quiz_upload_repo.get(upload_id, user.id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Quiz upload expired or was already used. Upload it again.")
+    return {"id": source["id"], "title": source["title"]}
+
+
 @router.post("/practice/generate")
 def practice_generate(user: CurrentApiUser, payload: PracticeIn):
     """Generate an MCQ set from an indexed Knowledge document and create a session.
@@ -280,12 +305,21 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
     session_key; the client polls GET /api/jobs/{id}. The default inline mode
     keeps the original response shape unchanged -- see README "Compatibility".
     """
-    from core.repositories import document_repo, job_repo
+    from core.repositories import document_repo, job_repo, quiz_upload_repo
+    from core.services.generation_status import require_generation
+    from core.services.personalization import learning_profile
 
-    # Ownership: only practice from your own knowledge.
-    doc = document_repo.get(payload.document_id)
-    if doc is None or doc["owner"] != user.username:
-        raise HTTPException(status_code=404, detail="not found")
+    source = None
+    if payload.upload_id:
+        source = quiz_upload_repo.get(payload.upload_id, user.id)
+        if source is None:
+            raise HTTPException(status_code=404, detail="Quiz upload expired or was already used. Upload it again.")
+    else:
+        doc = document_repo.get(payload.document_id)
+        if doc is None or doc["owner"] != user.username:
+            raise HTTPException(status_code=404, detail="not found")
+
+    require_generation()
 
     # Per-user throttle before any costly work (queue mode included: enqueuing is
     # cheap but the job still burns LLM calls). Uses its own connection because
@@ -302,6 +336,26 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
         generation_backend,
         run_generation_job,
     )
+
+    if source is not None:
+        # One-off text never enters document ingestion, embeddings or Library.
+        # Retain it on failure for retry, discard it once the quiz is stored.
+        from core.services.mcq_pipeline import generate_from_text
+        from utils.session_manager import create_session_key
+        try:
+            with learning_profile(user.id):
+                mcqs = generate_from_text(source["content"], payload.num_questions,
+                                          payload.difficulty, topic=payload.topic)
+            if not mcqs:
+                raise ValueError("No questions generated. Try different settings.")
+            session_key = create_session_key(
+                teacher=user.username, difficulty=payload.difficulty,
+                timer=payload.timer, mcqs=mcqs,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        quiz_upload_repo.delete(payload.upload_id, user.id)
+        return {"ok": True, "session_key": session_key, "count": len(mcqs)}
 
     if generation_backend() == "rq":
         job_id = create_job(
@@ -324,12 +378,13 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
 
     try:
         from core.services.mcq_pipeline import generate_from_document
-        mcqs = generate_from_document(
-            payload.document_id,
-            num_questions=payload.num_questions,
-            difficulty=payload.difficulty,
-            topic=(payload.topic or "").strip() or None,
-        )
+        with learning_profile(user.id):
+            mcqs = generate_from_document(
+                payload.document_id,
+                num_questions=payload.num_questions,
+                difficulty=payload.difficulty,
+                topic=(payload.topic or "").strip() or None,
+            )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
@@ -340,5 +395,6 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
 
     session_key = create_session_key(
         teacher=user.username, difficulty=payload.difficulty, timer=payload.timer, mcqs=mcqs,
+        document_id=payload.document_id,
     )
     return {"ok": True, "session_key": session_key, "count": len(mcqs)}

@@ -3,14 +3,21 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Brain, Clock, ArrowRight, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { csrfToken } from "@/bootstrap";
+import { apiSend, csrfToken } from "@/bootstrap";
 
 interface Option { label: string; text: string; }
-interface Question { question: string; options: Option[]; answer_text: string; }
+interface Question { question: string; options: Option[]; }
 export interface QuizData {
   mcqs: Question[];
   timer: number;
   username: string;
+  deadline: number;
+  server_now: number;
+  session_key: string;
+  user_id: number;
+  answers: Record<number, string>;
+  confidence: Record<number, Confidence>;
+  question_index: number;
 }
 
 type Confidence = "know" | "maybe" | "no_idea";
@@ -25,28 +32,65 @@ const OPT_KEYS = ["A", "B", "C", "D"];
 
 export default function Quiz({ data }: { data: QuizData }) {
   const total = data.mcqs.length;
-  const [idx, setIdx] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [confidence, setConfidence] = useState<Record<number, Confidence>>({});
-  const [remaining, setRemaining] = useState(data.timer);
-  const [xpFlash, setXpFlash] = useState(false);
+  const storageKey = `quiz:${data.user_id}:${data.session_key}:${data.deadline}`;
+  const [initial] = useState(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) || "null");
+      if (saved && saved.deadline === data.deadline && data.timer > 0) {
+        const answers: Record<number, string> = {};
+        const confidence: Record<number, Confidence> = {};
+        data.mcqs.forEach((q, i) => {
+          if (q.options.some((o) => o.text === saved.answers?.[i])) answers[i] = saved.answers[i];
+          if (["know", "maybe", "no_idea"].includes(saved.confidence?.[i])) confidence[i] = saved.confidence[i];
+        });
+        return { answers, confidence, idx: Math.max(0, Math.min(total - 1, Math.floor(Number(saved.idx)) || 0)) };
+      }
+    } catch { /* Storage may be unavailable; the server draft remains usable. */ }
+    return { answers: data.answers, confidence: data.confidence, idx: data.question_index };
+  });
+  const [idx, setIdx] = useState(initial.idx);
+  const [answers, setAnswers] = useState<Record<number, string>>(initial.answers);
+  const [confidence, setConfidence] = useState<Record<number, Confidence>>(initial.confidence);
+  const [remaining, setRemaining] = useState(Math.ceil(data.timer));
+  const [saveError, setSaveError] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
-  const startRef = useRef(data.timer);
+  const submittingRef = useRef(false);
+  const clockRef = useRef({ at: performance.now(), seconds: data.deadline - data.server_now });
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
 
   const answeredCount = Object.keys(answers).length;
   const q = data.mcqs[idx];
   const selected = answers[idx];
 
-  // Countdown timer — auto-submits at zero, preserving the legacy behavior.
+  // Measure elapsed time rather than counting callbacks; background tabs can throttle timers.
   useEffect(() => {
-    if (remaining <= 0) {
-      submit();
-      return;
-    }
-    const t = setTimeout(() => setRemaining((r) => r - 1), 1000);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const tick = () => setRemaining(Math.max(0, Math.ceil(
+      clockRef.current.seconds - (performance.now() - clockRef.current.at) / 1000,
+    )));
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    if (remaining <= 0) submit();
   }, [remaining]);
+
+  useEffect(() => {
+    if (submittingRef.current || remaining <= 0) return;
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({ answers, confidence, idx, deadline: data.deadline }));
+    } catch { /* Server autosave also protects progress when storage is unavailable. */ }
+    const timer = setTimeout(() => {
+      // Serialize saves so a slower previous request cannot overwrite newer answers.
+      saveQueue.current = saveQueue.current.catch(() => undefined).then(() => apiSend(
+        "/api/quiz-attempt", "POST",
+        { session_key: data.session_key, answers, confidence, question_index: idx },
+      )).then(() => setSaveError(false)).catch(() => setSaveError(true));
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [answers, confidence, idx]);
 
   const mmss = useMemo(() => {
     const m = Math.floor(Math.max(0, remaining) / 60);
@@ -55,9 +99,8 @@ export default function Quiz({ data }: { data: QuizData }) {
   }, [remaining]);
 
   function choose(text: string) {
+    if (remaining <= 0 || submittingRef.current) return;
     setAnswers((a) => ({ ...a, [idx]: text }));
-    setXpFlash(true);
-    setTimeout(() => setXpFlash(false), 700);
   }
 
   function next() {
@@ -65,9 +108,9 @@ export default function Quiz({ data }: { data: QuizData }) {
   }
 
   function submit() {
-    if (!formRef.current) return;
-    const spent = Math.max(0, startRef.current - remaining);
-    (formRef.current.elements.namedItem("time_spent") as HTMLInputElement).value = String(spent);
+    if (!formRef.current || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
     formRef.current.submit();
   }
 
@@ -95,14 +138,18 @@ export default function Quiz({ data }: { data: QuizData }) {
       <form ref={formRef} action="/submit" method="post" className="hidden">
         <input type="hidden" name="csrf_token" value={csrfToken()} />
         <input type="hidden" name="student_name" value={data.username} />
-        <input type="hidden" name="time_spent" defaultValue="0" />
         {data.mcqs.map((_, i) => (
-          <input key={i} type="hidden" name={`q-${i}`} value={answers[i] ?? ""} readOnly />
+          <span key={i}>
+            <input type="hidden" name={`q-${i}`} value={answers[i] ?? ""} readOnly />
+            <input type="hidden" name={`confidence-${i}`} value={confidence[i] ?? ""} readOnly />
+          </span>
         ))}
       </form>
 
       {/* Question */}
       <div className="relative z-10 flex-1 max-w-3xl w-full mx-auto px-5 py-10 flex flex-col">
+        {saveError && <p role="alert" className="mb-4 text-warning">Progress could not sync. Keep this tab open and submit your answers when finished.</p>}
+        <p className="mb-4 text-xs text-text-3">Earn 10 XP per correct answer and 5 XP for completing the quiz.</p>
         <AnimatePresence mode="wait">
           <motion.div
             key={idx}
@@ -123,6 +170,7 @@ export default function Quiz({ data }: { data: QuizData }) {
                 return (
                   <button
                     key={i}
+                    disabled={submitting || remaining <= 0}
                     onClick={() => choose(opt.text)}
                     className={`w-full flex items-center gap-4 p-4 rounded-md border text-left transition-all duration-200 ${
                       on
@@ -149,6 +197,7 @@ export default function Quiz({ data }: { data: QuizData }) {
                 {CONFIDENCE.map((c) => (
                   <button
                     key={c.id}
+                    disabled={submitting || remaining <= 0}
                     onClick={() => setConfidence((cf) => ({ ...cf, [idx]: c.id }))}
                     className={`flex-1 py-2.5 rounded-md border text-sm font-medium transition-all ${
                       confidence[idx] === c.id ? c.tone : "border-white/[0.06] text-text-3 hover:text-text-2"
@@ -173,26 +222,13 @@ export default function Quiz({ data }: { data: QuizData }) {
           </button>
 
           <div className="relative">
-            <AnimatePresence>
-              {xpFlash && (
-                <motion.span
-                  initial={{ opacity: 0, y: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, y: -28, scale: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.5 }}
-                  className="absolute left-1/2 -translate-x-1/2 -top-2 text-success text-sm font-semibold pointer-events-none"
-                >
-                  +10 XP
-                </motion.span>
-              )}
-            </AnimatePresence>
             {idx < total - 1 ? (
               <Button disabled={!selected} rightIcon={<ArrowRight className="w-4 h-4" />} onClick={next}>
                 Next
               </Button>
             ) : (
-              <Button disabled={answeredCount === 0} leftIcon={<Check className="w-4 h-4" />} onClick={submit}>
-                Submit Answers
+              <Button disabled={submitting || answeredCount === 0} leftIcon={<Check className="w-4 h-4" />} onClick={submit}>
+                {submitting ? "Submitting…" : "Submit Answers"}
               </Button>
             )}
           </div>

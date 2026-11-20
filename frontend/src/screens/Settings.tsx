@@ -4,7 +4,7 @@ import { User, Sparkles, Download, Trash2, Check, Palette } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { csrfToken } from "@/bootstrap";
+import { apiSend, csrfToken } from "@/bootstrap";
 
 export interface SettingsData {
   username: string;
@@ -27,6 +27,7 @@ export default function Settings({ data }: { data: SettingsData }) {
   const [streak, setStreak] = useState(0);
   const [prefsSaved, setPrefsSaved] = useState(false);
   const [savingPrefs, setSavingPrefs] = useState(false);
+  const [prefsError, setPrefsError] = useState("");
 
   // Prefs (+ xp/streak) come from the additive /api/prefs endpoint so the
   // existing /profile route in auth.py stays untouched.
@@ -49,14 +50,13 @@ export default function Settings({ data }: { data: SettingsData }) {
   async function savePrefs() {
     setSavingPrefs(true);
     setPrefsSaved(false);
+    setPrefsError("");
     try {
-      await fetch("/api/prefs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
-        body: JSON.stringify({ goal, style, daily_minutes: minutes }),
-      });
+      await apiSend("/api/prefs", "POST", { goal, style, daily_minutes: minutes });
       setPrefsSaved(true);
       setTimeout(() => setPrefsSaved(false), 2500);
+    } catch (err) {
+      setPrefsError(err instanceof Error ? err.message : "Could not save preferences. Please retry.");
     } finally {
       setSavingPrefs(false);
     }
@@ -106,6 +106,7 @@ export default function Settings({ data }: { data: SettingsData }) {
         {/* Learning preferences */}
         <Card className="mb-5">
           <h2 className="flex items-center gap-2 text-lg"><Sparkles className="w-5 h-5 text-violet" /> Learning Preferences</h2>
+          {prefsError && <p role="alert" className="text-danger text-sm mb-3">{prefsError}</p>}
           <p className="text-text-3 text-sm mb-4 -mt-2">Personalize your AI coach recommendations.</p>
 
           <label className="text-text-2 text-sm block mb-1.5">Preparing for</label>

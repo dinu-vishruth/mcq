@@ -142,6 +142,7 @@ async def download_report(session_key: SessionKey, session_row: OwnedSession):
 async def delete_session(
     request: Request, session_key: SessionKey, session_row: OwnedSession, conn: Db
 ):
+    conn.execute("DELETE FROM quiz_attempts WHERE session_key=?", (session_key,))
     conn.execute("DELETE FROM sessions WHERE session_key=?", (session_key,))
     conn.execute("DELETE FROM results WHERE session_key=?", (session_key,))
     conn.commit()

@@ -186,6 +186,17 @@ def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medi
     return collected
 
 
+def generate_from_text(text: str, num_questions: int = 5, difficulty: str = "medium",
+                       *, topic: str | None = None) -> list[dict]:
+    """Generate from temporary input without ingesting it into the Library."""
+    context = text[:config.CONTEXT_MAX_CHARS]
+    if topic:
+        context = f"Focus requested by the learner: {topic[:200]}\n\nSOURCE:\n{context}"
+    if config.AI_PIPELINE == "rag":
+        return _collect_mcqs(context, num_questions, difficulty)
+    return _legacy_from_context(context, num_questions, difficulty)
+
+
 def generate_from_document(document_id: int, num_questions: int = 5,
                            difficulty: str = "medium", *, topic: str | None = None,
                            deadline_seconds: int | None = None,
