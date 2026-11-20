@@ -3,7 +3,7 @@
 Repository: https://github.com/dinu-vishruth/mcq  
 Source baseline: `a906dfbe7fcf66cbff92ee8d56892948f0880c8d`, inspected on 14 October 2026.
 
-This guide describes the current implementation. The working tree also contains an existing local change to `core/routes/documents.py`; that module belongs to the inactive Flask implementation and does not control the running FastAPI application. No application code was changed to create this document.
+This guide is a historical engineering snapshot of the source baseline above. It predates the production security fixes and the removal of the inactive Flask routes in November 2026. Statements about those routes and earlier security behavior describe that baseline; consult the active `fastapi_app/` handlers and current tests for present behavior. Links to removed files point to the inspected baseline.
 
 **Evidence convention:** **Verified** means supported by executable source or configuration, not necessarily proven in a live deployment. **Inferred** identifies a plausible engineering interpretation or consequence. **Not verified from the current codebase** identifies an unanswered runtime, historical, or quality question. Implementation paragraphs and tables under a **Verified** introduction inherit that status unless explicitly labeled otherwise. Source links use repository-relative paths; `#L...` records the inspected line, and named symbols remain useful if lines later move. Examples are illustrative inputs, not private documents or actual provider responses.
 
@@ -39,17 +39,17 @@ The application was inspected through its entry points, all active routers, fron
 
 ## 1.1 What the project is
 
-**Verified:** the project is an AI-assisted study application whose current interface is branded **Examly**. It turns uploaded study material into multiple-choice questions, lets an authenticated user take quizzes, stores scores, and identifies frequently missed topics. The repository and several page titles still use “MCQ Generator.” MCQ means *multiple-choice question*: a question with several options and a designated correct answer. Evidence: [application title](fastapi_app/main.py#L64), [navigation brand](frontend/src/components/AppShell.tsx), [question contract](core/prompts/mcq.py#L12).
+**Verified:** the project is an AI-assisted study application whose current interface is branded **Examly**. It turns uploaded study material into multiple-choice questions, lets an authenticated user take quizzes, stores scores, and identifies frequently missed topics. The repository and several page titles still use “MCQ Generator.” MCQ means *multiple-choice question*: a question with several options and a designated correct answer. Evidence: [application title](../fastapi_app/main.py#L64), [navigation brand](../frontend/src/components/AppShell.tsx), [question contract](../core/prompts/mcq.py#L12).
 
-An **LLM**, or large language model, is an external text-generating model that the backend asks to create questions or explain mistakes. A **provider** is the service hosting that model. The application contains adapters for several providers; it does not train or host the production question-generating LLM itself. Evidence: [provider construction](core/llm/registry.py#L98), [generation entry point](models/mcq_generator.py#L54).
+An **LLM**, or large language model, is an external text-generating model that the backend asks to create questions or explain mistakes. A **provider** is the service hosting that model. The application contains adapters for several providers; it does not train or host the production question-generating LLM itself. Evidence: [provider construction](../core/llm/registry.py#L98), [generation entry point](../models/mcq_generator.py#L54).
 
-**Retrieval-augmented generation (RAG)** means finding useful passages in a saved resource and supplying them to the model as evidence. This application uses retrieval for saved-resource quiz generation even in its lighter legacy mode. The flag `AI_PIPELINE=rag` enables additional model-based validation stages. That distinction is central to understanding this repository. Evidence: [generate_from_document()](core/services/mcq_pipeline.py#L160).
+**Retrieval-augmented generation (RAG)** means finding useful passages in a saved resource and supplying them to the model as evidence. This application uses retrieval for saved-resource quiz generation even in its lighter legacy mode. The flag `AI_PIPELINE=rag` enables additional model-based validation stages. That distinction is central to understanding this repository. Evidence: [generate_from_document()](../core/services/mcq_pipeline.py#L160).
 
 ## 1.2 Problem, audience, and use cases
 
 **Inferred product purpose:** learners often have notes, textbook chapters, or slides but lack enough practice questions tailored to that material. Manually writing questions, plausible incorrect options, and explanations takes time. Reusing a resource and reviewing actual mistakes can make practice more convenient.
 
-**Verified product support:** onboarding offers college exams, placement, interviews, competitive exams, certifications, and personal learning as goals. The active signup flow creates a unified user account; it does not enforce separate teacher and student capabilities, despite legacy database terminology. Evidence: [onboarding choices](frontend/src/screens/Onboarding.tsx#L11), [signup()](fastapi_app/routers/auth.py#L45).
+**Verified product support:** onboarding offers college exams, placement, interviews, competitive exams, certifications, and personal learning as goals. The active signup flow creates a unified user account; it does not enforce separate teacher and student capabilities, despite legacy database terminology. Evidence: [onboarding choices](../frontend/src/screens/Onboarding.tsx#L11), [signup()](../fastapi_app/routers/auth.py#L45).
 
 
 Typical use cases are generating a quiz from a database chapter, practicing a technical concept before an interview, checking recall of lecture slides, and replaying questions previously missed. The backend also retains quiz-owner reporting and editing routes that may support tutor workflows. A complete classroom/invitation product is not implemented.
@@ -75,7 +75,7 @@ Flashcards, summaries, interview/coding content, revision notes, and short-answe
 
 Consider a learner with a PDF about database transactions. They sign in, upload it, and reach quiz setup after ingestion. They select ten medium questions, optionally focus on deadlocks, and choose ten minutes. The backend retrieves passages from that resource, asks the configured model for questions, and stores the question set. The learner answers the quiz and sees a score and review. If topic labeling succeeds, missed concepts appear under Weak Topics and can be replayed from the saved questions.
 
-This is an illustrative walkthrough of the implemented flow, not a claim about a particular model's actual generated questions. Evidence chain: [Upload.onSubmit()](frontend/src/screens/Upload.tsx#L52) → [documents.upload()](fastapi_app/routers/documents.py#L159) → [ingest_document()](core/services/ingestion_service.py#L22) → [MakeQuiz.generate()](frontend/src/screens/MakeQuiz.tsx#L58) → [practice_generate()](fastapi_app/routers/api.py#L264) → [generate_from_document()](core/services/mcq_pipeline.py#L160) → [submit()](fastapi_app/routers/student.py#L236).
+This is an illustrative walkthrough of the implemented flow, not a claim about a particular model's actual generated questions. Evidence chain: [Upload.onSubmit()](../frontend/src/screens/Upload.tsx#L52) → [documents.upload()](../fastapi_app/routers/documents.py#L159) → [ingest_document()](../core/services/ingestion_service.py#L22) → [MakeQuiz.generate()](../frontend/src/screens/MakeQuiz.tsx#L58) → [practice_generate()](../fastapi_app/routers/api.py#L264) → [generate_from_document()](../core/services/mcq_pipeline.py#L160) → [submit()](../fastapi_app/routers/student.py#L236).
 
 **Nontechnical explanation:** “You give the application your study material. It helps turn that material into practice questions, checks your answers, and records the areas you should revisit. Its AI output still needs careful validation, and the current implementation has reliability and privacy gaps described later in this guide.”
 
@@ -102,13 +102,13 @@ The repository addresses parts of that problem by cleaning/chunking content, ret
 | Safe public multi-user operation | Inferred necessary requirement | Auth, CSRF, ownership guards | Confirmed structural identity/deletion/answer-exposure gaps |
 | Durable hosted learning history | Inferred necessary requirement | SQLite storage paths | `/tmp` is temporary on Vercel |
 
-Sources: [PracticeIn](fastapi_app/routers/api.py#L40), [LLMProvider](core/llm/base.py#L32), [ingestion](core/services/ingestion_service.py#L22), [middleware](fastapi_app/middleware.py#L39), [dashboard read model](fastapi_app/services/dashboard.py#L84), [configuration](config.py#L85).
+Sources: [PracticeIn](../fastapi_app/routers/api.py#L40), [LLMProvider](../core/llm/base.py#L32), [ingestion](../core/services/ingestion_service.py#L22), [middleware](../fastapi_app/middleware.py#L39), [dashboard read model](../fastapi_app/services/dashboard.py#L84), [configuration](../config.py#L85).
 
 ## 2.3 Nonfunctional concerns
 
 **Reliability:** quiz scoring is deterministic, but optional AI explanations execute before the result is saved. Ingestion uses several commits and can leave a resource in `chunked`. **Privacy:** queries are scoped, but the owner identity is unstable. **Latency:** repeated sequential LLM calls can dominate a request. **Maintainability:** interfaces and services help, while duplicate inactive routes and outdated comments create ambiguity. **Scalability:** document-scoped vector search reduces search scope, but SQLite writes, full result-history reads, re-embedding candidates, and synchronous network calls limit concurrency.
 
-Evidence: [submit()](fastapi_app/routers/student.py#L236), [ingest_document()](core/services/ingestion_service.py#L46), [get_db()](core/models/db.py#L17), [Retriever.retrieve()](core/rag/retrieval/retriever.py#L55). Consequences and possible improvements are engineering inferences discussed in sections 17–20.
+Evidence: [submit()](../fastapi_app/routers/student.py#L236), [ingest_document()](../core/services/ingestion_service.py#L46), [get_db()](../core/models/db.py#L17), [Retriever.retrieve()](../core/rag/retrieval/retriever.py#L55). Consequences and possible improvements are engineering inferences discussed in sections 17–20.
 
 # 3. Feature-by-Feature User Guide
 
@@ -122,13 +122,13 @@ Login counts failed attempts in the last five minutes where IP **or** username m
 
 Google sign-in uses an authorization-code exchange: `/auth/google` saves a random state and redirects to Google; the callback consumes and compares state, exchanges the returned code server-side with `httpx.AsyncClient`, fetches user info, requires `email_verified`, then matches or creates an account. It matches `google_id` first, then email. API tokens are not stored in the application database by this flow. Failures render the login page; cancellation redirects home.
 
-Frontend/source: [login template](templates/login.html), [signup template](templates/signup.html), [auth interactions](static/js/auth.js), [auth handlers](fastapi_app/routers/auth.py#L45), [Google handlers](fastapi_app/routers/google_auth.py#L63). Important limitations: no verified local email ownership, no reauthentication for sensitive profile actions, and the email-linking rule is unsafe; see section 15.
+Frontend/source: [login template](../templates/login.html), [signup template](../templates/signup.html), [auth interactions](../static/js/auth.js), [auth handlers](../fastapi_app/routers/auth.py#L45), [Google handlers](../fastapi_app/routers/google_auth.py#L63). Important limitations: no verified local email ownership, no reauthentication for sensitive profile actions, and the email-linking rule is unsafe; see section 15.
 
 ## 3.2 First-use onboarding and learning preferences
 
 **Purpose:** collect the goal, preferred study style, and daily study minutes. `Dashboard` shows `Onboarding` when `needs_onboarding` is true. The user selects a goal/style/time or skips. `finish()`/`skip()` post JSON to `/api/prefs`; the backend validates lengths and a 5–600-minute bound, inserts/updates the row, sets `onboarded=1`, and returns `{ok:true}`. Output is dismissal of the overlay; preferences later influence dashboard text.
 
-These preferences are not an adaptive syllabus or a scheduler. Settings uses the same API. The raw `fetch` callers do not check `response.ok`, so a failed HTTP response can still dismiss onboarding or display Saved. Evidence: [Onboarding.finish()/skip()](frontend/src/screens/Onboarding.tsx#L37), [Settings.savePrefs()](frontend/src/screens/Settings.tsx#L49), [save_prefs()](fastapi_app/routers/api.py#L60).
+These preferences are not an adaptive syllabus or a scheduler. Settings uses the same API. The raw `fetch` callers do not check `response.ok`, so a failed HTTP response can still dismiss onboarding or display Saved. Evidence: [Onboarding.finish()/skip()](../frontend/src/screens/Onboarding.tsx#L37), [Settings.savePrefs()](../frontend/src/screens/Settings.tsx#L49), [save_prefs()](../fastapi_app/routers/api.py#L60).
 
 ## 3.3 Upload material to make a quiz
 
@@ -136,13 +136,13 @@ These preferences are not an adaptive syllabus or a scheduler. Settings uses the
 
 **Output:** Make Quiz & Test with the resource preselected from the query string. Upload does **not** generate a quiz in its current handler. Empty, unsupported, corrupted or oversized server files render `upload.html` with an error. Browser extraction failure tries the server path if size permits, but the file input unmounting problem can break that fallback. Files sent as extracted text lose filename/source extension metadata unless separately supplied; this screen does not submit a title.
 
-Sources: [Upload.pickFile()/onSubmit()](frontend/src/screens/Upload.tsx#L41), [extraction helpers](frontend/src/lib/extract.ts#L51), [documents.upload()](fastapi_app/routers/documents.py#L159), [extract_upload_text()](fastapi_app/routers/documents.py#L50).
+Sources: [Upload.pickFile()/onSubmit()](../frontend/src/screens/Upload.tsx#L41), [extraction helpers](../frontend/src/lib/extract.ts#L51), [documents.upload()](../fastapi_app/routers/documents.py#L159), [extract_upload_text()](../fastapi_app/routers/documents.py#L50).
 
 ## 3.4 Add a resource without making a quiz
 
 **Purpose:** build a library for later practice. **Input:** file plus editable resource title. `AddResource` defaults title from the filename and posts to `/ingest_resource`. Extraction occurs before a daemon ingestion thread is started. The route immediately redirects to `/journey`; the thread calls `ingest_document()` and prints failures.
 
-**Output:** the library page, potentially before the new resource exists or indexing finishes. This is best-effort in-process background work, not a queue or guaranteed saved job. The UI's animated steps are timer-driven and do not receive backend progress. Sources: [AddResource.onSubmit()](frontend/src/screens/AddResource.tsx#L51), [ingest_resource()](fastapi_app/routers/documents.py#L116), [Journey](frontend/src/screens/Journey.tsx#L16).
+**Output:** the library page, potentially before the new resource exists or indexing finishes. This is best-effort in-process background work, not a queue or guaranteed saved job. The UI's animated steps are timer-driven and do not receive backend progress. Sources: [AddResource.onSubmit()](../frontend/src/screens/AddResource.tsx#L51), [ingest_resource()](../fastapi_app/routers/documents.py#L116), [Journey](../frontend/src/screens/Journey.tsx#L16).
 
 ## 3.5 Browse, reuse, and remove library resources
 
@@ -150,7 +150,7 @@ Sources: [Upload.pickFile()/onSubmit()](frontend/src/screens/Upload.tsx#L41), [e
 
 The backend filters documents by current username. Deletion verifies that username against the document owner, deletes chunks and the document, and leaves the shared embedding cache. It does not call external-index deletion. Errors can appear as an empty library because initial fetch failures are converted to `[]`; there is no pending-job polling.
 
-Sources: [Journey.remove()](frontend/src/screens/Journey.tsx#L28), [knowledge_list()/knowledge_delete()](fastapi_app/routers/api.py#L135), [list_by_owner()/delete()](core/repositories/document_repo.py#L91).
+Sources: [Journey.remove()](../frontend/src/screens/Journey.tsx#L28), [knowledge_list()/knowledge_delete()](../fastapi_app/routers/api.py#L135), [list_by_owner()/delete()](../core/repositories/document_repo.py#L91).
 
 ## 3.6 Configure and generate a quiz
 
@@ -158,7 +158,7 @@ Sources: [Journey.remove()](frontend/src/screens/Journey.tsx#L28), [knowledge_li
 
 The API checks the document exists and belongs to the username, retrieves context, runs the configured generation mode, then stores a session with a UUID-prefix key. It returns `{ok,session_key,count}`. The UI creates and submits a classic `/student_login` form to enter the quiz. It currently ignores the returned delivered count. Missing/foreign resources return 404; invalid bodies return 422; generation failures return 502 and appear as an inline error when `apiSend` can parse them.
 
-Sources: [MakeQuiz.generate()](frontend/src/screens/MakeQuiz.tsx#L58), [PracticeIn](fastapi_app/routers/api.py#L40), [practice_generate()](fastapi_app/routers/api.py#L264), [session repository](core/repositories/session_repo.py#L15).
+Sources: [MakeQuiz.generate()](../frontend/src/screens/MakeQuiz.tsx#L58), [PracticeIn](../fastapi_app/routers/api.py#L40), [practice_generate()](../fastapi_app/routers/api.py#L264), [session repository](../core/repositories/session_repo.py#L15).
 
 ## 3.7 Join and answer a quiz
 
@@ -166,7 +166,7 @@ The backend supports joining by an alphanumeric existing session key. Any authen
 
 The server loads MCQs, shuffles **options only**, and relabels them A–D. Question order remains unchanged. React stores selected option text by question index, displays one question at a time, allows Previous, and requires selection before Next. Confidence choices are local state only. A browser countdown auto-submits at zero. The hidden form sends selected texts, display name, CSRF token, and elapsed time to `/submit`.
 
-Important cases: no joined key redirects; a prior result blocks another attempt; refresh loses answer state and resets the timer; opening another quiz in a second tab replaces the single session-cookie quiz key. Correct answers are present in the page bootstrap even though the UI does not display them. Sources: [student_login()](fastapi_app/routers/student.py#L175), [mcq_test()](fastapi_app/routers/student.py#L204), [Quiz.choose()/submit()](frontend/src/screens/Quiz.tsx#L57), [quiz template](templates/mcq_test.html#L21).
+Important cases: no joined key redirects; a prior result blocks another attempt; refresh loses answer state and resets the timer; opening another quiz in a second tab replaces the single session-cookie quiz key. Correct answers are present in the page bootstrap even though the UI does not display them. Sources: [student_login()](../fastapi_app/routers/student.py#L175), [mcq_test()](../fastapi_app/routers/student.py#L204), [Quiz.choose()/submit()](../frontend/src/screens/Quiz.tsx#L57), [quiz template](../templates/mcq_test.html#L21).
 
 ## 3.8 Results and explanations
 
@@ -174,7 +174,7 @@ The backend compares each submitted option text exactly with the stored correct 
 
 The user sees an animated percentage ring, correct/to-review totals, per-question answer review, and explanations. Confetti appears at 80%+. The “AI Insight” paragraph is selected from fixed frontend text using score thresholds; it is not another model response. AI explanations cover wrong **answered** questions when a unified LLM key is set; correct/unanswered items receive fixed messages. The live submission path does not supply document context to explanations. Explanations themselves are not persisted in `results.detail_json`.
 
-Sources: [submit()](fastapi_app/routers/student.py#L236), [explain_answers()](models/explanation_engine.py#L15), [ExplanationAgent.run()](core/agents/explanation.py#L23), [Result](frontend/src/screens/Result.tsx#L84), [result shell](templates/result.html#L19). There is no active GET endpoint to reopen the full learner result page by result ID.
+Sources: [submit()](../fastapi_app/routers/student.py#L236), [explain_answers()](../models/explanation_engine.py#L15), [ExplanationAgent.run()](../core/agents/explanation.py#L23), [Result](../frontend/src/screens/Result.tsx#L84), [result shell](../templates/result.html#L19). There is no active GET endpoint to reopen the full learner result page by result ID.
 
 ## 3.9 Weak topics and replaying mistakes
 
@@ -182,7 +182,7 @@ After submission, `EvaluationAgent` sends question texts for short topic labels,
 
 Review provides a topic string. The repository finds that user's historical wrong questions, locates their original session JSON, matches question text, deduplicates, and returns up to twenty MCQs. The route creates a new `review` session with about 45 seconds per question, clamped to 60–1,800 seconds. No LLM is needed to **create** this review quiz; taking/submitting it can still invoke normal explanation/topic-analysis calls.
 
-Deleted or edited source sessions can make questions unreconstructable. A later correct answer does not erase the historical wrong event, so the review list is not a current due-for-review or mastered-question model. Sources: [EvaluationAgent.run()](core/agents/evaluation.py#L23), [missed_questions_for_topic()](core/repositories/learning_repo.py#L63), [weak_topics_review()](fastapi_app/routers/api.py#L194), [WeakTopics.review()](frontend/src/screens/WeakTopics.tsx#L36).
+Deleted or edited source sessions can make questions unreconstructable. A later correct answer does not erase the historical wrong event, so the review list is not a current due-for-review or mastered-question model. Sources: [EvaluationAgent.run()](../core/agents/evaluation.py#L23), [missed_questions_for_topic()](../core/repositories/learning_repo.py#L63), [weak_topics_review()](../fastapi_app/routers/api.py#L194), [WeakTopics.review()](../frontend/src/screens/WeakTopics.tsx#L36).
 
 ## 3.10 Dashboard, progress, XP, streaks, and achievements
 
@@ -192,7 +192,7 @@ Progress calculates question-weighted accuracy, time totals, daily counts, and *
 
 Submission awards `10 * correct + 5` XP. `record_activity()` increments the streak on consecutive server-local calendar days, keeps it for same-day activity, and resets to one after a gap. Level is `xp // 100 + 1`. Achievements derives badges from results/streak/XP on demand. Its rules differ from hardcoded Progress badges; the selection-time “+10 XP” animation is not actual awarded XP.
 
-Sources: [build_dashboard()](fastapi_app/services/dashboard.py#L84), [progress()](fastapi_app/routers/student.py#L61), [Progress](frontend/src/screens/Progress.tsx#L48), [record_activity()](core/repositories/prefs_repo.py#L59), [achievements_data()](fastapi_app/routers/api.py#L224). Fetch failure on Achievements leaves a null payload and can display an endless spinner.
+Sources: [build_dashboard()](../fastapi_app/services/dashboard.py#L84), [progress()](../fastapi_app/routers/student.py#L61), [Progress](../frontend/src/screens/Progress.tsx#L48), [record_activity()](../core/repositories/prefs_repo.py#L59), [achievements_data()](../fastapi_app/routers/api.py#L224). Fetch failure on Achievements leaves a null payload and can display an endless spinner.
 
 ## 3.11 Profile, account deletion, and JSON export
 
@@ -200,7 +200,7 @@ Settings lets a user update username/email and optionally password, update prefe
 
 Export downloads account metadata, preferences, result summaries, weak-topic counts and an export timestamp. It does not export source content, MCQ sets, detailed answers, explanations, or full learning history. Delete removes owned sessions/results and selected user-ID learning/preference rows, then the user; documents/chunks/chat/external indexes are not removed.
 
-Sources: [Settings](frontend/src/screens/Settings.tsx#L22), [profile()/delete_account()](fastapi_app/routers/auth.py#L131), [export_data()](fastapi_app/routers/api.py#L98). Sensitive actions are CSRF-protected but do not require the old password or fresh authentication.
+Sources: [Settings](../frontend/src/screens/Settings.tsx#L22), [profile()/delete_account()](../fastapi_app/routers/auth.py#L131), [export_data()](../fastapi_app/routers/api.py#L98). Sensitive actions are CSRF-protected but do not require the old password or fresh authentication.
 
 ## 3.12 Less-visible session-owner tools
 
@@ -208,11 +208,11 @@ Authenticated owners can request a session report, export result CSV, download a
 
 The report joins result rows with registered usernames and sorts by score. PDF writes questions/options to `reports/report_<key>.pdf`; it does **not** render an answer-key section. CSV streams name, username, score, total, percentage, time and submission date. Edit accepts nonempty text/options and an answer matching text or a label, with a 10–3,600-second duration. It does not reject duplicate option text or preserve optional RAG metadata. Clone copies the set into a new unarchived session and omits document linkage. Archive does not prevent the joining/taking routes from loading the session. Delete removes sessions/results but leaves learning aggregates/history.
 
-Sources: [owned_session()](fastapi_app/routers/teacher.py#L44), [download_report()](fastapi_app/routers/teacher.py#L89), [edit_session()](fastapi_app/routers/teacher.py#L198), [export_results()](fastapi_app/routers/teacher.py#L257), [legacy dashboard template](templates/teacher_dashboard.html).
+Sources: [owned_session()](../fastapi_app/routers/teacher.py#L44), [download_report()](../fastapi_app/routers/teacher.py#L89), [edit_session()](../fastapi_app/routers/teacher.py#L198), [export_results()](../fastapi_app/routers/teacher.py#L257), [legacy dashboard template](../templates/teacher_dashboard.html).
 
 # 4. Technology Stack and Responsibilities
 
-**Verified dependencies:** Python packages in [requirements.txt](requirements.txt) have no pinned versions. Frontend [package.json](frontend/package.json) declares ranges; [package-lock.json](frontend/package-lock.json) records resolved packages. Some libraries used by FastAPI, including Starlette and Pydantic, are transitive dependencies rather than explicit requirement entries. PDF.js/Mammoth are vendored browser scripts, not frontend npm dependencies. The following benefits/alternatives are **Inferred engineering comparisons**, while usage locations are verified.
+**Verified dependencies:** Python packages in [requirements.txt](../requirements.txt) have no pinned versions. Frontend [package.json](../frontend/package.json) declares ranges; [package-lock.json](../frontend/package-lock.json) records resolved packages. Some libraries used by FastAPI, including Starlette and Pydantic, are transitive dependencies rather than explicit requirement entries. PDF.js/Mammoth are vendored browser scripts, not frontend npm dependencies. The following benefits/alternatives are **Inferred engineering comparisons**, while usage locations are verified.
 
 | Technology/library | Repository use and exact responsibility | Why useful here | Alternative and trade-off |
 |---|---|---|---|
@@ -442,44 +442,44 @@ mcq/
 
 | File | Symbols, purpose, and call relationships |
 |---|---|
-| [app.py](app.py#L13) | Imports the module-level FastAPI `app`; executable mode invokes Uvicorn. Host request → active FastAPI app. It does not register Flask blueprints. |
-| [config.py](config.py#L30) | `env_str()`, `llm_key_present()`, `missing_key_message()`, `mcq_token_budget()` and configuration constants. Environment/root `.env` → process settings consumed throughout services. |
-| [fastapi_app/main.py](fastapi_app/main.py#L64) | `create_app()`, `_log_llm_config()`, redirect/API exception handlers. Initializes DB/uploads, middleware/static/routers; incoming HTTP → router response. |
-| [fastapi_app/database.py](fastapi_app/database.py#L75) | `init_db()`, `_seed_demo_users()`. Called during app construction; schema file/base SQL → tables, additive columns, demo rows, RAG migrations. |
-| [fastapi_app/deps.py](fastapi_app/deps.py#L42) | `User`, `RedirectException`, `require_user()`, `require_api_user()`, `db()`, annotated aliases. Cookie → lightweight user; yields/closes SQLite connection for handlers. |
-| [fastapi_app/security.py](fastapi_app/security.py#L40) | Token minting, header/form lookup, constant-time comparison, HTML failure response. Called by templates/middleware; session/body → CSRF validity. |
-| [fastapi_app/middleware.py](fastapi_app/middleware.py#L39) | `CSRFMiddleware`, `_replayer()`, `HTTPSRedirectOnVercelMiddleware`. Buffers/replays mutation bodies; session/token → rejection or downstream app. |
-| [fastapi_app/templating.py](fastapi_app/templating.py#L55) | `render()`, `flash()`, `_get_flashed_messages()`, rooted Jinja environment. Route variables/session → HTML/bootstrap/CSRF metadata. |
-| [fastapi_app/uploads.py](fastapi_app/uploads.py#L20) | `FileStorageAdapter`, `size_of()`. FastAPI upload → read/seek/save/stream interface expected by old document parsers. |
-| [fastapi_app/routers/auth.py](fastapi_app/routers/auth.py) | Home/signup/login/logout/profile/delete handlers. Forms + user/DB → HTML or redirects; calls hash functions and inline SQL. |
-| [fastapi_app/routers/google_auth.py](fastapi_app/routers/google_auth.py#L128) | `google_login()`, `google_callback()`, `_fetch_google_profile()`, `_upsert_google_user()`, `_unique_username()`, `_redirect_uri()`. OAuth code/profile → local user/session. |
-| [fastapi_app/routers/documents.py](fastapi_app/routers/documents.py#L50) | `extract_upload_text()`, `upload()`, `ingest_resource()`, unused `_check_generation_throttle()`. Multipart → cleaned text → ingestion → HTML/redirect. |
-| [fastapi_app/routers/student.py](fastapi_app/routers/student.py) | Page handlers, `_already_attempted()`, join/test/submit. Quiz cookie/answers → stored result, explanations, learning/XP; progress queries inline SQL. |
-| [fastapi_app/routers/teacher.py](fastapi_app/routers/teacher.py#L44) | `owned_session()`, report/export/edit/lifecycle handlers, `_parse_edited_question()`. Owner/key/forms → session changes or PDF/CSV/HTML. |
-| [fastapi_app/routers/api.py](fastapi_app/routers/api.py#L29) | `PrefsIn`, `ReviewIn`, `PracticeIn`; ten JSON endpoints. Validated body/user → services/repositories → JSON or explicit HTTP errors. |
-| [fastapi_app/services/dashboard.py](fastapi_app/services/dashboard.py#L84) | `build_dashboard()`, `load_prefs()`, `level_for_xp()`, `study_recommendations()`. Result/pref/resource data → HTML/API shared dashboard payload. |
-| [database/schema.sql](database/schema.sql) | Original users/sessions/results definitions; later columns/tables come from bootstrap/migrations, so this file alone is not the complete schema. |
+| [app.py](../app.py#L13) | Imports the module-level FastAPI `app`; executable mode invokes Uvicorn. Host request → active FastAPI app. It does not register Flask blueprints. |
+| [config.py](../config.py#L30) | `env_str()`, `llm_key_present()`, `missing_key_message()`, `mcq_token_budget()` and configuration constants. Environment/root `.env` → process settings consumed throughout services. |
+| [fastapi_app/main.py](../fastapi_app/main.py#L64) | `create_app()`, `_log_llm_config()`, redirect/API exception handlers. Initializes DB/uploads, middleware/static/routers; incoming HTTP → router response. |
+| [fastapi_app/database.py](../fastapi_app/database.py#L75) | `init_db()`, `_seed_demo_users()`. Called during app construction; schema file/base SQL → tables, additive columns, demo rows, RAG migrations. |
+| [fastapi_app/deps.py](../fastapi_app/deps.py#L42) | `User`, `RedirectException`, `require_user()`, `require_api_user()`, `db()`, annotated aliases. Cookie → lightweight user; yields/closes SQLite connection for handlers. |
+| [fastapi_app/security.py](../fastapi_app/security.py#L40) | Token minting, header/form lookup, constant-time comparison, HTML failure response. Called by templates/middleware; session/body → CSRF validity. |
+| [fastapi_app/middleware.py](../fastapi_app/middleware.py#L39) | `CSRFMiddleware`, `_replayer()`, `HTTPSRedirectOnVercelMiddleware`. Buffers/replays mutation bodies; session/token → rejection or downstream app. |
+| [fastapi_app/templating.py](../fastapi_app/templating.py#L55) | `render()`, `flash()`, `_get_flashed_messages()`, rooted Jinja environment. Route variables/session → HTML/bootstrap/CSRF metadata. |
+| [fastapi_app/uploads.py](../fastapi_app/uploads.py#L20) | `FileStorageAdapter`, `size_of()`. FastAPI upload → read/seek/save/stream interface expected by old document parsers. |
+| [fastapi_app/routers/auth.py](../fastapi_app/routers/auth.py) | Home/signup/login/logout/profile/delete handlers. Forms + user/DB → HTML or redirects; calls hash functions and inline SQL. |
+| [fastapi_app/routers/google_auth.py](../fastapi_app/routers/google_auth.py#L128) | `google_login()`, `google_callback()`, `_fetch_google_profile()`, `_upsert_google_user()`, `_unique_username()`, `_redirect_uri()`. OAuth code/profile → local user/session. |
+| [fastapi_app/routers/documents.py](../fastapi_app/routers/documents.py#L50) | `extract_upload_text()`, `upload()`, `ingest_resource()`, unused `_check_generation_throttle()`. Multipart → cleaned text → ingestion → HTML/redirect. |
+| [fastapi_app/routers/student.py](../fastapi_app/routers/student.py) | Page handlers, `_already_attempted()`, join/test/submit. Quiz cookie/answers → stored result, explanations, learning/XP; progress queries inline SQL. |
+| [fastapi_app/routers/teacher.py](../fastapi_app/routers/teacher.py#L44) | `owned_session()`, report/export/edit/lifecycle handlers, `_parse_edited_question()`. Owner/key/forms → session changes or PDF/CSV/HTML. |
+| [fastapi_app/routers/api.py](../fastapi_app/routers/api.py#L29) | `PrefsIn`, `ReviewIn`, `PracticeIn`; ten JSON endpoints. Validated body/user → services/repositories → JSON or explicit HTTP errors. |
+| [fastapi_app/services/dashboard.py](../fastapi_app/services/dashboard.py#L84) | `build_dashboard()`, `load_prefs()`, `level_for_xp()`, `study_recommendations()`. Result/pref/resource data → HTML/API shared dashboard payload. |
+| [database/schema.sql](../database/schema.sql) | Original users/sessions/results definitions; later columns/tables come from bootstrap/migrations, so this file alone is not the complete schema. |
 
 ## 5.3 Services, repositories, and utilities
 
 | File | Main symbols and place in the call graph |
 |---|---|
-| [core/services/ingestion_service.py](core/services/ingestion_service.py#L22) | `ingest_document()` orchestrates processing/dedup/status/embed-store. Raw text + owner/title/type → document ID, reuse flag, counts/statistics. |
-| [core/services/mcq_pipeline.py](core/services/mcq_pipeline.py#L160) | `generate_from_document()`, `generate_mcqs_rag()`, `_collect_mcqs()`, `_retrieval_query()`, `_legacy_from_context()`, `_legacy_fallback()`, `_max_attempts()`. Resource/text/options → retrieved context → generated MCQ list. |
-| [core/services/learning_service.py](core/services/learning_service.py#L15) | `analyse_submission()`, `get_weak_topics()`, `get_recommendations()`. Submission → EvaluationAgent; dashboard/API reads → learning repo. Model recommendations helper is not used by active dashboard recommendation code. |
-| [core/services/content_service.py](core/services/content_service.py#L36) | `Generator`, `GENERATORS`, `supported_intents()`, `generate_content()`. Intent/text → ingest/retrieve/prompt/JSON items; tested service, not active UI/API. |
-| [core/repositories/document_repo.py](core/repositories/document_repo.py) | `doc_hash()`, `find_by_hash()`, `create()`, `set_status()`, `get()`, `get_chunks()`, `list_by_owner()`, `delete()`. Services/API → document/chunk SQL with independent connections. |
-| [core/repositories/session_repo.py](core/repositories/session_repo.py#L15) | `create_session()`, `exists()`, `get()`. MCQ list → JSON session row/key; student routes load rows. Legacy insert fallback catches any exception from the first insert. |
-| [core/repositories/learning_repo.py](core/repositories/learning_repo.py) | `record_events()`, `upsert_weak_topics()`, `missed_questions_for_topic()`, `top_weak_topics()`. Analysis/events → SQL; review → reconstructed MCQs from session JSON. |
-| [core/repositories/prefs_repo.py](core/repositories/prefs_repo.py#L59) | `load()`, `_ensure_row()`, `save_onboarding()`, `record_activity()`. User prefs/XP gain → prefs row/streak/level-change state. Active preferences endpoint duplicates some SQL rather than calling `save_onboarding()`. |
-| [core/models/db.py](core/models/db.py#L17) | `get_db()` returns a new sqlite3 Row connection using current `config.DB_PATH`; callers own closing/transactions. |
-| [core/models/migrations.py](core/models/migrations.py#L197) | `run_migrations()`, schema constants, owner-scoped-dedup detection/rebuild. Existing connection → schema/index updates; special rebuild preserves surviving document IDs. |
-| [models/pdf_processor.py](models/pdf_processor.py) | `extract_text_from_pdf/docx/pptx()` are called by upload extraction; uploaded file/path → flat text. |
-| [models/mcq_generator.py](models/mcq_generator.py#L54) | Public `generate_mcqs()`, `MCQGenerationError`, legacy structure/extraction helpers. Text → provider/prompt/top-up → MCQs, or delegate to text-RAG mode. |
-| [models/explanation_engine.py](models/explanation_engine.py#L15) | `explain_answers()` wrapper preserves the old API; submission details → `ExplanationAgent.run()` → aligned strings. |
-| [utils/text_cleaner.py](utils/text_cleaner.py#L4) | `clean_text()` normalizes whitespace/removes controls; used by extraction, processing and generation. |
-| [utils/session_manager.py](utils/session_manager.py#L12) | `create_session_key()`, `validate_session_key()` delegate to session repo; keeps legacy callers compatible. |
-| [utils/difficulty_classifier.py](utils/difficulty_classifier.py#L2) | `classify_difficulty()` estimates by average words per period-separated sentence. It is not called by the current DifficultyAgent. |
+| [core/services/ingestion_service.py](../core/services/ingestion_service.py#L22) | `ingest_document()` orchestrates processing/dedup/status/embed-store. Raw text + owner/title/type → document ID, reuse flag, counts/statistics. |
+| [core/services/mcq_pipeline.py](../core/services/mcq_pipeline.py#L160) | `generate_from_document()`, `generate_mcqs_rag()`, `_collect_mcqs()`, `_retrieval_query()`, `_legacy_from_context()`, `_legacy_fallback()`, `_max_attempts()`. Resource/text/options → retrieved context → generated MCQ list. |
+| [core/services/learning_service.py](../core/services/learning_service.py#L15) | `analyse_submission()`, `get_weak_topics()`, `get_recommendations()`. Submission → EvaluationAgent; dashboard/API reads → learning repo. Model recommendations helper is not used by active dashboard recommendation code. |
+| [core/services/content_service.py](../core/services/content_service.py#L36) | `Generator`, `GENERATORS`, `supported_intents()`, `generate_content()`. Intent/text → ingest/retrieve/prompt/JSON items; tested service, not active UI/API. |
+| [core/repositories/document_repo.py](../core/repositories/document_repo.py) | `doc_hash()`, `find_by_hash()`, `create()`, `set_status()`, `get()`, `get_chunks()`, `list_by_owner()`, `delete()`. Services/API → document/chunk SQL with independent connections. |
+| [core/repositories/session_repo.py](../core/repositories/session_repo.py#L15) | `create_session()`, `exists()`, `get()`. MCQ list → JSON session row/key; student routes load rows. Legacy insert fallback catches any exception from the first insert. |
+| [core/repositories/learning_repo.py](../core/repositories/learning_repo.py) | `record_events()`, `upsert_weak_topics()`, `missed_questions_for_topic()`, `top_weak_topics()`. Analysis/events → SQL; review → reconstructed MCQs from session JSON. |
+| [core/repositories/prefs_repo.py](../core/repositories/prefs_repo.py#L59) | `load()`, `_ensure_row()`, `save_onboarding()`, `record_activity()`. User prefs/XP gain → prefs row/streak/level-change state. Active preferences endpoint duplicates some SQL rather than calling `save_onboarding()`. |
+| [core/models/db.py](../core/models/db.py#L17) | `get_db()` returns a new sqlite3 Row connection using current `config.DB_PATH`; callers own closing/transactions. |
+| [core/models/migrations.py](../core/models/migrations.py#L197) | `run_migrations()`, schema constants, owner-scoped-dedup detection/rebuild. Existing connection → schema/index updates; special rebuild preserves surviving document IDs. |
+| [models/pdf_processor.py](../models/pdf_processor.py) | `extract_text_from_pdf/docx/pptx()` are called by upload extraction; uploaded file/path → flat text. |
+| [models/mcq_generator.py](../models/mcq_generator.py#L54) | Public `generate_mcqs()`, `MCQGenerationError`, legacy structure/extraction helpers. Text → provider/prompt/top-up → MCQs, or delegate to text-RAG mode. |
+| [models/explanation_engine.py](../models/explanation_engine.py#L15) | `explain_answers()` wrapper preserves the old API; submission details → `ExplanationAgent.run()` → aligned strings. |
+| [utils/text_cleaner.py](../utils/text_cleaner.py#L4) | `clean_text()` normalizes whitespace/removes controls; used by extraction, processing and generation. |
+| [utils/session_manager.py](../utils/session_manager.py#L12) | `create_session_key()`, `validate_session_key()` delegate to session repo; keeps legacy callers compatible. |
+| [utils/difficulty_classifier.py](../utils/difficulty_classifier.py#L2) | `classify_difficulty()` estimates by average words per period-separated sentence. It is not called by the current DifficultyAgent. |
 
 ## 5.4 Agent files
 
@@ -487,116 +487,116 @@ mcq/
 
 | File/class | Called by; inputs → work → outputs |
 |---|---|
-| [base.py — Agent](core/agents/base.py#L5) | Parent class; `_log()` prints a named prefix. No shared LLM field is actually implemented. |
-| [document_processing.py — DocumentProcessingAgent](core/agents/document_processing.py#L29) | Ingestion; text → clean/chunk/basic metadata → `ProcessedDocument`. Does not parse binary files itself. |
-| [embedding.py — EmbeddingAgent](core/agents/embedding.py#L28) | Ingestion; Chunk list → hash-cache lookup/batch embedding/upsert → statistics. |
-| [retriever.py — RetrieverAgent](core/agents/retriever.py#L26) | Pipelines/explanation/revision; doc/query/k → Retriever → SearchHits; `assess()` reports advisory similarities. |
-| [context_builder.py — ContextBuilderAgent](core/agents/context_builder.py#L16) | Generation/explanation/revision; hits → positional character-limited blocks → context string. |
-| [planner.py — PlannerAgent, Plan](core/agents/planner.py#L29) | Optional `user_request` in text-RAG; request → intent/count/difficulty/topic. Does not automatically dispatch content services. |
-| [question.py — QuestionAgent](core/agents/question.py#L26) | Collector; context/count/difficulty → LLM JSON → raw MCQs or `InsufficientContextError`. |
-| [quality_assurance.py — QualityAssuranceAgent](core/agents/quality_assurance.py#L24) | RAG collector; MCQs → deterministic structure/answer-membership checks → valid/rejected lists. |
-| [context_validation.py — ContextValidationAgent](core/agents/context_validation.py#L24) | RAG entry points; context/count/level → LLM sufficiency check → effective sufficient/confidence/reason. |
-| [fact_verification.py — FactVerificationAgent](core/agents/fact_verification.py#L27) | RAG collector; MCQs/context → batch LLM verification → retained/rejected questions. |
-| [difficulty.py — DifficultyAgent](core/agents/difficulty.py#L20) | RAG collector; question text/requested level → LLM grades → matched/mismatched indices. |
-| [explanation.py — ExplanationAgent](core/agents/explanation.py#L23) | Submission wrapper; wrong answers and optional doc → prompt → aligned teaching/static strings. |
-| [evaluation.py — EvaluationAgent](core/agents/evaluation.py#L23) | Learning service; scored details → topic labels → events/stats persisted; `recommend()` supports separate AI tips. |
-| [revision.py — RevisionAgent](core/agents/revision.py#L17) | Component only; topics/optional doc → optional retrieval → notes list; errors return empty. |
-| [answer_evaluation.py — AnswerEvaluationAgent](core/agents/answer_evaluation.py#L32) | Component only; free answer/reference/context → conceptual score/feedback; retries once for low confidence and normalizes output. |
+| [base.py — Agent](../core/agents/base.py#L5) | Parent class; `_log()` prints a named prefix. No shared LLM field is actually implemented. |
+| [document_processing.py — DocumentProcessingAgent](../core/agents/document_processing.py#L29) | Ingestion; text → clean/chunk/basic metadata → `ProcessedDocument`. Does not parse binary files itself. |
+| [embedding.py — EmbeddingAgent](../core/agents/embedding.py#L28) | Ingestion; Chunk list → hash-cache lookup/batch embedding/upsert → statistics. |
+| [retriever.py — RetrieverAgent](../core/agents/retriever.py#L26) | Pipelines/explanation/revision; doc/query/k → Retriever → SearchHits; `assess()` reports advisory similarities. |
+| [context_builder.py — ContextBuilderAgent](../core/agents/context_builder.py#L16) | Generation/explanation/revision; hits → positional character-limited blocks → context string. |
+| [planner.py — PlannerAgent, Plan](../core/agents/planner.py#L29) | Optional `user_request` in text-RAG; request → intent/count/difficulty/topic. Does not automatically dispatch content services. |
+| [question.py — QuestionAgent](../core/agents/question.py#L26) | Collector; context/count/difficulty → LLM JSON → raw MCQs or `InsufficientContextError`. |
+| [quality_assurance.py — QualityAssuranceAgent](../core/agents/quality_assurance.py#L24) | RAG collector; MCQs → deterministic structure/answer-membership checks → valid/rejected lists. |
+| [context_validation.py — ContextValidationAgent](../core/agents/context_validation.py#L24) | RAG entry points; context/count/level → LLM sufficiency check → effective sufficient/confidence/reason. |
+| [fact_verification.py — FactVerificationAgent](../core/agents/fact_verification.py#L27) | RAG collector; MCQs/context → batch LLM verification → retained/rejected questions. |
+| [difficulty.py — DifficultyAgent](../core/agents/difficulty.py#L20) | RAG collector; question text/requested level → LLM grades → matched/mismatched indices. |
+| [explanation.py — ExplanationAgent](../core/agents/explanation.py#L23) | Submission wrapper; wrong answers and optional doc → prompt → aligned teaching/static strings. |
+| [evaluation.py — EvaluationAgent](../core/agents/evaluation.py#L23) | Learning service; scored details → topic labels → events/stats persisted; `recommend()` supports separate AI tips. |
+| [revision.py — RevisionAgent](../core/agents/revision.py#L17) | Component only; topics/optional doc → optional retrieval → notes list; errors return empty. |
+| [answer_evaluation.py — AnswerEvaluationAgent](../core/agents/answer_evaluation.py#L32) | Component only; free answer/reference/context → conceptual score/feedback; retries once for low confidence and normalizes output. |
 
 ## 5.5 Retrieval, embeddings, providers, and prompts
 
 | File | Main responsibility, callers, and data |
 |---|---|
-| [core/rag/chunker.py](core/rag/chunker.py#L69) | `Chunk`, `_segments()`, `chunk_text()`, `_window_sweep()`; document processor → text windows with offsets and estimated token counts. |
-| [core/rag/retrieval/retriever.py](core/rag/retrieval/retriever.py#L55) | `Retriever.retrieve()`, `mmr_select()`; query/doc → embedding/store candidates → diverse hits. `_cosine_matrix()` is present but unused. |
-| [core/embeddings/base.py](core/embeddings/base.py#L10) | Abstract `Embedder.embed_batch()` and single-text `embed()`; consumed by agents/retriever. |
-| [core/embeddings/registry.py](core/embeddings/registry.py#L28) | `build_embedder()/get_embedder()/reset_embedder()`; config/import capability → cached backend. |
-| [core/embeddings/hashing.py](core/embeddings/hashing.py#L23) | `HashingEmbedder`; lexical tokens → deterministic signed feature vector. |
-| [core/embeddings/sentence_transformer.py](core/embeddings/sentence_transformer.py#L15) | `SentenceTransformerEmbedder`; configured local model → batched normalized vectors. |
-| [core/embeddings/remote_api.py](core/embeddings/remote_api.py#L23) | `RemoteAPIEmbedder`, `_l2()`; OpenAI batch or Gemini per-text REST → normalized vectors. |
-| [core/vectorstore/base.py](core/vectorstore/base.py#L15) | `SearchHit`, abstract `VectorStore`; common query/upsert/has/delete contracts. |
-| [core/vectorstore/registry.py](core/vectorstore/registry.py#L19) | Build/get/reset store; embedding identity/config/environment → cached backend, with initialization fallbacks. |
-| [core/vectorstore/sqlite_numpy.py](core/vectorstore/sqlite_numpy.py#L28) | `SqliteNumpyStore`; upserts SQL chunks/cache; query loads document vectors and ranks dot products. |
-| [core/vectorstore/chroma_store.py](core/vectorstore/chroma_store.py#L17) | `ChromaStore`; per-document persistent collection upsert/query/delete, cosine scores. |
-| [core/vectorstore/faiss_store.py](core/vectorstore/faiss_store.py#L20) | `FaissStore`; SQL content plus per-document exact inner-product index file. |
-| [core/llm/base.py](core/llm/base.py#L32) | `LLMProvider`, `LLMError`, `RateLimitError`; retry template, JSON parsing, complete-object salvage. |
-| [core/llm/registry.py](core/llm/registry.py#L98) | `_model_for()`, `_resolve_auto()`, build/get/reset LLM; credentials/config → cached provider. |
-| [core/llm/openai_compatible.py](core/llm/openai_compatible.py#L25) | `OpenAICompatibleProvider`; shared chat-completions REST request and Groq failed-JSON recovery. |
-| [core/llm/gemini.py](core/llm/gemini.py#L17) | `GeminiProvider`; maps messages to generateContent fields and response extraction. |
-| [core/llm/anthropic.py](core/llm/anthropic.py#L20) | `AnthropicProvider`; Maps system/turns to Messages API; JSON instruction, no actual assistant prefill. |
+| [core/rag/chunker.py](../core/rag/chunker.py#L69) | `Chunk`, `_segments()`, `chunk_text()`, `_window_sweep()`; document processor → text windows with offsets and estimated token counts. |
+| [core/rag/retrieval/retriever.py](../core/rag/retrieval/retriever.py#L55) | `Retriever.retrieve()`, `mmr_select()`; query/doc → embedding/store candidates → diverse hits. `_cosine_matrix()` is present but unused. |
+| [core/embeddings/base.py](../core/embeddings/base.py#L10) | Abstract `Embedder.embed_batch()` and single-text `embed()`; consumed by agents/retriever. |
+| [core/embeddings/registry.py](../core/embeddings/registry.py#L28) | `build_embedder()/get_embedder()/reset_embedder()`; config/import capability → cached backend. |
+| [core/embeddings/hashing.py](../core/embeddings/hashing.py#L23) | `HashingEmbedder`; lexical tokens → deterministic signed feature vector. |
+| [core/embeddings/sentence_transformer.py](../core/embeddings/sentence_transformer.py#L15) | `SentenceTransformerEmbedder`; configured local model → batched normalized vectors. |
+| [core/embeddings/remote_api.py](../core/embeddings/remote_api.py#L23) | `RemoteAPIEmbedder`, `_l2()`; OpenAI batch or Gemini per-text REST → normalized vectors. |
+| [core/vectorstore/base.py](../core/vectorstore/base.py#L15) | `SearchHit`, abstract `VectorStore`; common query/upsert/has/delete contracts. |
+| [core/vectorstore/registry.py](../core/vectorstore/registry.py#L19) | Build/get/reset store; embedding identity/config/environment → cached backend, with initialization fallbacks. |
+| [core/vectorstore/sqlite_numpy.py](../core/vectorstore/sqlite_numpy.py#L28) | `SqliteNumpyStore`; upserts SQL chunks/cache; query loads document vectors and ranks dot products. |
+| [core/vectorstore/chroma_store.py](../core/vectorstore/chroma_store.py#L17) | `ChromaStore`; per-document persistent collection upsert/query/delete, cosine scores. |
+| [core/vectorstore/faiss_store.py](../core/vectorstore/faiss_store.py#L20) | `FaissStore`; SQL content plus per-document exact inner-product index file. |
+| [core/llm/base.py](../core/llm/base.py#L32) | `LLMProvider`, `LLMError`, `RateLimitError`; retry template, JSON parsing, complete-object salvage. |
+| [core/llm/registry.py](../core/llm/registry.py#L98) | `_model_for()`, `_resolve_auto()`, build/get/reset LLM; credentials/config → cached provider. |
+| [core/llm/openai_compatible.py](../core/llm/openai_compatible.py#L25) | `OpenAICompatibleProvider`; shared chat-completions REST request and Groq failed-JSON recovery. |
+| [core/llm/gemini.py](../core/llm/gemini.py#L17) | `GeminiProvider`; maps messages to generateContent fields and response extraction. |
+| [core/llm/anthropic.py](../core/llm/anthropic.py#L20) | `AnthropicProvider`; Maps system/turns to Messages API; JSON instruction, no actual assistant prefill. |
 
 The corresponding `__init__.py` files re-export interfaces and get/reset helpers. They do not introduce another runtime service.
 
 | Prompt file | Builders and consumers |
 |---|---|
-| [mcq.py](core/prompts/mcq.py#L26) | `legacy_prompt()`, `rag_prompt()`, Bloom guidance; legacy generator/QuestionAgent |
-| [context_validation.py](core/prompts/context_validation.py#L12) | `validate_prompt()`; ContextValidationAgent |
-| [fact_verification.py](core/prompts/fact_verification.py#L12) | `verify_prompt()`; FactVerificationAgent |
-| [difficulty.py](core/prompts/difficulty.py#L10) | `grade_prompt()`; DifficultyAgent |
-| [explanation.py](core/prompts/explanation.py#L25) | `legacy_prompt()`, `grounded_prompt()`; ExplanationAgent |
-| [evaluation.py](core/prompts/evaluation.py#L10) | `topic_label_prompt()`, `recommendation_prompt()`; EvaluationAgent |
-| [planner.py](core/prompts/planner.py#L21) | `plan_prompt()`, intent taxonomy; PlannerAgent |
-| [revision.py](core/prompts/revision.py#L9) | `revision_notes_prompt()`; RevisionAgent component |
-| [answer_evaluation.py](core/prompts/answer_evaluation.py#L14) | `evaluate_prompt()`; short-answer component |
-| [content.py](core/prompts/content.py) | Flashcard/summary/interview/coding/topic-explanation builders; content registry |
-| [qa.py](core/prompts/qa.py#L10) | `regenerate_prompt()` adds a rejection reason to RAG instructions; no active collector call uses it |
+| [mcq.py](../core/prompts/mcq.py#L26) | `legacy_prompt()`, `rag_prompt()`, Bloom guidance; legacy generator/QuestionAgent |
+| [context_validation.py](../core/prompts/context_validation.py#L12) | `validate_prompt()`; ContextValidationAgent |
+| [fact_verification.py](../core/prompts/fact_verification.py#L12) | `verify_prompt()`; FactVerificationAgent |
+| [difficulty.py](../core/prompts/difficulty.py#L10) | `grade_prompt()`; DifficultyAgent |
+| [explanation.py](../core/prompts/explanation.py#L25) | `legacy_prompt()`, `grounded_prompt()`; ExplanationAgent |
+| [evaluation.py](../core/prompts/evaluation.py#L10) | `topic_label_prompt()`, `recommendation_prompt()`; EvaluationAgent |
+| [planner.py](../core/prompts/planner.py#L21) | `plan_prompt()`, intent taxonomy; PlannerAgent |
+| [revision.py](../core/prompts/revision.py#L9) | `revision_notes_prompt()`; RevisionAgent component |
+| [answer_evaluation.py](../core/prompts/answer_evaluation.py#L14) | `evaluate_prompt()`; short-answer component |
+| [content.py](../core/prompts/content.py) | Flashcard/summary/interview/coding/topic-explanation builders; content registry |
+| [qa.py](../core/prompts/qa.py#L10) | `regenerate_prompt()` adds a rejection reason to RAG instructions; no active collector call uses it |
 
 ## 5.6 Frontend, templates, and configuration
 
 | File | Responsibility and integration |
 |---|---|
-| [frontend/src/main.tsx](frontend/src/main.tsx#L9) | Screen map, lazy imports, Suspense, StrictMode, root mount. `knowledge` and `practice` both load MakeQuiz. |
-| [bootstrap.ts](frontend/src/bootstrap.ts#L12) | `readRoot()`, `csrfToken()`, `apiGet()`, `apiSend()`; DOM JSON/meta → data and authenticated same-origin fetches. |
-| [types.ts](frontend/src/types.ts) | Compile-time result/pref/library/dashboard shapes; some older interfaces differ from current richer payload. No runtime decoder. |
-| [lib/extract.ts](frontend/src/lib/extract.ts) | FileReader/PDF.js/Mammoth dispatch, worker setup, size checks, long-text sampling. |
-| [lib/cn.ts](frontend/src/lib/cn.ts) | `cn()` joins truthy CSS class fragments. |
-| [components/AppShell.tsx](frontend/src/components/AppShell.tsx) | Navigation/sidebar/mobile-menu state and optional XP/streak display; screens provide data via props. |
-| [components/ui/Button.tsx](frontend/src/components/ui/Button.tsx) | Forwarded button ref, visual variants/sizes, icons, focus/disabled state; ordinary browser button behavior. |
-| [components/ui/Card.tsx](frontend/src/components/ui/Card.tsx) | Motion container with padding and optional hover state. |
-| [components/ui/Badge.tsx](frontend/src/components/ui/Badge.tsx) | Colored status text/icon wrapper. |
-| [components/ui/StatCard.tsx](frontend/src/components/ui/StatCard.tsx) | Animated icon/value/label Card. |
-| [components/ui/ProgressBar.tsx](frontend/src/components/ui/ProgressBar.tsx) | Clamps visual percentage 0–100; animates width. |
-| [components/charts/TrendChart.tsx](frontend/src/components/charts/TrendChart.tsx) | Recharts area chart from date/score arrays; no network/data calculation. |
-| [screens/Dashboard.tsx](frontend/src/screens/Dashboard.tsx#L38) | Preloaded dashboard state, API fallback, onboarding, rule-based CTAs, history/trend. |
-| [screens/Onboarding.tsx](frontend/src/screens/Onboarding.tsx#L30) | Three-step preference state and finish/skip POST. |
-| [screens/Upload.tsx](frontend/src/screens/Upload.tsx#L29) | Fresh-material selection/extraction/form submit → `/upload`. |
-| [screens/AddResource.tsx](frontend/src/screens/AddResource.tsx#L28) | Named-resource selection/extraction/form submit → `/ingest_resource`. |
-| [screens/Journey.tsx](frontend/src/screens/Journey.tsx#L16) | Library list fetch, status cards, practice links, deletion. |
-| [screens/MakeQuiz.tsx](frontend/src/screens/MakeQuiz.tsx#L32) | Source/settings state, generation POST, join-form handoff. |
-| [screens/Quiz.tsx](frontend/src/screens/Quiz.tsx#L26) | Question index, answers, confidence, countdown and submit form. |
-| [screens/Result.tsx](frontend/src/screens/Result.tsx#L84) | `ScoreRing`, `Confetti`, result/detail/explanation display and fixed insight copy. |
-| [screens/Progress.tsx](frontend/src/screens/Progress.tsx#L25) | `buildHeatmap()`, display intensity `level()`, monthly bars/mastery and separate badge rules. |
-| [screens/WeakTopics.tsx](frontend/src/screens/WeakTopics.tsx#L23) | Weak-topic fetch; `review()` starts/rejoins stored-question review. |
-| [screens/Achievements.tsx](frontend/src/screens/Achievements.tsx#L23) | Achievements API fetch, badge/milestone display, `HeadStat`. |
-| [screens/Settings.tsx](frontend/src/screens/Settings.tsx#L22) | Preference fetch/save, classic profile/delete forms, JSON-export navigation; local Badge helper. |
-| [index.css](frontend/src/index.css) | Tailwind layers, body/theme/glow and CSS reduced-motion rule. |
+| [frontend/src/main.tsx](../frontend/src/main.tsx#L9) | Screen map, lazy imports, Suspense, StrictMode, root mount. `knowledge` and `practice` both load MakeQuiz. |
+| [bootstrap.ts](../frontend/src/bootstrap.ts#L12) | `readRoot()`, `csrfToken()`, `apiGet()`, `apiSend()`; DOM JSON/meta → data and authenticated same-origin fetches. |
+| [types.ts](../frontend/src/types.ts) | Compile-time result/pref/library/dashboard shapes; some older interfaces differ from current richer payload. No runtime decoder. |
+| [lib/extract.ts](../frontend/src/lib/extract.ts) | FileReader/PDF.js/Mammoth dispatch, worker setup, size checks, long-text sampling. |
+| [lib/cn.ts](../frontend/src/lib/cn.ts) | `cn()` joins truthy CSS class fragments. |
+| [components/AppShell.tsx](../frontend/src/components/AppShell.tsx) | Navigation/sidebar/mobile-menu state and optional XP/streak display; screens provide data via props. |
+| [components/ui/Button.tsx](../frontend/src/components/ui/Button.tsx) | Forwarded button ref, visual variants/sizes, icons, focus/disabled state; ordinary browser button behavior. |
+| [components/ui/Card.tsx](../frontend/src/components/ui/Card.tsx) | Motion container with padding and optional hover state. |
+| [components/ui/Badge.tsx](../frontend/src/components/ui/Badge.tsx) | Colored status text/icon wrapper. |
+| [components/ui/StatCard.tsx](../frontend/src/components/ui/StatCard.tsx) | Animated icon/value/label Card. |
+| [components/ui/ProgressBar.tsx](../frontend/src/components/ui/ProgressBar.tsx) | Clamps visual percentage 0–100; animates width. |
+| [components/charts/TrendChart.tsx](../frontend/src/components/charts/TrendChart.tsx) | Recharts area chart from date/score arrays; no network/data calculation. |
+| [screens/Dashboard.tsx](../frontend/src/screens/Dashboard.tsx#L38) | Preloaded dashboard state, API fallback, onboarding, rule-based CTAs, history/trend. |
+| [screens/Onboarding.tsx](../frontend/src/screens/Onboarding.tsx#L30) | Three-step preference state and finish/skip POST. |
+| [screens/Upload.tsx](../frontend/src/screens/Upload.tsx#L29) | Fresh-material selection/extraction/form submit → `/upload`. |
+| [screens/AddResource.tsx](../frontend/src/screens/AddResource.tsx#L28) | Named-resource selection/extraction/form submit → `/ingest_resource`. |
+| [screens/Journey.tsx](../frontend/src/screens/Journey.tsx#L16) | Library list fetch, status cards, practice links, deletion. |
+| [screens/MakeQuiz.tsx](../frontend/src/screens/MakeQuiz.tsx#L32) | Source/settings state, generation POST, join-form handoff. |
+| [screens/Quiz.tsx](../frontend/src/screens/Quiz.tsx#L26) | Question index, answers, confidence, countdown and submit form. |
+| [screens/Result.tsx](../frontend/src/screens/Result.tsx#L84) | `ScoreRing`, `Confetti`, result/detail/explanation display and fixed insight copy. |
+| [screens/Progress.tsx](../frontend/src/screens/Progress.tsx#L25) | `buildHeatmap()`, display intensity `level()`, monthly bars/mastery and separate badge rules. |
+| [screens/WeakTopics.tsx](../frontend/src/screens/WeakTopics.tsx#L23) | Weak-topic fetch; `review()` starts/rejoins stored-question review. |
+| [screens/Achievements.tsx](../frontend/src/screens/Achievements.tsx#L23) | Achievements API fetch, badge/milestone display, `HeadStat`. |
+| [screens/Settings.tsx](../frontend/src/screens/Settings.tsx#L22) | Preference fetch/save, classic profile/delete forms, JSON-export navigation; local Badge helper. |
+| [index.css](../frontend/src/index.css) | Tailwind layers, body/theme/glow and CSS reduced-motion rule. |
 
 Templates `student_dashboard.html`, `upload.html`, `add_resource.html`, `journey.html`, `knowledge.html`, `practice.html`, `mcq_test.html`, `result.html`, `progress.html`, `weak_topics.html`, `achievements.html`, and `profile.html` map to those React screens and serialize route values using Jinja `tojson`. Upload templates load vendored PDF.js/Mammoth globally. Login/signup remain server forms. `session_report.html` and `edit_session.html` are classic server-rendered management pages; the former links to result CSV. `teacher_dashboard.html` retains old lifecycle forms but is not rendered by the active `/teacher` redirect. Shared `partials/shell.html`, `shell_end.html`, and `icons.html` support classic layouts/icons; they are not the React AppShell.
 
 | Config/artifact | Responsibility |
 |---|---|
-| [frontend/package.json](frontend/package.json), [package-lock.json](frontend/package-lock.json) | Scripts/dependency ranges and reproducible npm resolution; package description still mentions Flask. |
-| [frontend/vite.config.ts](frontend/vite.config.ts#L10) | Build entry/base/alias, stable asset names, no manifest, output to `static/dist`. |
-| [frontend/tsconfig.json](frontend/tsconfig.json) | Strict TS/DOM/bundler settings and matching alias; includes `src`. |
-| [tailwind.config.js](frontend/tailwind.config.js), [postcss.config.js](frontend/postcss.config.js) | Theme tokens/content discovery and CSS processing. |
-| [requirements.txt](requirements.txt) | Lightweight Python runtime; optional heavyweight packages only listed in comments. |
-| [Procfile](Procfile), [vercel.json](vercel.json) | Two-worker Uvicorn process and Python function entry/routing/duration. |
-| [.gitignore](.gitignore), [.vercelignore](.vercelignore) | Git exclusions and a separate deployment exclusion list; the lists are not interchangeable. |
-| [.env.example](.env.example) | Sample configuration file used by README setup; do not use example placeholders as credentials. |
-| [static/js/auth.js](static/js/auth.js) | Password visibility, toast handling, disabled OAuth placeholders; leftover stat-counter support. |
-| [static/js/timer.js](static/js/timer.js) | Legacy console message only; current countdown is in Quiz.tsx. |
+| [frontend/package.json](../frontend/package.json), [package-lock.json](../frontend/package-lock.json) | Scripts/dependency ranges and reproducible npm resolution; package description still mentions Flask. |
+| [frontend/vite.config.ts](../frontend/vite.config.ts#L10) | Build entry/base/alias, stable asset names, no manifest, output to `static/dist`. |
+| [frontend/tsconfig.json](../frontend/tsconfig.json) | Strict TS/DOM/bundler settings and matching alias; includes `src`. |
+| [tailwind.config.js](../frontend/tailwind.config.js), [postcss.config.js](../frontend/postcss.config.js) | Theme tokens/content discovery and CSS processing. |
+| [requirements.txt](../requirements.txt) | Lightweight Python runtime; optional heavyweight packages only listed in comments. |
+| [Procfile](../Procfile), [vercel.json](../vercel.json) | Two-worker Uvicorn process and Python function entry/routing/duration. |
+| [.gitignore](../.gitignore), [.vercelignore](../.vercelignore) | Git exclusions and a separate deployment exclusion list; the lists are not interchangeable. |
+| [.env.example](../.env.example) | Sample configuration file used by README setup; do not use example placeholders as credentials. |
+| [static/js/auth.js](../static/js/auth.js) | Password visibility, toast handling, disabled OAuth placeholders; leftover stat-counter support. |
+| [static/js/timer.js](../static/js/timer.js) | Legacy console message only; current countdown is in Quiz.tsx. |
 | `static/dist/*` | Generated output served by FastAPI; modify frontend source and rebuild instead of hand-editing chunks. |
 | `static/css/style.css` | Classic/auth-page styling; React styling is built separately. |
 
 ## 5.7 Inactive and experimental code
 
-**Verified:** [core/routes/__init__.py](core/routes/__init__.py) registers Flask blueprints if called by a Flask application, but the active `app.py` never calls it. `core/routes/auth.py`, `student.py`, `teacher.py`, `documents.py`, and `api.py` retain the old handlers. They should be distinguished from shared `core/services`, which **are** active. Flask is not in current requirements. The local legacy document edit has different upload behavior and is not the contract described in this guide.
+**Verified:** [core/routes/__init__.py](https://github.com/dinu-vishruth/mcq/blob/a906dfbe7fcf66cbff92ee8d56892948f0880c8d/core/routes/__init__.py) registers Flask blueprints if called by a Flask application, but the active `app.py` never calls it. `core/routes/auth.py`, `student.py`, `teacher.py`, `documents.py`, and `api.py` retain the old handlers. They should be distinguished from shared `core/services`, which **are** active. Flask is not in current requirements. The local legacy document edit has different upload behavior and is not the contract described in this guide.
 
-[train/train_model.py](train/train_model.py#L91) defines `MCQDataset` and `train()` for `google/flan-t5-base`, using torch/Transformers, batch size 2, accumulation 4, 30 epochs, learning rate `3e-4`, input/output limits 512/256, and a seed. [train/mcq_dataset.py](train/mcq_dataset.py) contains thirty curated examples and dataset helpers. The script saves model/tokenizer/metadata under `models/flan-t5-mcq`; production generation never loads that model. There is no train/validation split in the script. Its best-loss variable is tracked but only the final model is saved. A leftover accumulation group at epoch end is not stepped.
+[train/train_model.py](https://github.com/dinu-vishruth/mcq/blob/a906dfbe7fcf66cbff92ee8d56892948f0880c8d/train/train_model.py#L91) defines `MCQDataset` and `train()` for `google/flan-t5-base`, using torch/Transformers, batch size 2, accumulation 4, 30 epochs, learning rate `3e-4`, input/output limits 512/256, and a seed. [train/mcq_dataset.py](https://github.com/dinu-vishruth/mcq/blob/a906dfbe7fcf66cbff92ee8d56892948f0880c8d/train/mcq_dataset.py) contains thirty curated examples and dataset helpers. The script saves model/tokenizer/metadata under `models/flan-t5-mcq`; production generation never loads that model. There is no train/validation split in the script. Its best-loss variable is tracked but only the final model is saved. A leftover accumulation group at epoch end is not stepped.
 
-[download_pytorch_cuda.py](download_pytorch_cuda.py) resumes downloading one hardcoded Windows/Python/CUDA wheel; it is a developer helper, not runtime setup. Its availability and compatibility today are **Not verified from the current codebase**.
+[download_pytorch_cuda.py](https://github.com/dinu-vishruth/mcq/blob/a906dfbe7fcf66cbff92ee8d56892948f0880c8d/download_pytorch_cuda.py) resumes downloading one hardcoded Windows/Python/CUDA wheel; it is a developer helper, not runtime setup. Its availability and compatibility today are **Not verified from the current codebase**.
 
-[test_mcq.py](test_mcq.py) is a live generation smoke script, not an offline unittest module. [_repro_lib.py](./_repro_lib.py) creates a temporary library test scenario but assumes immediate visibility that background ingestion no longer guarantees. [_test_migration.py](./_test_migration.py) copies the local database and asserts migration preservation/dedup behavior; it is not a pristine fixture-based test and can involve private local data. Do not publish its raw database contents while debugging. The supported offline test files are explained in section 18.
+[test_mcq.py](https://github.com/dinu-vishruth/mcq/blob/a906dfbe7fcf66cbff92ee8d56892948f0880c8d/test_mcq.py) is a live generation smoke script, not an offline unittest module. [_repro_lib.py](https://github.com/dinu-vishruth/mcq/blob/a906dfbe7fcf66cbff92ee8d56892948f0880c8d/./_repro_lib.py) creates a temporary library test scenario but assumes immediate visibility that background ingestion no longer guarantees. [_test_migration.py](https://github.com/dinu-vishruth/mcq/blob/a906dfbe7fcf66cbff92ee8d56892948f0880c8d/./_test_migration.py) copies the local database and asserts migration preservation/dedup behavior; it is not a pristine fixture-based test and can involve private local data. Do not publish its raw database contents while debugging. The supported offline test files are explained in section 18.
 
 # 6. System Architecture
 
@@ -620,7 +620,7 @@ flowchart LR
     A --> B
 ```
 
-Evidence: [create_app()](fastapi_app/main.py#L64), [screen map](frontend/src/main.tsx#L9), [pipeline](core/services/mcq_pipeline.py), [registries](core/vectorstore/registry.py#L19).
+Evidence: [create_app()](../fastapi_app/main.py#L64), [screen map](../frontend/src/main.tsx#L9), [pipeline](../core/services/mcq_pipeline.py), [registries](../core/vectorstore/registry.py#L19).
 
 ## 6.2 Application architecture
 
@@ -646,7 +646,7 @@ sequenceDiagram
     R-->>B: HTML, redirect, JSON, or download
 ```
 
-For Vercel the HTTPS redirect wraps Session, which wraps CSRF. Static assets are mounted under `/static`; they do not invoke ingestion or LLM services. Source: [middleware setup](fastapi_app/main.py#L78), [dependencies](fastapi_app/deps.py#L42), [CSRF body replay](fastapi_app/middleware.py#L59).
+For Vercel the HTTPS redirect wraps Session, which wraps CSRF. Static assets are mounted under `/static`; they do not invoke ingestion or LLM services. Source: [middleware setup](../fastapi_app/main.py#L78), [dependencies](../fastapi_app/deps.py#L42), [CSRF body replay](../fastapi_app/middleware.py#L59).
 
 ## 6.3 Internal engineering architecture
 
@@ -656,7 +656,7 @@ Document ownership is a string username; learning/results use user IDs; quiz own
 
 Error boundaries are uneven. Expected upload failures render user errors. Generation failures become 502 in the practice API. Explanation failures produce static strings. Topic/XP failures are logged and generally do not change a committed score. Critical schema migrations are caught and logged, so startup can succeed with missing capabilities. Not every RAG stage is inside a fallback catch: text ingestion/retrieval/context construction can raise before the collector fallback block.
 
-**Verified code versus misleading descriptions:** `generate_mcqs_rag()` is not a guarantee that any failure reaches fallback; `spread=True` does not ensure chapter coverage; `DifficultyAgent` does not call the lexical classifier; content-generation intents do not automatically dispatch from the planner. Evidence: [text-RAG call boundaries](core/services/mcq_pipeline.py#L105), [retrieval](core/rag/retrieval/retriever.py#L55), [DifficultyAgent.run()](core/agents/difficulty.py#L20), [content registry](core/services/content_service.py#L36).
+**Verified code versus misleading descriptions:** `generate_mcqs_rag()` is not a guarantee that any failure reaches fallback; `spread=True` does not ensure chapter coverage; `DifficultyAgent` does not call the lexical classifier; content-generation intents do not automatically dispatch from the planner. Evidence: [text-RAG call boundaries](../core/services/mcq_pipeline.py#L105), [retrieval](../core/rag/retrieval/retriever.py#L55), [DifficultyAgent.run()](../core/agents/difficulty.py#L20), [content registry](../core/services/content_service.py#L36).
 
 ### Document ingestion architecture
 
@@ -677,7 +677,7 @@ flowchart TD
     Y --> Z
 ```
 
-The Chroma branch does not write canonical SQLite chunks/cache in its `upsert`; this difference is intentionally visible in the diagram. Source: [ingestion service](core/services/ingestion_service.py#L22), [EmbeddingAgent](core/agents/embedding.py#L28), [store adapters](core/vectorstore/chroma_store.py#L30).
+The Chroma branch does not write canonical SQLite chunks/cache in its `upsert`; this difference is intentionally visible in the diagram. Source: [ingestion service](../core/services/ingestion_service.py#L22), [EmbeddingAgent](../core/agents/embedding.py#L28), [store adapters](../core/vectorstore/chroma_store.py#L30).
 
 ### MCQ generation architecture
 
@@ -731,82 +731,82 @@ The sequences below describe **Verified** source behavior and identify the reque
 
 ## 7.1 Application boot and the first page
 
-1. Uvicorn imports [app.py](app.py#L13), which imports `fastapi_app.main.app`.
+1. Uvicorn imports [app.py](../app.py#L13), which imports `fastapi_app.main.app`.
 2. Importing config loads root `.env` without overriding real environment variables; settings are evaluated into process constants.
-3. [create_app()](fastapi_app/main.py#L64) creates the FastAPI object, ensures the configured upload directory, calls [init_db()](fastapi_app/database.py#L75), and logs credential/provider setup status without deliberately printing keys.
-4. Database bootstrap opens SQLite, applies the schema/base tables, tries additive columns, ensures the Google-subject index, seeds demo users if the users table is empty, then calls [run_migrations()](core/models/migrations.py#L197). It closes the connection.
+3. [create_app()](../fastapi_app/main.py#L64) creates the FastAPI object, ensures the configured upload directory, calls [init_db()](../fastapi_app/database.py#L75), and logs credential/provider setup status without deliberately printing keys.
+4. Database bootstrap opens SQLite, applies the schema/base tables, tries additive columns, ensures the Google-subject index, seeds demo users if the users table is empty, then calls [run_migrations()](../core/models/migrations.py#L197). It closes the connection.
 5. The app installs session/CSRF middleware, optional Vercel HTTPS redirection, static files and six routers. `_handle_redirect` turns dependency redirects into HTTP 302; selected HTTP errors under `/api/` become `{error:...}`.
-6. Browser `GET /` enters [home()](fastapi_app/routers/auth.py#L33). Signed-cookie user ID present → 302 dashboard; otherwise [render()](fastapi_app/templating.py#L55) returns `login.html`, making a CSRF token as the template requests it.
-7. After login, `GET /dashboard` loads a DB connection via `Db`, calls [build_dashboard()](fastapi_app/services/dashboard.py#L84), and embeds its payload in [student_dashboard.html](templates/student_dashboard.html#L25). React [readRoot()](frontend/src/bootstrap.ts#L12) parses it and `main.tsx` lazy-loads Dashboard.
+6. Browser `GET /` enters [home()](../fastapi_app/routers/auth.py#L33). Signed-cookie user ID present → 302 dashboard; otherwise [render()](../fastapi_app/templating.py#L55) returns `login.html`, making a CSRF token as the template requests it.
+7. After login, `GET /dashboard` loads a DB connection via `Db`, calls [build_dashboard()](../fastapi_app/services/dashboard.py#L84), and embeds its payload in [student_dashboard.html](https://github.com/dinu-vishruth/mcq/blob/a906dfbe7fcf66cbff92ee8d56892948f0880c8d/templates/student_dashboard.html#L25). React [readRoot()](../frontend/src/bootstrap.ts#L12) parses it and `main.tsx` lazy-loads Dashboard.
 
 Database initialization is an import-time side effect, not a migration CLI. Importing `app` in a diagnostic script can therefore write a database unless configuration is redirected first.
 
 ## 7.2 Upload → library → quiz setup
 
-1. A user navigates to `/upload`. [upload_form()](fastapi_app/routers/documents.py#L154) requires `CurrentUser` and renders the upload shell with extractor scripts and React bootstrap.
-2. [Upload.pickFile()](frontend/src/screens/Upload.tsx#L41) calls `validateFileSize()`. Its drag/drop handler places files on the input; browser `accept` restricts the picker but is not server enforcement.
-3. [Upload.onSubmit()](frontend/src/screens/Upload.tsx#L52) prevents the initial form submit, captures the `File`, sets busy/stage, and invokes [extractText()](frontend/src/lib/extract.ts#L51) for PDF/DOCX/TXT.
+1. A user navigates to `/upload`. [upload_form()](../fastapi_app/routers/documents.py#L154) requires `CurrentUser` and renders the upload shell with extractor scripts and React bootstrap.
+2. [Upload.pickFile()](../frontend/src/screens/Upload.tsx#L41) calls `validateFileSize()`. Its drag/drop handler places files on the input; browser `accept` restricts the picker but is not server enforcement.
+3. [Upload.onSubmit()](../frontend/src/screens/Upload.tsx#L52) prevents the initial form submit, captures the `File`, sets busy/stage, and invokes [extractText()](../frontend/src/lib/extract.ts#L51) for PDF/DOCX/TXT.
 4. PDF reads every page's text items through PDF.js. DOCX uses Mammoth raw text. TXT uses FileReader. PPTX returns null from that helper, intending server parsing.
-5. If usable text exists, [sampleText()](frontend/src/lib/extract.ts#L61) limits long material by sampling thirty positions and puts the text in a hidden field. The upload screen clears the file input if it is still mounted and schedules native form submission. If no text/error, it tries the file path when within the server-sized limit. Both screens remove the input while busy, a source-traced failure risk explained in section 8.
-6. Multipart `POST /upload` includes CSRF. [CSRFMiddleware](fastapi_app/middleware.py#L59) buffers the body, validates the token from header/form, then replays the body. FastAPI parses file/form parameters; `CurrentUser` checks the cookie user ID.
-7. [extract_upload_text()](fastapi_app/routers/documents.py#L50) uses extracted text first; otherwise validates uploaded filename/size/extension and calls a parser. It cleans text and rejects an empty result.
-8. [upload()](fastapi_app/routers/documents.py#L159) calls [ingest_document()](core/services/ingestion_service.py#L22) synchronously. Processing, row creation/reuse, embedding and indexing complete before success.
+5. If usable text exists, [sampleText()](../frontend/src/lib/extract.ts#L61) limits long material by sampling thirty positions and puts the text in a hidden field. The upload screen clears the file input if it is still mounted and schedules native form submission. If no text/error, it tries the file path when within the server-sized limit. Both screens remove the input while busy, a source-traced failure risk explained in section 8.
+6. Multipart `POST /upload` includes CSRF. [CSRFMiddleware](../fastapi_app/middleware.py#L59) buffers the body, validates the token from header/form, then replays the body. FastAPI parses file/form parameters; `CurrentUser` checks the cookie user ID.
+7. [extract_upload_text()](../fastapi_app/routers/documents.py#L50) uses extracted text first; otherwise validates uploaded filename/size/extension and calls a parser. It cleans text and rejects an empty result.
+8. [upload()](../fastapi_app/routers/documents.py#L159) calls [ingest_document()](../core/services/ingestion_service.py#L22) synchronously. Processing, row creation/reuse, embedding and indexing complete before success.
 9. Ingestion returns `document_id`; the handler sends 302 `/knowledge?doc=<id>`. Extraction/ingestion errors re-render the upload screen with a message. This route does not create a quiz session or call an LLM question generator.
 10. `/knowledge` mounts MakeQuiz. It reads `doc` with `URLSearchParams`, fetches `/api/knowledge`, filters ready sources, and offers quiz settings. Source text is persisted through the selected index backend, not the signed cookie.
 
 ## 7.3 Add Resource → in-process indexing
 
-Steps 1–7 above are analogous for [AddResource.onSubmit()](frontend/src/screens/AddResource.tsx#L51), with an additional title field and `/ingest_resource` target. After successful extraction, [ingest_resource()](fastapi_app/routers/documents.py#L116) defines `_run_ingest()`, starts `threading.Thread(..., daemon=True)`, and sends 302 `/journey`.
+Steps 1–7 above are analogous for [AddResource.onSubmit()](../frontend/src/screens/AddResource.tsx#L51), with an additional title field and `/ingest_resource` target. After successful extraction, [ingest_resource()](../fastapi_app/routers/documents.py#L116) defines `_run_ingest()`, starts `threading.Thread(..., daemon=True)`, and sends 302 `/journey`.
 
 The worker uses captured text/title/type/username and the normal ingestion service; repositories open their own DB connections on that thread. It is not using the request connection dependency. Exceptions inside the worker are printed; the already returned response cannot display them. Starting a thread does not guarantee any row has yet been created. Journey's one-time fetch can race with creation/indexing. The process stopping ends a daemon thread; no persisted job is resumed after startup.
 
 ## 7.4 Resource → generated quiz → join
 
-1. [MakeQuiz.generate()](frontend/src/screens/MakeQuiz.tsx#L58) sets generating/error state and calls [apiSend()](frontend/src/bootstrap.ts#L46) with resource ID, requested count, difficulty, optional trimmed topic, and duration in seconds.
-2. JSON `POST /api/practice/generate` passes session/CSRF and Pydantic [PracticeIn](fastapi_app/routers/api.py#L40). Invalid fields can return 422 before handler logic.
-3. [practice_generate()](fastapi_app/routers/api.py#L264) obtains `document_repo.get(document_id)` and verifies the owner equals the cookie username. A missing/foreign record returns 404. The service itself is not an auth boundary.
-4. [generate_from_document()](core/services/mcq_pipeline.py#L160) creates an English query from level/topic; scales `top_k`; [RetrieverAgent.run()](core/agents/retriever.py#L26) calls [Retriever.retrieve()](core/rag/retrieval/retriever.py#L55).
+1. [MakeQuiz.generate()](../frontend/src/screens/MakeQuiz.tsx#L58) sets generating/error state and calls [apiSend()](../frontend/src/bootstrap.ts#L46) with resource ID, requested count, difficulty, optional trimmed topic, and duration in seconds.
+2. JSON `POST /api/practice/generate` passes session/CSRF and Pydantic [PracticeIn](../fastapi_app/routers/api.py#L40). Invalid fields can return 422 before handler logic.
+3. [practice_generate()](../fastapi_app/routers/api.py#L264) obtains `document_repo.get(document_id)` and verifies the owner equals the cookie username. A missing/foreign record returns 404. The service itself is not an auth boundary.
+4. [generate_from_document()](../core/services/mcq_pipeline.py#L160) creates an English query from level/topic; scales `top_k`; [RetrieverAgent.run()](../core/agents/retriever.py#L26) calls [Retriever.retrieve()](../core/rag/retrieval/retriever.py#L55).
 5. The embedder makes a query vector, store query fetches up to the candidate budget within that document, MMR may select diverse candidates, and positional sorting orders hits. Retrieval stats are logged; low similarity does not block.
-6. [ContextBuilderAgent.run()](core/agents/context_builder.py#L16) sorts chunks, prefixes indices, and builds a character-budgeted string. No hits cause ValueError; it does not load the raw full resource as a fallback.
-7. Legacy mode calls `_legacy_from_context()` → `_legacy_fallback()` → [models.generate_mcqs()](models/mcq_generator.py#L54), temporarily setting the global pipeline flag to legacy to prevent recursive dispatch. RAG mode calls context validation and `_collect_mcqs()`; section 10 expands its checks/retries.
-8. The service returns a possibly short list. Handler exceptions become 502; an empty list also becomes 502. Successful generation calls [create_session_key()](utils/session_manager.py#L12) → [create_session()](core/repositories/session_repo.py#L15), serializes MCQs and commits a session row. The known source document ID is not passed here.
+6. [ContextBuilderAgent.run()](../core/agents/context_builder.py#L16) sorts chunks, prefixes indices, and builds a character-budgeted string. No hits cause ValueError; it does not load the raw full resource as a fallback.
+7. Legacy mode calls `_legacy_from_context()` → `_legacy_fallback()` → [models.generate_mcqs()](../models/mcq_generator.py#L54), temporarily setting the global pipeline flag to legacy to prevent recursive dispatch. RAG mode calls context validation and `_collect_mcqs()`; section 10 expands its checks/retries.
+8. The service returns a possibly short list. Handler exceptions become 502; an empty list also becomes 502. Successful generation calls [create_session_key()](../utils/session_manager.py#L12) → [create_session()](../core/repositories/session_repo.py#L15), serializes MCQs and commits a session row. The known source document ID is not passed here.
 9. HTTP 200 returns `{ok:true, session_key:<key>, count:<delivered>}`. MakeQuiz constructs hidden CSRF/session-key inputs in a form and posts `/student_login`; success joins and redirects `/mcq_test`.
 
 There is no generation-job ID/polling stream. The browser waits for one synchronous API response while server-side retrieval/model calls run. Provider retry sleeps can extend this wait.
 
 ## 7.5 Quiz rendering and submission
 
-1. [student_login()](fastapi_app/routers/student.py#L175) validates alphanumeric/existing key and prior attempt, then stores only `session_key` in the signed cookie.
-2. [mcq_test()](fastapi_app/routers/student.py#L204) loads stored JSON, rejects absent/prior-attempt state, copies/shuffles options, relabels them, and sends question/options/**answer_text** to [mcq_test.html](templates/mcq_test.html#L21). Duration is stored seconds or a 600-second fallback.
-3. [Quiz](frontend/src/screens/Quiz.tsx#L26) keeps index, answers, confidence and remaining seconds in component state. `choose(text)` updates answers and an XP animation; `next()` changes index. Countdown re-schedules a one-second timeout until zero. It is not based on a server-issued expiry timestamp.
+1. [student_login()](../fastapi_app/routers/student.py#L175) validates alphanumeric/existing key and prior attempt, then stores only `session_key` in the signed cookie.
+2. [mcq_test()](../fastapi_app/routers/student.py#L204) loads stored JSON, rejects absent/prior-attempt state, copies/shuffles options, relabels them, and sends question/options/**answer_text** to [mcq_test.html](../templates/mcq_test.html#L21). Duration is stored seconds or a 600-second fallback.
+3. [Quiz](../frontend/src/screens/Quiz.tsx#L26) keeps index, answers, confidence and remaining seconds in component state. `choose(text)` updates answers and an XP animation; `next()` changes index. Countdown re-schedules a one-second timeout until zero. It is not based on a server-issued expiry timestamp.
 4. `submit()` computes elapsed time from initial minus remaining, writes it to the hidden form, and performs native POST `/submit`. No option labels or correct answers are intentionally submitted; selected option text is sent under `q-<index>`.
-5. [submit()](fastapi_app/routers/student.py#L236) determines the quiz from the cookie, reloads stored questions/answers, checks prior result again, parses name/time, and compares answer strings. Missing choices become empty strings; unparsable time becomes zero, but negative values are not rejected.
-6. [explanation_engine.explain_answers()](models/explanation_engine.py#L15) invokes [ExplanationAgent.run()](core/agents/explanation.py#L23). The route supplies no document ID. The agent may make one batch explanation call for wrong answered items, or return static text. This happens before inserting `results`.
+5. [submit()](../fastapi_app/routers/student.py#L236) determines the quiz from the cookie, reloads stored questions/answers, checks prior result again, parses name/time, and compares answer strings. Missing choices become empty strings; unparsable time becomes zero, but negative values are not rejected.
+6. [explanation_engine.explain_answers()](../models/explanation_engine.py#L15) invokes [ExplanationAgent.run()](../core/agents/explanation.py#L23). The route supplies no document ID. The agent may make one batch explanation call for wrong answered items, or return static text. This happens before inserting `results`.
 7. Insert/commit saves score, total, UTC timestamp, detail JSON and time. There is no unique result constraint enforcing one submission per user/session.
-8. [analyse_submission()](core/services/learning_service.py#L15) calls EvaluationAgent, which makes a topic-label call, writes learning events, and separately updates cumulative weak counts. Any failure in the route's analysis block is logged.
-9. [record_activity()](core/repositories/prefs_repo.py#L59) writes XP/streak in another connection/transaction; its exceptions are logged independently.
-10. The route renders [result.html](templates/result.html#L19) with score/details/explanations. React shows the result. Because this is a POST-rendered result, refresh is a resubmission rather than a GET reload of persisted explanations.
+8. [analyse_submission()](../core/services/learning_service.py#L15) calls EvaluationAgent, which makes a topic-label call, writes learning events, and separately updates cumulative weak counts. Any failure in the route's analysis block is logged.
+9. [record_activity()](../core/repositories/prefs_repo.py#L59) writes XP/streak in another connection/transaction; its exceptions are logged independently.
+10. The route renders [result.html](../templates/result.html#L19) with score/details/explanations. React shows the result. Because this is a POST-rendered result, refresh is a resubmission rather than a GET reload of persisted explanations.
 
 ## 7.6 Weak-topic review creation
 
-1. [WeakTopics](frontend/src/screens/WeakTopics.tsx#L23) fetches `/api/weak-topics`. The backend gets the user's worst ratios, classifies severity at 30%/60%, and counts reconstructable missed items per topic.
-2. `review(topic)` POSTs `/api/weak-topics/review`. [ReviewIn](fastapi_app/routers/api.py#L36) requires a nonempty string, though whitespace-only input passes length validation then becomes empty after trimming.
-3. [missed_questions_for_topic()](core/repositories/learning_repo.py#L63) queries wrong learning events for that user/topic, orders grouped historical misses by recency, caches each session's parsed questions within this call, and matches normalized question text. Missing/invalid session JSON or changed question text is skipped.
+1. [WeakTopics](../frontend/src/screens/WeakTopics.tsx#L23) fetches `/api/weak-topics`. The backend gets the user's worst ratios, classifies severity at 30%/60%, and counts reconstructable missed items per topic.
+2. `review(topic)` POSTs `/api/weak-topics/review`. [ReviewIn](../fastapi_app/routers/api.py#L36) requires a nonempty string, though whitespace-only input passes length validation then becomes empty after trimming.
+3. [missed_questions_for_topic()](../core/repositories/learning_repo.py#L63) queries wrong learning events for that user/topic, orders grouped historical misses by recency, caches each session's parsed questions within this call, and matches normalized question text. Missing/invalid session JSON or changed question text is skipped.
 4. The endpoint returns 404 if no questions remain. Otherwise it saves a new review session with a clamped timer and returns key/count. The UI posts a join form and uses the normal quiz flow. Both result/XP/analysis paths still apply on submission.
 
 ## 7.7 Read-only analytics and management mutations
 
-`GET /dashboard`/`GET /api/dashboard` use [build_dashboard()](fastapi_app/services/dashboard.py#L84): results SQL → percentages/history/recent/trend; documents SQL → count; preference lookup → goal/minutes/XP/streak; weak-topic repository → weak list; local rules → recommendations. There is no LLM call in the dashboard recommendation function.
+`GET /dashboard`/`GET /api/dashboard` use [build_dashboard()](../fastapi_app/services/dashboard.py#L84): results SQL → percentages/history/recent/trend; documents SQL → count; preference lookup → goal/minutes/XP/streak; weak-topic repository → weak list; local rules → recommendations. There is no LLM call in the dashboard recommendation function.
 
-`GET /progress` uses [progress()](fastapi_app/routers/student.py#L61): all results by user ID → sums/daily/monthly buckets → weak list/prefs → `progress.html` bootstrap → [Progress](frontend/src/screens/Progress.tsx#L48). `GET /api/achievements` uses aggregate SQL and prefs → badge booleans/milestones → [Achievements](frontend/src/screens/Achievements.tsx#L23).
+`GET /progress` uses [progress()](../fastapi_app/routers/student.py#L61): all results by user ID → sums/daily/monthly buckets → weak list/prefs → `progress.html` bootstrap → [Progress](../frontend/src/screens/Progress.tsx#L48). `GET /api/achievements` uses aggregate SQL and prefs → badge booleans/milestones → [Achievements](../frontend/src/screens/Achievements.tsx#L23).
 
-Library deletion uses [Journey.remove()](frontend/src/screens/Journey.tsx#L28) → DELETE endpoint → `document_repo.delete()` → SQL commit → `{ok:true}` → state filtering. Profile/deletion and session-owner mutations use classic CSRF forms, SQL commits, flash messages and 302 redirects. Session report/CSV use database reads; PDF is generated on request and written to disk. These handlers do not retrieve vectors or call the LLM. See endpoint contracts in section 14.
+Library deletion uses [Journey.remove()](../frontend/src/screens/Journey.tsx#L28) → DELETE endpoint → `document_repo.delete()` → SQL commit → `{ok:true}` → state filtering. Profile/deletion and session-owner mutations use classic CSRF forms, SQL commits, flash messages and 302 redirects. Session report/CSV use database reads; PDF is generated on request and written to disk. These handlers do not retrieve vectors or call the LLM. See endpoint contracts in section 14.
 
 # 8. Document Processing and Ingestion
 
 ## 8.1 Formats, size limits, and accepted inputs
 
-**Verified:** [config.ALLOWED_EXT](config.py#L87) permits `pdf`, `docx`, `txt`, `pptx`. Both upload endpoints also accept arbitrary directly posted `extracted_text` and optional `title`; a file is unnecessary if that field is nonblank. Nonblank client text is trusted as text and takes precedence even if a file is also posted.
+**Verified:** [config.ALLOWED_EXT](../config.py#L87) permits `pdf`, `docx`, `txt`, `pptx`. Both upload endpoints also accept arbitrary directly posted `extracted_text` and optional `title`; a file is unnecessary if that field is nonblank. Nonblank client text is trusted as text and takes precedence even if a file is also posted.
 
 | Path | Implemented bound | Caveat |
 |---|---|---|
@@ -816,42 +816,42 @@ Library deletion uses [Journey.remove()](frontend/src/screens/Journey.tsx#L28) �
 | Browser extracted text | Sampling target 150,000 characters | Not a byte limit or full-document archive; boundary adjustment/markers can add characters |
 | Direct posted extracted text | No explicit application character limit here | Hosted platform/body parser may limit it; local middleware buffers it |
 
-Evidence: [validateFileSize()/sampleText()](frontend/src/lib/extract.ts#L61), [MAX_UPLOAD_BYTES](fastapi_app/routers/documents.py#L39), [extract_upload_text()](fastapi_app/routers/documents.py#L50). The code's “MB” labels use binary multiplication. The live hosting limit and parser defaults should not be assumed to equal those exact numbers.
+Evidence: [validateFileSize()/sampleText()](../frontend/src/lib/extract.ts#L61), [MAX_UPLOAD_BYTES](../fastapi_app/routers/documents.py#L39), [extract_upload_text()](../fastapi_app/routers/documents.py#L50). The code's “MB” labels use binary multiplication. The live hosting limit and parser defaults should not be assumed to equal those exact numbers.
 
 Browser `accept` and extension checks do not verify MIME type, file signature, archive expansion, page count, malware, or OCR suitability. User-provided text need not be a file at all. These are missing checks, not evidence that every upload is malicious.
 
 ## 8.2 Extraction implementations
 
-**Browser path** in [extract.ts](frontend/src/lib/extract.ts#L24): TXT reads as text; PDF parses an ArrayBuffer, iterates pages, joins `textContent.items[].str` with spaces and page newlines; DOCX calls `window.mammoth.extractRawText`; PPTX/unknown returns null. [initPdfWorker()](frontend/src/lib/extract.ts#L18) points PDF.js at the vendored worker. No optical character recognition (OCR: converting image text into characters) appears in either path.
+**Browser path** in [extract.ts](../frontend/src/lib/extract.ts#L24): TXT reads as text; PDF parses an ArrayBuffer, iterates pages, joins `textContent.items[].str` with spaces and page newlines; DOCX calls `window.mammoth.extractRawText`; PPTX/unknown returns null. [initPdfWorker()](../frontend/src/lib/extract.ts#L18) points PDF.js at the vendored worker. No optical character recognition (OCR: converting image text into characters) appears in either path.
 
-**Server path** in [models/pdf_processor.py](models/pdf_processor.py):
+**Server path** in [models/pdf_processor.py](../models/pdf_processor.py):
 
 - `extract_text_from_pdf()` reads every page via pdfplumber, adds `extract_text()`, then separately appends table rows joined with ` | `. Table values already appearing in page text can be duplicated.
 - `extract_text_from_docx()` reads all document paragraphs, then all table rows. This includes table data but does not preserve paragraph/table interleaving.
 - `extract_text_from_pptx()` traverses slides, handles text frames/tables/nested group shapes, and includes slide notes. Slide/page numbers are loop variables, not retained structured provenance.
 - TXT fallback decodes UTF-8 with `errors='ignore'`, potentially dropping characters silently.
 
-[FileStorageAdapter](fastapi_app/uploads.py#L20) bridges parser expectations to `UploadFile.file`. PDF can use a stream. DOCX/PPTX are saved to UUID-named parser files under `UPLOAD_FOLDER` and removed in a `finally` block. Extraction exceptions are wrapped in `ExtractError`, with some underlying exception text included. Empty cleaned text is rejected. Original uploaded files are not retained as permanent downloadable resources by this route.
+[FileStorageAdapter](../fastapi_app/uploads.py#L20) bridges parser expectations to `UploadFile.file`. PDF can use a stream. DOCX/PPTX are saved to UUID-named parser files under `UPLOAD_FOLDER` and removed in a `finally` block. Extraction exceptions are wrapped in `ExtractError`, with some underlying exception text included. Empty cleaned text is rejected. Original uploaded files are not retained as permanent downloadable resources by this route.
 
 ## 8.3 Cleaning and long-document sampling
 
-[clean_text()](utils/text_cleaner.py#L4) collapses all whitespace to single spaces, removes control characters, and strips ends. It is called at extraction, processing, and legacy-generation boundaries. The same cleaned text yields stable hashes, but paragraphs, page boundaries, line-oriented formulas/code and table layout lose structure. The chunker supports paragraphs, but ordinary ingestion usually receives flattened text.
+[clean_text()](../utils/text_cleaner.py#L4) collapses all whitespace to single spaces, removes control characters, and strips ends. It is called at extraction, processing, and legacy-generation boundaries. The same cleaned text yields stable hashes, but paragraphs, page boundaries, line-oriented formulas/code and table layout lose structure. The chunker supports paragraphs, but ordinary ingestion usually receives flattened text.
 
-[sampleText()](frontend/src/lib/extract.ts#L61) divides a long text's position range into thirty sections, takes roughly `maxChars / 30` characters near each starting position, adjusts to newlines/spaces, and adds section-transition markers. This distributes sampled material across the document rather than taking only its beginning. It still discards most text beyond the target and does not retain exact source positions for those omissions. The library can therefore hold sampled text, not a faithful complete book.
+[sampleText()](../frontend/src/lib/extract.ts#L61) divides a long text's position range into thirty sections, takes roughly `maxChars / 30` characters near each starting position, adjusts to newlines/spaces, and adds section-transition markers. This distributes sampled material across the document rather than taking only its beginning. It still discards most text beyond the target and does not retain exact source positions for those omissions. The library can therefore hold sampled text, not a faithful complete book.
 
-**Source-traced UI defect:** [Upload](frontend/src/screens/Upload.tsx#L119) and [AddResource](frontend/src/screens/AddResource.tsx#L123) place their file inputs inside a `!busy` branch. Setting busy removes those controls before scheduled native form submission. Captured File objects are available to browser extraction, but native forms submit mounted inputs, not an earlier local variable. Text hidden inputs remain; server-file fallbacks do not. **Not verified from the current codebase:** exact behavior across browsers has not been exercised here. A browser reproduction should inspect multipart FormData for a PPTX/failing extraction.
+**Source-traced UI defect:** [Upload](../frontend/src/screens/Upload.tsx#L119) and [AddResource](../frontend/src/screens/AddResource.tsx#L123) place their file inputs inside a `!busy` branch. Setting busy removes those controls before scheduled native form submission. Captured File objects are available to browser extraction, but native forms submit mounted inputs, not an earlier local variable. Text hidden inputs remain; server-file fallbacks do not. **Not verified from the current codebase:** exact behavior across browsers has not been exercised here. A browser reproduction should inspect multipart FormData for a PPTX/failing extraction.
 
 ## 8.4 Chunk construction
 
-[DocumentProcessingAgent.run()](core/agents/document_processing.py#L29) cleans text, calls [chunk_text()](core/rag/chunker.py#L69), calculates character/count/average-chunk metadata, and returns a `ProcessedDocument` dataclass. It does not extract a file, identify real topics or create page citations.
+[DocumentProcessingAgent.run()](../core/agents/document_processing.py#L29) cleans text, calls [chunk_text()](../core/rag/chunker.py#L69), calculates character/count/average-chunk metadata, and returns a `ProcessedDocument` dataclass. It does not extract a file, identify real topics or create page citations.
 
-Default chunk size is **1,500 characters**, overlap **80 characters**; values come from [config.py](config.py#L247), not tokenizer counts. `_segments()` first splits blank-line paragraphs; large paragraphs are packed from sentence units split after `.`, `!`, `?`; oversized individual sentences are hard-split. With one/no segment, `_window_sweep()` creates sliding windows and snaps ends to spaces. With multiple segments, buffers are packed and the previous tail is prepended when a buffer overflows. The packed case can exceed the nominal size by overlap/separators.
+Default chunk size is **1,500 characters**, overlap **80 characters**; values come from [config.py](../config.py#L247), not tokenizer counts. `_segments()` first splits blank-line paragraphs; large paragraphs are packed from sentence units split after `.`, `!`, `?`; oversized individual sentences are hard-split. With one/no segment, `_window_sweep()` creates sliding windows and snaps ends to spaces. With multiple segments, buffers are packed and the previous tail is prepended when a buffer overflows. The packed case can exceed the nominal size by overlap/separators.
 
-Each [Chunk](core/rag/chunker.py#L21) contains `index`, `content`, `char_start`, `char_end`; `token_estimate` is `max(1,len(content)//4)`. Offsets refer to cleaned input and packed boundaries, not original PDF coordinates. They should not be treated as exact original-document citation locations. The rough token estimate is metadata; the context builder uses character budgeting instead.
+Each [Chunk](../core/rag/chunker.py#L21) contains `index`, `content`, `char_start`, `char_end`; `token_estimate` is `max(1,len(content)//4)`. Offsets refer to cleaned input and packed boundaries, not original PDF coordinates. They should not be treated as exact original-document citation locations. The rough token estimate is metadata; the context builder uses character budgeting instead.
 
 ## 8.5 Deduplication, embedding, and indexing
 
-[ingest_document()](core/services/ingestion_service.py#L22) follows this sequence:
+[ingest_document()](../core/services/ingestion_service.py#L22) follows this sequence:
 
 ```text
 raw text + owner/title/type
@@ -867,13 +867,13 @@ raw text + owner/title/type
 
 The database enforces `UNIQUE(doc_hash,owner)`. Two owners may hold separate copies of the same content; shared chunk embeddings can still be reused with SQLite-backed persistence. Re-uploading the same cleaned content with a new title returns the old ready row and old title. Ready reuse ignores current chunking/model/store version and does not call `has_document()`. Unfinished rows retry through embedding, but no job/scheduled recovery drives that retry.
 
-[EmbeddingAgent.run()](core/agents/embedding.py#L28) hashes each chunk, selects cached hashes from SQL, embeds the missing subset in a batch, loads cached float32 BLOB vectors, builds store item dictionaries, and calls `store.upsert(document_id,items)`. Metadata passed includes offsets and token estimate. Cache behavior is model-blind and backend-dependent; sections 9 and 13 explain the consequences.
+[EmbeddingAgent.run()](../core/agents/embedding.py#L28) hashes each chunk, selects cached hashes from SQL, embeds the missing subset in a batch, loads cached float32 BLOB vectors, builds store item dictionaries, and calls `store.upsert(document_id,items)`. Metadata passed includes offsets and token estimate. Cache behavior is model-blind and backend-dependent; sections 9 and 13 explain the consequences.
 
 ## 8.6 Failure and cleanup boundaries
 
 Processing an empty resource raises before row creation. New row creation, status updates, and store writes use separate commits. An embedding exception can leave `chunked`; despite schema comments listing `error`/`embedded`, this ingestion function writes no explicit error status. Concurrent check-then-create uploads may hit the unique constraint. Re-indexing has no configuration version marker or cleanup of obsolete trailing chunks. A ready row may outlive the actual index if it is removed externally.
 
-Temporary DOCX/PPTX files are removed, but vector deletion is not coordinated with document deletion. The server does not keep raw text in a separate document-content column; durable text exists in SQLite chunks for SQLite/FAISS, or in Chroma documents for that backend. Background worker failures are logs only. Evidence: [ingestion status writes](core/services/ingestion_service.py#L46), [document repository](core/repositories/document_repo.py), [store upserts](core/vectorstore/sqlite_numpy.py#L33).
+Temporary DOCX/PPTX files are removed, but vector deletion is not coordinated with document deletion. The server does not keep raw text in a separate document-content column; durable text exists in SQLite chunks for SQLite/FAISS, or in Chroma documents for that backend. Background worker failures are logs only. Evidence: [ingestion status writes](../core/services/ingestion_service.py#L46), [document repository](../core/repositories/document_repo.py), [store upserts](../core/vectorstore/sqlite_numpy.py#L33).
 
 # 9. Embeddings, Vector Stores, and Retrieval
 
@@ -885,7 +885,7 @@ Keyword matching searches words directly. Vector similarity compares numeric rep
 
 ## 9.2 Supported embedding implementations
 
-**Verified:** [Embedder](core/embeddings/base.py#L10) requires ordered `embed_batch(texts)` results; `embed(text)` wraps a single-item batch. [registry.build_embedder()](core/embeddings/registry.py#L28) chooses by config and caches one process-wide instance.
+**Verified:** [Embedder](../core/embeddings/base.py#L10) requires ordered `embed_batch(texts)` results; `embed(text)` wraps a single-item batch. [registry.build_embedder()](../core/embeddings/registry.py#L28) chooses by config and caches one process-wide instance.
 
 | Backend | Actual transformation | Dimension/model and operational details |
 |---|---|---|
@@ -895,13 +895,13 @@ Keyword matching searches words directly. Vector similarity compares numeric rep
 | `remote` Gemini | One REST embedContent request per text, normalizes results | Adapter default `text-embedding-004`, hardcoded dimension 768; reads `GEMINI_API_KEY` |
 | `auto` | Try importing/constructing SentenceTransformer; log load failure and fall back to hashing | Does not automatically choose remote API; no explicit Vercel branch here |
 
-Sources: [HashingEmbedder](core/embeddings/hashing.py#L23), [SentenceTransformerEmbedder](core/embeddings/sentence_transformer.py#L15), [RemoteAPIEmbedder](core/embeddings/remote_api.py#L23). Hardcoded remote dimensions are adapter expectations; actual current provider behavior/model availability is **Not verified from the current codebase**. The constructor prefers remote OpenAI when its separate key is present, otherwise Gemini, even if neither key exists. `EMBEDDING_MODEL` applies to the local ST constructor, not remote adapter defaults.
+Sources: [HashingEmbedder](../core/embeddings/hashing.py#L23), [SentenceTransformerEmbedder](../core/embeddings/sentence_transformer.py#L15), [RemoteAPIEmbedder](../core/embeddings/remote_api.py#L23). Hardcoded remote dimensions are adapter expectations; actual current provider behavior/model availability is **Not verified from the current codebase**. The constructor prefers remote OpenAI when its separate key is present, otherwise Gemini, even if neither key exists. `EMBEDDING_MODEL` applies to the local ST constructor, not remote adapter defaults.
 
 The hashing tokenizer excludes non-Latin text and uses linear count accumulation despite a “sublinear TF” comment. Zero-token text becomes a zero vector. L2 normalization scales a nonzero vector to length one. For normalized vectors, their dot product equals **cosine similarity**: a measure of directional alignment; it is not a probability of correctness.
 
 ## 9.3 Storage implementations
 
-**Verified:** [build_vector_store()](core/vectorstore/registry.py#L19) obtains active embedding identity/dimension and tries configured Chroma or FAISS. Constructor/import errors log a warning and choose SQLite. Any other value selects SQLite. Vercel explicitly forces SQLite. Initialization fallback does not promise automatic failover after later query/upsert errors.
+**Verified:** [build_vector_store()](../core/vectorstore/registry.py#L19) obtains active embedding identity/dimension and tries configured Chroma or FAISS. Constructor/import errors log a warning and choose SQLite. Any other value selects SQLite. Vercel explicitly forces SQLite. Initialization fallback does not promise automatic failover after later query/upsert errors.
 
 | Store | Persistence and query | Important implementation limit |
 |---|---|---|
@@ -909,13 +909,13 @@ The hashing tokenizer excludes non-Latin text and uses linear count accumulation
 | Chroma | `PersistentClient(CHROMA_PATH)`; collection `doc_<id>` with cosine space; upsert content/precomputed vectors plus doc/index metadata; query returns distance mapped to `1-distance` | Does not persist SQL chunks/embedding cache; metadata does not retain offsets/token estimates |
 | FAISS | Writes exact `IndexFlatIP(dim)` to `CHROMA_PATH/faiss/doc_<id>.index`; SQL store persists text/cache; searches inner product and maps returned row positions to SQL rows | Rebuilds index per upsert and reloads it per query; SQL/index can diverge if rows change |
 
-Sources: [SqliteNumpyStore.upsert()/query()](core/vectorstore/sqlite_numpy.py#L33), [ChromaStore](core/vectorstore/chroma_store.py#L17), [FaissStore](core/vectorstore/faiss_store.py#L20). There is no implemented PostgreSQL/pgvector, Pinecone, Qdrant, or cloud database client. Those may be alternatives, not current components.
+Sources: [SqliteNumpyStore.upsert()/query()](../core/vectorstore/sqlite_numpy.py#L33), [ChromaStore](../core/vectorstore/chroma_store.py#L17), [FaissStore](../core/vectorstore/faiss_store.py#L20). There is no implemented PostgreSQL/pgvector, Pinecone, Qdrant, or cloud database client. Those may be alternatives, not current components.
 
-The common [SearchHit](core/vectorstore/base.py#L15) exposes `chunk_id`, `document_id`, `chunk_index`, `content`, and `score`. It does not return the cached vector, original page, char offsets, or a verified citation. This explains why MMR later re-embeds candidate text.
+The common [SearchHit](../core/vectorstore/base.py#L15) exposes `chunk_id`, `document_id`, `chunk_index`, `content`, and `score`. It does not return the cached vector, original page, char offsets, or a verified citation. This explains why MMR later re-embeds candidate text.
 
 ## 9.4 Candidate retrieval and MMR
 
-[Retriever.retrieve()](core/rag/retrieval/retriever.py#L55) calculates:
+[Retriever.retrieve()](../core/rag/retrieval/retriever.py#L55) calculates:
 
 ```python
 fetch_k = min(max(top_k * 4, top_k + 8), 200)
@@ -929,15 +929,15 @@ if spread:
 return hits[:top_k]
 ```
 
-**MMR**, maximal marginal relevance, balances query similarity and redundancy against already selected passages. [mmr_select()](core/rag/retrieval/retriever.py#L25) chooses the first highest dot product, then maximizes `0.6 * relevance - 0.4 * max_similarity_to_selected`. The default lambda is 0.6. Candidates are re-embedded one by one, which can trigger many remote calls. There is no BM25/hybrid search, reranker, query expansion, learned coverage planner, or similarity cutoff.
+**MMR**, maximal marginal relevance, balances query similarity and redundancy against already selected passages. [mmr_select()](../core/rag/retrieval/retriever.py#L25) chooses the first highest dot product, then maximizes `0.6 * relevance - 0.4 * max_similarity_to_selected`. The default lambda is 0.6. Candidates are re-embedded one by one, which can trigger many remote calls. There is no BM25/hybrid search, reranker, query expansion, learned coverage planner, or similarity cutoff.
 
 `spread=True` merely sorts the selected set into source order; it does not ensure chunks from unselected sections are included. MMR can reduce duplicate evidence only within the similarity candidate set. **Inferred:** generic English query phrases may poorly match technical vocabulary under hashing; topic-specific queries can improve lexical overlap, but the application has no measured retrieval benchmark establishing that effect.
 
-[RetrieverAgent.assess()](core/agents/retriever.py#L32) logs count/average/min/max and sets `low_confidence` when average < 0.25. This is advisory; generation can proceed on low scores. The sufficiency model check is the possible RAG gate, not the similarity flag.
+[RetrieverAgent.assess()](../core/agents/retriever.py#L32) logs count/average/min/max and sets `low_confidence` when average < 0.25. This is advisory; generation can proceed on low scores. The sufficiency model check is the possible RAG gate, not the similarity flag.
 
 ## 9.5 Context construction and resource isolation
 
-Generation top-k is `max(RETRIEVAL_TOP_K, min(num_questions*2,40))`; default base is eight. Thus a ten-question request requests twenty hits, though fewer may exist and fewer may fit the context budget. [ContextBuilderAgent.run()](core/agents/context_builder.py#L16) sorts by source index again, builds `[chunk <index>] <content>` blocks, and stops near 12,000 characters. A partial final block is included only if more than 200 characters remain. It is a character budget, not a tokenizer-aware context-window calculation.
+Generation top-k is `max(RETRIEVAL_TOP_K, min(num_questions*2,40))`; default base is eight. Thus a ten-question request requests twenty hits, though fewer may exist and fewer may fit the context budget. [ContextBuilderAgent.run()](../core/agents/context_builder.py#L16) sorts by source index again, builds `[chunk <index>] <content>` blocks, and stops near 12,000 characters. A partial final block is included only if more than 200 characters remain. It is a character budget, not a tokenizer-aware context-window calculation.
 
 The route checks username ownership before retrieval; each store queries only the document ID. The lower-level store/retriever trusts callers and does not authenticate an owner. Cross-user document records with equal text are separate, while SQL vectors can be shared by hash. API scoping reduces ordinary cross-resource leakage, but mutable ownership and stale auth can undermine that boundary. A low-level service called directly with another document ID has no independent user check.
 
@@ -945,7 +945,7 @@ The route checks username ownership before retrieval; each store queries only th
 
 The SQL embedding cache is keyed only by content hash, even though model/dimension columns are saved. Ready document reuse also lacks model/store/version checks. Changing backend can mix vector spaces or cause matrix-dimension errors. Chroma ingestion bypasses the SQL cache-writing path. Missing indexes can coexist with ready documents. Deleting a resource does not delete Chroma/FAISS content via the store interface.
 
-Missing candidate hits in saved-resource generation become an error. Model or query mismatch can yield irrelevant hits rather than no hits, since the store returns ranked candidates without a threshold. Context truncation can discard relevant later sections. Index initialization fallback can change the active store and make previously stored material unavailable. These are source-supported risks; their frequency and performance are **Not verified from the current codebase**. Evidence: [cache lookup](core/agents/embedding.py#L73), [ready reuse](core/services/ingestion_service.py#L33), [document deletion](core/repositories/document_repo.py#L107).
+Missing candidate hits in saved-resource generation become an error. Model or query mismatch can yield irrelevant hits rather than no hits, since the store returns ranked candidates without a threshold. Context truncation can discard relevant later sections. Index initialization fallback can change the active store and make previously stored material unavailable. These are source-supported risks; their frequency and performance are **Not verified from the current codebase**. Evidence: [cache lookup](../core/agents/embedding.py#L73), [ready reuse](../core/services/ingestion_service.py#L33), [document deletion](../core/repositories/document_repo.py#L107).
 
 # 10. MCQ Generation: Internal Implementation
 
@@ -959,13 +959,13 @@ Missing candidate hits in saved-resource generation become an error. Model or qu
 | `generate_mcqs_rag(text, count, level, owner='', title='', user_request='')` | Text plus optional owner/title/planner request | Ingest → retrieve → context validation → collector; selected full-text legacy fallback exits | Called from generator dispatch; not current upload HTTP behavior |
 | `generate_from_document(document_id, count=5, level='medium', topic=None)` | Existing resource ID | Always retrieve/context; legacy or RAG branch; no full-text fallback for missing index | Active practice API → MCQ list, then saved session |
 
-Public API validation occurs in `PracticeIn`; the lower-level Python functions do not all enforce the same count/difficulty ranges. Text-RAG planner counts are not clamped. Resource ownership is checked by the HTTP route before calling the service. Sources: [generator](models/mcq_generator.py#L54), [pipeline entries](core/services/mcq_pipeline.py#L105), [PracticeIn](fastapi_app/routers/api.py#L40).
+Public API validation occurs in `PracticeIn`; the lower-level Python functions do not all enforce the same count/difficulty ranges. Text-RAG planner counts are not clamped. Resource ownership is checked by the HTTP route before calling the service. Sources: [generator](../models/mcq_generator.py#L54), [pipeline entries](../core/services/mcq_pipeline.py#L105), [PracticeIn](../fastapi_app/routers/api.py#L40).
 
 “Single-shot” is the lighter legacy prompt/checking strategy; the code may make multiple generation calls to fill a shortfall. Conversely, saved-resource legacy mode still uses retrieved evidence. Explain the code branch rather than equating “legacy” with “no retrieval.”
 
 ## 10.2 Provider/model selection
 
-[get_llm()](core/llm/registry.py#L120) caches one provider process-wide. `build_llm()` reads provider/key/model/timeout/temperature. Auto selects a provider by credential prefix, then falls back among separate Anthropic, Gemini and OpenAI credentials when the unified key is empty. An unrecognized nonempty key defaults to xAI. `_model_for()` uses model-name hints and a hardcoded remapping set.
+[get_llm()](../core/llm/registry.py#L120) caches one provider process-wide. `build_llm()` reads provider/key/model/timeout/temperature. Auto selects a provider by credential prefix, then falls back among separate Anthropic, Gemini and OpenAI credentials when the unified key is empty. An unrecognized nonempty key defaults to xAI. `_model_for()` uses model-name hints and a hardcoded remapping set.
 
 | Provider | Auto default string in source | Transport |
 |---|---|---|
@@ -976,7 +976,7 @@ Public API validation occurs in `PracticeIn`; the lower-level Python functions d
 | Anthropic | `claude-sonnet-5` | REST `/v1/messages` |
 | Together | No entry in the auto default table; explicit branch exists | OpenAI-compatible `/chat/completions` |
 
-These are **configured source strings**, not verified active provider models or recommended current names. Actual environment override/model access is **Not verified from the current codebase**. Explicit provider selection bypasses auto model compatibility; the OpenAI-compatible constructor receives only `LLM_API_KEY`, ignoring a separate `OPENAI_API_KEY` even after auto chooses OpenAI from that key. Gemini/Anthropic use their separate key or unified key. The Groq default also occurs inside `_DEPRECATED_MODELS`, an internal inconsistency. Evidence: [defaults and construction](core/llm/registry.py#L27), [environment loading](config.py#L83).
+These are **configured source strings**, not verified active provider models or recommended current names. Actual environment override/model access is **Not verified from the current codebase**. Explicit provider selection bypasses auto model compatibility; the OpenAI-compatible constructor receives only `LLM_API_KEY`, ignoring a separate `OPENAI_API_KEY` even after auto chooses OpenAI from that key. Gemini/Anthropic use their separate key or unified key. The Groq default also occurs inside `_DEPRECATED_MODELS`, an internal inconsistency. Evidence: [defaults and construction](../core/llm/registry.py#L27), [environment loading](../config.py#L83).
 
 ## 10.3 Expected question output
 
@@ -997,11 +997,11 @@ The minimum application contract is:
 
 Prompts request a JSON object wrapping an array under `questions`. Some parsing paths also accept a bare list. RAG additionally requests `explanation`, `bloom`, and `source_hint`; structural QA carries those keys into persisted session JSON. The quiz-rendering handler later drops that optional metadata from its display payload.
 
-`answer_text` is option text rather than a letter, allowing option order to change without changing the answer. There are no stable question/option IDs. Exact text identity becomes a dependency for scoring and review reconstruction. Sources: [prompt structures](core/prompts/mcq.py#L12), [QA metadata](core/agents/quality_assurance.py#L65), [student rendering/scoring](fastapi_app/routers/student.py#L215).
+`answer_text` is option text rather than a letter, allowing option order to change without changing the answer. There are no stable question/option IDs. Exact text identity becomes a dependency for scoring and review reconstruction. Sources: [prompt structures](../core/prompts/mcq.py#L12), [QA metadata](../core/agents/quality_assurance.py#L65), [student rendering/scoring](../fastapi_app/routers/student.py#L215).
 
 ## 10.4 Legacy generation loop
 
-Verified simplified pseudocode derived from [generate_mcqs()](models/mcq_generator.py#L54):
+Verified simplified pseudocode derived from [generate_mcqs()](../models/mcq_generator.py#L54):
 
 ```python
 text = clean_text(text)
@@ -1045,9 +1045,9 @@ The `try` protects completion calls, not all subsequent extraction/validation. `
 
 ## 10.5 Full RAG collection
 
-[generate_from_document()](core/services/mcq_pipeline.py#L160) first retrieves/budgets source context. In RAG mode it optionally invokes [ContextValidationAgent](core/agents/context_validation.py#L24). A confident insufficient verdict raises; unavailable/uncertain checks generally permit generation.
+[generate_from_document()](../core/services/mcq_pipeline.py#L160) first retrieves/budgets source context. In RAG mode it optionally invokes [ContextValidationAgent](../core/agents/context_validation.py#L24). A confident insufficient verdict raises; unavailable/uncertain checks generally permit generation.
 
-[QuestionAgent.run()](core/agents/question.py#L26) uses `rag_prompt()`, the generation temperature (default 0.1), and the output token budget. A case-insensitive `status=INSUFFICIENT_CONTEXT` raises `InsufficientContextError`. Otherwise it extracts `questions` or accepts a list.
+[QuestionAgent.run()](../core/agents/question.py#L26) uses `rag_prompt()`, the generation temperature (default 0.1), and the output token budget. A case-insensitive `status=INSUFFICIENT_CONTEXT` raises `InsufficientContextError`. Otherwise it extracts `questions` or accepts a list.
 
 The collector then performs deterministic QA → optional fact check → difficulty check → exact normalized-text deduplication. It regenerates the **count shortfall**, using the same context and requested level. It does not pass the rejected reasons to `qa.regenerate_prompt()`, generate new context, or exclude already accepted questions in its next prompt.
 
@@ -1087,7 +1087,7 @@ This loop waits through whole model stages and does not enforce remaining time o
 | RAG budget/attempt limit reached with some items | Return short quiz |
 | Optional fact/difficulty checker unavailable | Accept candidate questions through that check |
 
-Source: [pipeline entries/fallback](core/services/mcq_pipeline.py#L105), [legacy loop](models/mcq_generator.py#L101). The route returns delivered count but MakeQuiz only uses the session key. `_legacy_fallback()` temporarily mutates global config; concurrent work can observe the temporary value. Its `finally` restores the previous flag for ordinary completion/exceptions but does not make it thread-safe.
+Source: [pipeline entries/fallback](../core/services/mcq_pipeline.py#L105), [legacy loop](../models/mcq_generator.py#L101). The route returns delivered count but MakeQuiz only uses the session key. `_legacy_fallback()` temporarily mutates global config; concurrent work can observe the temporary value. Its `finally` restores the previous flag for ordinary completion/exceptions but does not make it thread-safe.
 
 ## 10.7 Transport, parsing, and persistence
 
@@ -1095,7 +1095,7 @@ Source: [pipeline entries/fallback](core/services/mcq_pipeline.py#L105), [legacy
 
 Adapters translate timeout/network/auth/429/non-200 failures into error types/messages. OpenAI-compatible Groq handling can recover `error.failed_generation` when `code=json_validate_failed`, then let the base parser salvage complete questions. JSON parsing removes common fences, tries whole text, tries bracket spans, then scans closed brace spans while respecting string escaping. Salvage keeps dictionaries containing `options` and returns a `questions` wrapper; this recovery is MCQ-specific although located in the shared provider class.
 
-Successful active generation calls `create_session_key()` and commits MCQs JSON, teacher string, level, timer and UTC creation time. No question-quality report/model/token usage or source ID is stored by the endpoint. The eight-hex-character UUID prefix is a convenience join key, not a durable attempt identity or a permission system. Sources: [LLMProvider](core/llm/base.py#L48), [adapters](core/llm/openai_compatible.py#L32), [session insert](core/repositories/session_repo.py#L15).
+Successful active generation calls `create_session_key()` and commits MCQs JSON, teacher string, level, timer and UTC creation time. No question-quality report/model/token usage or source ID is stored by the endpoint. The eight-hex-character UUID prefix is a convenience join key, not a durable attempt identity or a permission system. Sources: [LLMProvider](../core/llm/base.py#L48), [adapters](../core/llm/openai_compatible.py#L32), [session insert](../core/repositories/session_repo.py#L15).
 
 ## 10.8 One illustrative ten-question request
 
@@ -1115,24 +1115,24 @@ A **prompt** is the model's instruction text plus task input. A **system message
 
 | File/function | Dynamic input and instructions | Expected output and what checks it |
 |---|---|---|
-| [mcq.legacy_prompt()](core/prompts/mcq.py#L26) | Text, shortfall count, difficulty/Bloom guidance; plausible distractors; JSON-only system instruction | `questions` of question/options/answer_text; weak legacy structure filter + text dedup |
-| [mcq.rag_prompt()](core/prompts/mcq.py#L68) | Retrieved context/count/level; source-only facts, one answer, wrong distractors, similar option styles, self-check | Questions with explanation/Bloom/source hint, or `INSUFFICIENT_CONTEXT`; QuestionAgent → QA/fact/difficulty |
-| [context_validation.validate_prompt()](core/prompts/context_validation.py#L12) | Context/count/level; distinguish substantive facts from headings/boilerplate | `{sufficient,confidence,reason}`; permissive bool/float handling and effective confidence gate |
-| [fact_verification.verify_prompt()](core/prompts/fact_verification.py#L12) | Indexed question text/options/answer/explanation plus context; six support/ambiguity checks | `{results:[{index,passed,confidence,issue}]}`; index map/confidence filter, fail-open omissions |
-| [difficulty.grade_prompt()](core/prompts/difficulty.py#L10) | Indexed **question text only** and target level; Bloom categories | `{grades:[{index,level,matches_requested}]}`; mismatched-index removal |
-| [explanation.legacy_prompt()](core/prompts/explanation.py#L25) | Wrong question, selected text, correct text; 2–3 teaching sentences/misconception/tip, second person | Ordered flat `explanations`; `_merge()` aligns wrong answered items with original detail list |
-| [explanation.grounded_prompt()](core/prompts/explanation.py#L35) | Same wrong items plus source context | Same strings; no separate factual verifier for result explanations |
-| [evaluation.topic_label_prompt()](core/prompts/evaluation.py#L10) | Indexed question texts; short 1–4-word topic labels | `topics` index/topic map; malformed entries skipped, defaults General |
-| [evaluation.recommendation_prompt()](core/prompts/evaluation.py#L23) | Topic wrong/total listing; up to four actionable tips | `recommendations`; converts/slices strings; helper not active dashboard source |
-| [planner.plan_prompt()](core/prompts/planner.py#L21) | Free request and supported intent list | intent/count/level/topic; checks recognized intent/difficulty, numeric count; no full intent dispatcher |
-| [revision.revision_notes_prompt()](core/prompts/revision.py#L9) | Topics/context; source-only concise notes | `notes` topic/summary/key_points; limited shape checking, errors → [] |
-| [answer_evaluation.evaluate_prompt()](core/prompts/answer_evaluation.py#L14) | Question/reference/answer/optional context; accept conceptual paraphrase; optional reevaluation nudge | correctness/score/confidence/concept_match/strengths/missing/incorrect/feedback/model answer; normalization/clamping |
-| [content.flashcards_prompt()](core/prompts/content.py#L10) | Context/count/topic | `flashcards` front/back; content service retrieves key, no dedicated validator |
-| [content.summary_prompt()](core/prompts/content.py#L22) | Context/topic | `summary` overview/key_points; same limited content validation |
-| [content.interview_prompt()](core/prompts/content.py#L33) | Context/count/topic | `questions` question/answer; component only |
-| [content.coding_prompt()](core/prompts/content.py#L44) | Context/count/topic | `problems` title/prompt/hint; no code execution/judge |
-| [content.explain_topic_prompt()](core/prompts/content.py#L55) | Context/topic | `explanation` topic/body/example; component only |
-| [qa.regenerate_prompt()](core/prompts/qa.py#L10) | RAG context/count/level plus prior rejection reason | Standard RAG request; not used by the current top-up loop |
+| [mcq.legacy_prompt()](../core/prompts/mcq.py#L26) | Text, shortfall count, difficulty/Bloom guidance; plausible distractors; JSON-only system instruction | `questions` of question/options/answer_text; weak legacy structure filter + text dedup |
+| [mcq.rag_prompt()](../core/prompts/mcq.py#L68) | Retrieved context/count/level; source-only facts, one answer, wrong distractors, similar option styles, self-check | Questions with explanation/Bloom/source hint, or `INSUFFICIENT_CONTEXT`; QuestionAgent → QA/fact/difficulty |
+| [context_validation.validate_prompt()](../core/prompts/context_validation.py#L12) | Context/count/level; distinguish substantive facts from headings/boilerplate | `{sufficient,confidence,reason}`; permissive bool/float handling and effective confidence gate |
+| [fact_verification.verify_prompt()](../core/prompts/fact_verification.py#L12) | Indexed question text/options/answer/explanation plus context; six support/ambiguity checks | `{results:[{index,passed,confidence,issue}]}`; index map/confidence filter, fail-open omissions |
+| [difficulty.grade_prompt()](../core/prompts/difficulty.py#L10) | Indexed **question text only** and target level; Bloom categories | `{grades:[{index,level,matches_requested}]}`; mismatched-index removal |
+| [explanation.legacy_prompt()](../core/prompts/explanation.py#L25) | Wrong question, selected text, correct text; 2–3 teaching sentences/misconception/tip, second person | Ordered flat `explanations`; `_merge()` aligns wrong answered items with original detail list |
+| [explanation.grounded_prompt()](../core/prompts/explanation.py#L35) | Same wrong items plus source context | Same strings; no separate factual verifier for result explanations |
+| [evaluation.topic_label_prompt()](../core/prompts/evaluation.py#L10) | Indexed question texts; short 1–4-word topic labels | `topics` index/topic map; malformed entries skipped, defaults General |
+| [evaluation.recommendation_prompt()](../core/prompts/evaluation.py#L23) | Topic wrong/total listing; up to four actionable tips | `recommendations`; converts/slices strings; helper not active dashboard source |
+| [planner.plan_prompt()](../core/prompts/planner.py#L21) | Free request and supported intent list | intent/count/level/topic; checks recognized intent/difficulty, numeric count; no full intent dispatcher |
+| [revision.revision_notes_prompt()](../core/prompts/revision.py#L9) | Topics/context; source-only concise notes | `notes` topic/summary/key_points; limited shape checking, errors → [] |
+| [answer_evaluation.evaluate_prompt()](../core/prompts/answer_evaluation.py#L14) | Question/reference/answer/optional context; accept conceptual paraphrase; optional reevaluation nudge | correctness/score/confidence/concept_match/strengths/missing/incorrect/feedback/model answer; normalization/clamping |
+| [content.flashcards_prompt()](../core/prompts/content.py#L10) | Context/count/topic | `flashcards` front/back; content service retrieves key, no dedicated validator |
+| [content.summary_prompt()](../core/prompts/content.py#L22) | Context/topic | `summary` overview/key_points; same limited content validation |
+| [content.interview_prompt()](../core/prompts/content.py#L33) | Context/count/topic | `questions` question/answer; component only |
+| [content.coding_prompt()](../core/prompts/content.py#L44) | Context/count/topic | `problems` title/prompt/hint; no code execution/judge |
+| [content.explain_topic_prompt()](../core/prompts/content.py#L55) | Context/topic | `explanation` topic/body/example; component only |
+| [qa.regenerate_prompt()](../core/prompts/qa.py#L10) | RAG context/count/level plus prior rejection reason | Standard RAG request; not used by the current top-up loop |
 
 Bloom's Taxonomy organizes cognitive tasks such as recall, applying knowledge, analyzing relationships and evaluating alternatives. The code maps easy to Remember/Understand, medium to Apply/Analyze, and hard to Analyze/Evaluate/Create. These are prompt instructions, not measured question difficulty or a guarantee that an MCQ tests “Create.”
 
@@ -1140,7 +1140,7 @@ The phrase “Use ONLY facts stated in the CONTEXT” is a central RAG instructi
 
 ## 11.3 Context packaging and weaknesses
 
-For generation, `[chunk n]` blocks are positional and character-limited. For optional grounded explanations, a query joins up to five wrong-question texts and uses at most 4,000 context characters. Revision uses 6,000; short-answer optional retrieval uses 4,000. Active submission supplies no document ID, so the explanation grounding branch does not run. Sources: [context builder](core/agents/context_builder.py#L16), [ExplanationAgent._maybe_context()](core/agents/explanation.py#L52), [RevisionAgent._context()](core/agents/revision.py#L35), [answer evaluation retrieval](core/agents/answer_evaluation.py#L73).
+For generation, `[chunk n]` blocks are positional and character-limited. For optional grounded explanations, a query joins up to five wrong-question texts and uses at most 4,000 context characters. Revision uses 6,000; short-answer optional retrieval uses 4,000. Active submission supplies no document ID, so the explanation grounding branch does not run. Sources: [context builder](../core/agents/context_builder.py#L16), [ExplanationAgent._maybe_context()](../core/agents/explanation.py#L52), [RevisionAgent._context()](../core/agents/revision.py#L35), [answer evaluation retrieval](../core/agents/answer_evaluation.py#L73).
 
 **Inferred consequences:** too little evidence produces unsupported/insufficient output; irrelevant candidates waste budget; positional truncation can omit useful later facts; overlapping chunks can repeat facts; sampled/flattened source loses context; generic queries under lexical embeddings can underperform; ambiguous task language can confuse medium/hard checks. The source hint is a model-generated short quote, not a verified citation ID or substring match. Current QA preserves it without checking it occurs in the context.
 
@@ -1167,7 +1167,7 @@ Malformed output can include prose/fences, a wrong wrapper key, string booleans,
 | DifficultyAgent | LLM level match by question text | Some obviously off-level prompts | Empirical student difficulty; option-based reasoning load |
 | Quiz score | Submitted text equals stored `answer_text` | Correct implementation-level selection | That stored answer is factually correct |
 
-Sources: [request models](fastapi_app/routers/api.py#L29), [JSON parser](core/llm/base.py#L98), [legacy filter](models/mcq_generator.py#L24), [QA](core/agents/quality_assurance.py#L35), [fact checker](core/agents/fact_verification.py#L27).
+Sources: [request models](../fastapi_app/routers/api.py#L29), [JSON parser](../core/llm/base.py#L98), [legacy filter](../models/mcq_generator.py#L24), [QA](../core/agents/quality_assurance.py#L35), [fact checker](../core/agents/fact_verification.py#L27).
 
 RAG QA can repair an answer “B” to the second option's text. It compares duplicate texts case-sensitively, and uses `.get()`/`.strip()` without comprehensive top-level/type checks, so non-dictionary entries or numeric text can raise instead of being rejected cleanly. Edited-session validation is separate and permits duplicate option texts; it does not reuse RAG QA.
 
@@ -1175,13 +1175,13 @@ RAG QA can repair an answer “B” to the second option's text. It compares dup
 
 **Verified:** empty context is insufficient for ContextValidationAgent. An API error returns sufficient=true with confidence zero. A model's insufficient verdict blocks only when confidence meets the configured threshold (default 0.6). Fact verification with no context or a model-call error accepts all; missing verdict indices retain the question; missing/invalid confidence defaults to 1.0 for a returned verdict. An explicit failed or low-confidence pass is rejected. Difficulty call failure accepts all; omitted grades are retained.
 
-Boolean coercion uses Python truthiness in several agents. A nonempty string such as `"false"` evaluates true, so malformed model boolean fields can undermine a gate. The pipeline does not persist/checker status or expose “unverified due to checker failure” to the learner. Evidence: [context gate](core/agents/context_validation.py#L40), [fact verdict map](core/agents/fact_verification.py#L53), [difficulty results](core/agents/difficulty.py#L37).
+Boolean coercion uses Python truthiness in several agents. A nonempty string such as `"false"` evaluates true, so malformed model boolean fields can undermine a gate. The pipeline does not persist/checker status or expose “unverified due to checker failure” to the learner. Evidence: [context gate](../core/agents/context_validation.py#L40), [fact verdict map](../core/agents/fact_verification.py#L53), [difficulty results](../core/agents/difficulty.py#L37).
 
 **Inferred trade-off:** fail-open behavior keeps practice available during provider problems but weakens a claimed verification guarantee. A stricter assessment mode should distinguish unavailable verification from a pass and use typed verdicts. That is a recommendation, not an implemented mode.
 
 ## 12.3 Retry layers and logs
 
-Provider retry in [LLMProvider.complete()](core/llm/base.py#L48) catches **only RateLimitError**, normally HTTP 429. Defaults allow the initial call plus three retries. Delay uses numeric Retry-After if parseable, otherwise `1.5 * 2^attempt`; each wait is capped at eight seconds. The default fallback waits are 1.5, 3 and 6 seconds. Numeric delta Retry-After is supported; HTTP-date format is not. Capping Retry-After can retry sooner than the provider requested. There is no jitter/circuit breaker/shared quota controller.
+Provider retry in [LLMProvider.complete()](../core/llm/base.py#L48) catches **only RateLimitError**, normally HTTP 429. Defaults allow the initial call plus three retries. Delay uses numeric Retry-After if parseable, otherwise `1.5 * 2^attempt`; each wait is capped at eight seconds. The default fallback waits are 1.5, 3 and 6 seconds. Numeric delta Retry-After is supported; HTTP-date format is not. Capping Retry-After can retry sooner than the provider requested. There is no jitter/circuit breaker/shared quota controller.
 
 Generation top-ups are another retry layer and may invoke provider retries for each call. Network errors/invalid JSON are not automatically retried by the generic provider loop. Optional agents catch many errors and return fallbacks; generation can keep partial results in specific branches. A large request can therefore make more calls than its requested number implies.
 
@@ -1189,7 +1189,7 @@ Logs are `print` statements: `[startup]`, `[llm]`, `[agent:<name>]`, `[mcq_pipel
 
 ## 12.4 Short-answer component boundary
 
-[AnswerEvaluationAgent.run()](core/agents/answer_evaluation.py#L32) is tested but unused by current MCQ submission. Blank answers return a zero/false response. Optional context is retrieved if a document ID is supplied. The component makes a conceptual grading call; confidence below 0.7 triggers one additional call with a reevaluation nudge. Scores/confidence are clamped, list-like fields normalized, feedback/model answer converted to strings. Model failure returns a structured zero score with unavailable feedback.
+[AnswerEvaluationAgent.run()](../core/agents/answer_evaluation.py#L32) is tested but unused by current MCQ submission. Blank answers return a zero/false response. Optional context is retrieved if a document ID is supplied. The component makes a conceptual grading call; confidence below 0.7 triggers one additional call with a reevaluation nudge. Scores/confidence are clamped, list-like fields normalized, feedback/model answer converted to strings. Model failure returns a structured zero score with unavailable feedback.
 
 An unavailable evaluation and a genuinely wrong answer currently share `is_correct=false, score=0`; a future product needs a separate evaluation-status field. No current UI accepts open-ended answers, and the existing exact-text MCQ scorer is not using this agent.
 
@@ -1197,7 +1197,7 @@ An unavailable evaluation and a genuinely wrong answer currently share `is_corre
 
 ## 13.1 Actual relational schema
 
-**Verified:** the complete schema comes from [database/schema.sql](database/schema.sql), [fastapi_app.database](fastapi_app/database.py#L23), and [core.models.migrations](core/models/migrations.py#L23). There is no ORM model layer. “Model” files here are SQL helpers/adapters or generation utilities, not SQLAlchemy entities.
+**Verified:** the complete schema comes from [database/schema.sql](../database/schema.sql), [fastapi_app.database](../fastapi_app/database.py#L23), and [core.models.migrations](../core/models/migrations.py#L23). There is no ORM model layer. “Model” files here are SQL helpers/adapters or generation utilities, not SQLAlchemy entities.
 
 | Table | Fields that matter | Constraints/relationships and actual use |
 |---|---|---|
@@ -1215,7 +1215,7 @@ An unavailable evaluation and a genuinely wrong answer currently share `is_corre
 
 ## 13.2 Relationships: declared and logical
 
-Solid relations below denote foreign keys declared in schema. Dotted relations are joins/ownership conventions implemented in code. [get_db()](core/models/db.py#L17) does not enable `PRAGMA foreign_keys=ON`, so declarations alone do not establish enforcement on these connections.
+Solid relations below denote foreign keys declared in schema. Dotted relations are joins/ownership conventions implemented in code. [get_db()](../core/models/db.py#L17) does not enable `PRAGMA foreign_keys=ON`, so declarations alone do not establish enforcement on these connections.
 
 ```mermaid
 erDiagram
@@ -1240,13 +1240,13 @@ Stored: hashed account credentials/identity metadata; document metadata/status; 
 
 Computed on request: dashboard aggregates, monthly/daily buckets, badge booleans/milestones, topic severity/reviewable count, estimated reading time and display level. Explanation strings are generated for the result response and not included in stored detail JSON. RAG explanation/source_hint may be inside the stored MCQ JSON but are not reused by the normal result explanation path. Confidence choices and quiz in-progress answers remain browser component state only.
 
-Sources: [session insert](core/repositories/session_repo.py#L15), [result insert](fastapi_app/routers/student.py#L278), [dashboard aggregation](fastapi_app/services/dashboard.py#L84), [Quiz state](frontend/src/screens/Quiz.tsx#L28), [export payload](fastapi_app/routers/api.py#L118).
+Sources: [session insert](../core/repositories/session_repo.py#L15), [result insert](../fastapi_app/routers/student.py#L278), [dashboard aggregation](../fastapi_app/services/dashboard.py#L84), [Quiz state](../frontend/src/screens/Quiz.tsx#L28), [export payload](../fastapi_app/routers/api.py#L118).
 
 ## 13.4 Ownership and isolation
 
 Library queries use `owner=user.username`. Generation verifies the requested document owner. Session-owner routes compare `teacher` to username. Result/pref/weak queries use authenticated numeric ID. Joining a quiz requires authentication and knowledge of a session key, not an ownership relationship. Stores restrict search by document ID, not authenticated user.
 
-**Verified structural defect:** profile renaming changes the user row/cookie only; documents/sessions keep the old name. Registering that now-free name can grant ownership of those records to a new account. Numeric-ID learning history remains with the first account. Cookie auth also trusts a signed user ID without checking that the row still exists. Source evidence: [profile update](fastapi_app/routers/auth.py#L156), [auth guards](fastapi_app/deps.py#L42), [owner check](fastapi_app/routers/teacher.py#L44). This is a data-model issue, not a vector-search fix.
+**Verified structural defect:** profile renaming changes the user row/cookie only; documents/sessions keep the old name. Registering that now-free name can grant ownership of those records to a new account. Numeric-ID learning history remains with the first account. Cookie auth also trusts a signed user ID without checking that the row still exists. Source evidence: [profile update](../fastapi_app/routers/auth.py#L156), [auth guards](../fastapi_app/deps.py#L42), [owner check](../fastapi_app/routers/teacher.py#L44). This is a data-model issue, not a vector-search fix.
 
 The document hash uniqueness is owner-scoped, which avoids global row sharing. Embeddings can be shared by text hash, but cache reuse is not an authorization mechanism. `find_by_hash(owner=None)` allows a global lookup; ordinary ingestion explicitly supplies owner.
 
@@ -1256,7 +1256,7 @@ Each repository opens/closes a separate connection. Document row creation, statu
 
 Schema creation is repeatable but not version-tracked. Duplicate-column OperationalErrors are broadly swallowed; other migration exceptions are logged at boot. Owner-scoped dedup migration inspects stored DDL and rebuilds documents in a transaction, temporarily disabling FK enforcement if it was on. When duplicate owner/hash pairs exist it keeps the minimum document ID but does not explicitly reassign chunks from removed duplicates, a preservation risk for that exceptional case. The migration docstring says “never drop” while the special rebuild does drop/rename the table.
 
-Delete resource removes SQL chunks/doc row and leaves cache/external indexes. Delete session removes sessions/results and leaves learning history/weak statistics. Delete account removes selected records and cookie but leaves documents/chunks/chat/index artifacts. Deleting owner-created sessions can also delete other participants' results. There is no formal retention/export/erasure transaction across stores. Evidence: [document delete](core/repositories/document_repo.py#L107), [session delete](fastapi_app/routers/teacher.py#L140), [account delete](fastapi_app/routers/auth.py#L174), [migration rebuild](core/models/migrations.py#L147).
+Delete resource removes SQL chunks/doc row and leaves cache/external indexes. Delete session removes sessions/results and leaves learning history/weak statistics. Delete account removes selected records and cookie but leaves documents/chunks/chat/index artifacts. Deleting owner-created sessions can also delete other participants' results. There is no formal retention/export/erasure transaction across stores. Evidence: [document delete](../core/repositories/document_repo.py#L107), [session delete](../fastapi_app/routers/teacher.py#L140), [account delete](../fastapi_app/routers/auth.py#L174), [migration rebuild](../core/models/migrations.py#L147).
 
 ## 13.6 Local versus hosted persistence
 
@@ -1276,20 +1276,20 @@ API `HTTPException`s generally return `{error:<detail>}` through the custom hand
 
 ## 14.2 Complete JSON API reference
 
-All mutations below also require CSRF. Bodies are JSON except where explicitly marked. The field defaults/bounds are from [request models](fastapi_app/routers/api.py#L29).
+All mutations below also require CSRF. Bodies are JSON except where explicitly marked. The field defaults/bounds are from [request models](../fastapi_app/routers/api.py#L29).
 
 | Method / actual route | Purpose and request | Response | Auth / errors | Source handler |
 |---|---|---|---|---|
-| GET `/api/prefs` | Load prefs; no body | `{prefs:null or {goal,style,daily_minutes,xp,streak,onboarded}, needs_onboarding}` | API user; 401 | [get_prefs()](fastapi_app/routers/api.py#L54) |
-| POST `/api/prefs` | goal max64, style max32, daily_minutes default30, 5–600 | `{ok:true}` | API user; 401/422/CSRF400 | [save_prefs()](fastapi_app/routers/api.py#L60) |
-| GET `/api/dashboard` | Refresh dashboard aggregates | username/counts/averages/time/XP/streak/level/goal/minutes/chart/history/recent/weak/recommendations/prefs/onboarding fields | API user; 401 | [dashboard_data()](fastapi_app/routers/api.py#L84) |
-| GET `/api/export` | Download own selected data | `{account,prefs,results,weak_topics,exported_at}` with attachment header | API user; 401 | [export_data()](fastapi_app/routers/api.py#L98) |
-| GET `/api/knowledge` | List own resources | `{items:[{id,title,subject,created_at,indexed,status,topic_count,est_minutes}]}` | API user; 401 | [knowledge_list()](fastapi_app/routers/api.py#L135) |
-| DELETE `/api/knowledge/{doc_id}` | Delete owned integer resource ID | `{ok:true}` | API user; 401/404/invalid-ID422/CSRF400 | [knowledge_delete()](fastapi_app/routers/api.py#L156) |
-| GET `/api/weak-topics` | Up to twenty worst topics | `{items:[{topic,wrong,total,pct,severity,reviewable}]}` | API user; 401; some internal failures become []/zero | [weak_topics_data()](fastapi_app/routers/api.py#L169) |
-| POST `/api/weak-topics/review` | `{topic:<nonempty string>}` | `{ok:true,session_key,count}` | API user; 401/422/404 no playable questions/CSRF400 | [weak_topics_review()](fastapi_app/routers/api.py#L194) |
-| GET `/api/achievements` | Compute badges/milestones | `{xp,level,streak,quizzes,badges,milestones,earned_count,total_badges}` | API user; 401 | [achievements_data()](fastapi_app/routers/api.py#L224) |
-| POST `/api/practice/generate` | document_id required; count default5, 1–30; difficulty defaultmedium, enum; optional topic; timer default600, 30–10800 seconds | `{ok:true,session_key,count}` | API user; 401/422/404 foreign or missing doc/502 generation/CSRF400 | [practice_generate()](fastapi_app/routers/api.py#L264) |
+| GET `/api/prefs` | Load prefs; no body | `{prefs:null or {goal,style,daily_minutes,xp,streak,onboarded}, needs_onboarding}` | API user; 401 | [get_prefs()](../fastapi_app/routers/api.py#L54) |
+| POST `/api/prefs` | goal max64, style max32, daily_minutes default30, 5–600 | `{ok:true}` | API user; 401/422/CSRF400 | [save_prefs()](../fastapi_app/routers/api.py#L60) |
+| GET `/api/dashboard` | Refresh dashboard aggregates | username/counts/averages/time/XP/streak/level/goal/minutes/chart/history/recent/weak/recommendations/prefs/onboarding fields | API user; 401 | [dashboard_data()](../fastapi_app/routers/api.py#L84) |
+| GET `/api/export` | Download own selected data | `{account,prefs,results,weak_topics,exported_at}` with attachment header | API user; 401 | [export_data()](../fastapi_app/routers/api.py#L98) |
+| GET `/api/knowledge` | List own resources | `{items:[{id,title,subject,created_at,indexed,status,topic_count,est_minutes}]}` | API user; 401 | [knowledge_list()](../fastapi_app/routers/api.py#L135) |
+| DELETE `/api/knowledge/{doc_id}` | Delete owned integer resource ID | `{ok:true}` | API user; 401/404/invalid-ID422/CSRF400 | [knowledge_delete()](../fastapi_app/routers/api.py#L156) |
+| GET `/api/weak-topics` | Up to twenty worst topics | `{items:[{topic,wrong,total,pct,severity,reviewable}]}` | API user; 401; some internal failures become []/zero | [weak_topics_data()](../fastapi_app/routers/api.py#L169) |
+| POST `/api/weak-topics/review` | `{topic:<nonempty string>}` | `{ok:true,session_key,count}` | API user; 401/422/404 no playable questions/CSRF400 | [weak_topics_review()](../fastapi_app/routers/api.py#L194) |
+| GET `/api/achievements` | Compute badges/milestones | `{xp,level,streak,quizzes,badges,milestones,earned_count,total_badges}` | API user; 401 | [achievements_data()](../fastapi_app/routers/api.py#L224) |
+| POST `/api/practice/generate` | document_id required; count default5, 1–30; difficulty defaultmedium, enum; optional topic; timer default600, 30–10800 seconds | `{ok:true,session_key,count}` | API user; 401/422/404 foreign or missing doc/502 generation/CSRF400 | [practice_generate()](../fastapi_app/routers/api.py#L264) |
 
 No active endpoint generates flashcards/summaries/revision notes, grades free text, chats, returns raw source passages, polls a job, saves in-progress answers, or fetches a persisted learner-result detail page. The presence of their service components does not imply an API.
 
@@ -1297,32 +1297,32 @@ No active endpoint generates flashcards/summaries/revision notes, grades free te
 
 | Method / actual route | Request and purpose | Response / notable failure | Auth | Source |
 |---|---|---|---|---|
-| GET `/` | Login page or logged-in home redirect | Login HTML; 302 `/dashboard` if cookie ID | Public | [home()](fastapi_app/routers/auth.py#L33) |
-| GET `/signup` | Signup page | HTML | Public | [signup_form()](fastapi_app/routers/auth.py#L40) |
-| POST `/signup` | Form username/password | 302 `/`; HTML200 missing/short/duplicate | Public + CSRF | [signup()](fastapi_app/routers/auth.py#L45) |
-| POST `/login` | Form username/password | 302 dashboard; HTML200 invalid/locked | Public + CSRF | [login()](fastapi_app/routers/auth.py#L77) |
-| GET `/logout` | Clear session | 302 `/` | Public | [logout()](fastapi_app/routers/auth.py#L119) |
-| GET `/profile` | Settings with account row | Settings HTML; anonymous302 | User | [profile_form()](fastapi_app/routers/auth.py#L125) |
-| POST `/profile` | Form username/email/optional password | 302 `/`; HTML200 validation error | User + CSRF | [profile()](fastapi_app/routers/auth.py#L131) |
-| POST `/delete_account` | No application body beyond token | 302 `/` after selected deletion | User + CSRF | [delete_account()](fastapi_app/routers/auth.py#L174) |
-| GET `/auth/google` | Begin OAuth | 302 Google; login HTML when disabled | Public | [google_login()](fastapi_app/routers/google_auth.py#L63) |
-| GET `/auth/google/callback` | Query code/state/error | 302 dashboard/home; login HTML on failure | Public; checks state | [google_callback()](fastapi_app/routers/google_auth.py#L88) |
-| GET `/student` | Old alias | 302 dashboard; destination requires login | Public redirect | [student_alias()](fastapi_app/routers/student.py#L47) |
-| GET `/dashboard` | Build learner dashboard | HTML with full bootstrap | User | [dashboard()](fastapi_app/routers/student.py#L53) |
-| GET `/progress` | Aggregate progress | HTML with heatmap/monthly/prefs/stats | User | [progress()](fastapi_app/routers/student.py#L61) |
-| GET `/knowledge` | Quiz setup hub | HTML; frontend reads query doc/count/topic | User | [knowledge()](fastapi_app/routers/student.py#L132) |
-| GET `/journey` | Resource library | HTML; frontend fetches resources | User | [journey()](fastapi_app/routers/student.py#L138) |
-| GET `/add_resource` | Store-only upload screen | HTML | User | [add_resource()](fastapi_app/routers/student.py#L144) |
-| GET `/practice` | Quiz setup; optional doc string query | HTML with document_id | User | [practice()](fastapi_app/routers/student.py#L150) |
-| GET `/weak-topics` | Reviewable topics screen | HTML; frontend API fetch | User | [weak_topics_page()](fastapi_app/routers/student.py#L156) |
-| GET `/achievements` | Badge screen | HTML; frontend API fetch | User | [achievements()](fastapi_app/routers/student.py#L162) |
-| GET `/upload` | New-material upload screen | HTML | User | [upload_form()](fastapi_app/routers/documents.py#L154) |
-| POST `/upload` | Multipart file and/or extracted_text; optional title | 302 knowledge/doc; HTML200 extraction/ingestion error | User + CSRF | [upload()](fastapi_app/routers/documents.py#L159) |
-| POST `/ingest_resource` | Multipart resource input/title | 302 journey after starting thread; HTML200 extraction/start error | User + CSRF | [ingest_resource()](fastapi_app/routers/documents.py#L116) |
-| GET `/student_login` | Historical quiz-join page | Dashboard shell with fallback bootstrap | User | [student_login_form()](fastapi_app/routers/student.py#L170) |
-| POST `/student_login` | Form session_key | 302 quiz; dashboard HTML200 invalid/prior attempt | User + CSRF | [student_login()](fastapi_app/routers/student.py#L175) |
-| GET `/mcq_test` | Load joined cookie key | Quiz HTML; 302 join if no key/session; HTML200 prior attempt | User | [mcq_test()](fastapi_app/routers/student.py#L204) |
-| POST `/submit` | Form student_name/time_spent/q-0... | Result HTML; redirects missing key; prior-attempt HTML | User + CSRF | [submit()](fastapi_app/routers/student.py#L236) |
+| GET `/` | Login page or logged-in home redirect | Login HTML; 302 `/dashboard` if cookie ID | Public | [home()](../fastapi_app/routers/auth.py#L33) |
+| GET `/signup` | Signup page | HTML | Public | [signup_form()](../fastapi_app/routers/auth.py#L40) |
+| POST `/signup` | Form username/password | 302 `/`; HTML200 missing/short/duplicate | Public + CSRF | [signup()](../fastapi_app/routers/auth.py#L45) |
+| POST `/login` | Form username/password | 302 dashboard; HTML200 invalid/locked | Public + CSRF | [login()](../fastapi_app/routers/auth.py#L77) |
+| GET `/logout` | Clear session | 302 `/` | Public | [logout()](../fastapi_app/routers/auth.py#L119) |
+| GET `/profile` | Settings with account row | Settings HTML; anonymous302 | User | [profile_form()](../fastapi_app/routers/auth.py#L125) |
+| POST `/profile` | Form username/email/optional password | 302 `/`; HTML200 validation error | User + CSRF | [profile()](../fastapi_app/routers/auth.py#L131) |
+| POST `/delete_account` | No application body beyond token | 302 `/` after selected deletion | User + CSRF | [delete_account()](../fastapi_app/routers/auth.py#L174) |
+| GET `/auth/google` | Begin OAuth | 302 Google; login HTML when disabled | Public | [google_login()](../fastapi_app/routers/google_auth.py#L63) |
+| GET `/auth/google/callback` | Query code/state/error | 302 dashboard/home; login HTML on failure | Public; checks state | [google_callback()](../fastapi_app/routers/google_auth.py#L88) |
+| GET `/student` | Old alias | 302 dashboard; destination requires login | Public redirect | [student_alias()](../fastapi_app/routers/student.py#L47) |
+| GET `/dashboard` | Build learner dashboard | HTML with full bootstrap | User | [dashboard()](../fastapi_app/routers/student.py#L53) |
+| GET `/progress` | Aggregate progress | HTML with heatmap/monthly/prefs/stats | User | [progress()](../fastapi_app/routers/student.py#L61) |
+| GET `/knowledge` | Quiz setup hub | HTML; frontend reads query doc/count/topic | User | [knowledge()](../fastapi_app/routers/student.py#L132) |
+| GET `/journey` | Resource library | HTML; frontend fetches resources | User | [journey()](../fastapi_app/routers/student.py#L138) |
+| GET `/add_resource` | Store-only upload screen | HTML | User | [add_resource()](../fastapi_app/routers/student.py#L144) |
+| GET `/practice` | Quiz setup; optional doc string query | HTML with document_id | User | [practice()](../fastapi_app/routers/student.py#L150) |
+| GET `/weak-topics` | Reviewable topics screen | HTML; frontend API fetch | User | [weak_topics_page()](../fastapi_app/routers/student.py#L156) |
+| GET `/achievements` | Badge screen | HTML; frontend API fetch | User | [achievements()](../fastapi_app/routers/student.py#L162) |
+| GET `/upload` | New-material upload screen | HTML | User | [upload_form()](../fastapi_app/routers/documents.py#L154) |
+| POST `/upload` | Multipart file and/or extracted_text; optional title | 302 knowledge/doc; HTML200 extraction/ingestion error | User + CSRF | [upload()](../fastapi_app/routers/documents.py#L159) |
+| POST `/ingest_resource` | Multipart resource input/title | 302 journey after starting thread; HTML200 extraction/start error | User + CSRF | [ingest_resource()](../fastapi_app/routers/documents.py#L116) |
+| GET `/student_login` | Historical quiz-join page | Dashboard shell with fallback bootstrap | User | [student_login_form()](../fastapi_app/routers/student.py#L170) |
+| POST `/student_login` | Form session_key | 302 quiz; dashboard HTML200 invalid/prior attempt | User + CSRF | [student_login()](../fastapi_app/routers/student.py#L175) |
+| GET `/mcq_test` | Load joined cookie key | Quiz HTML; 302 join if no key/session; HTML200 prior attempt | User | [mcq_test()](../fastapi_app/routers/student.py#L204) |
+| POST `/submit` | Form student_name/time_spent/q-0... | Result HTML; redirects missing key; prior-attempt HTML | User + CSRF | [submit()](../fastapi_app/routers/student.py#L236) |
 
 `/knowledge` and `/practice` are HTML screens, while `/api/knowledge` is a resource-list API. They should not be confused when debugging. `document_id` in the practice HTML bootstrap can be a string because the route accepts `doc: str|None`; the TypeScript interface declares a number but provides no runtime conversion for that bootstrap branch. Pydantic may coerce the submitted JSON value, but static types alone do not align this contract.
 
@@ -1330,27 +1330,27 @@ No active endpoint generates flashcards/summaries/revision notes, grades free te
 
 | Method / route | Inputs and purpose | Response / errors | Auth | Source |
 |---|---|---|---|---|
-| GET `/teacher` | Old dashboard alias | 302 dashboard | Public redirect | [teacher_dashboard()](fastapi_app/routers/teacher.py#L65) |
-| GET `/session_report/{session_key}` | Alphanumeric key; result rows sorted by score | Report HTML; missing404, foreign403, invalid422 | Owner | [session_report()](fastapi_app/routers/teacher.py#L74) |
-| GET `/download_report/{session_key}` | Alphanumeric key; generate questions/options PDF | PDF attachment; same owner errors, filesystem errors may500 | Owner | [download_report()](fastapi_app/routers/teacher.py#L89) |
-| GET `/export_results/{session_key}` | Alphanumeric key; result CSV | Streamed CSV; owner errors | Owner | [export_results()](fastapi_app/routers/teacher.py#L257) |
-| GET `/edit_session/{session_key}` | Alphanumeric key; editable set | HTML; owner errors | Owner | [edit_session_form()](fastapi_app/routers/teacher.py#L187) |
-| POST `/edit_session/{session_key}` | Form timer/difficulty/q_i_text/q_i_opt_A..D/q_i_answer | 302 dashboard; HTML200 invalid text/answer/level/timer | Owner + CSRF | [edit_session()](fastapi_app/routers/teacher.py#L198) |
-| POST `/clone_session/{session_key}` | Key; clone set/settings | 302 dashboard; flash new key | Owner + CSRF | [clone_session()](fastapi_app/routers/teacher.py#L171) |
-| POST `/archive_session/{session_key}` | Key; archived=1 | 302 dashboard; owner errors | Owner + CSRF | [archive_session()](fastapi_app/routers/teacher.py#L151) |
-| POST `/unarchive_session/{session_key}` | Key; archived=0 | 302 dashboard; owner errors | Owner + CSRF | [unarchive_session()](fastapi_app/routers/teacher.py#L161) |
-| POST `/delete_session/{session_key}` | Key; delete set/results | 302 dashboard; owner errors | Owner + CSRF | [delete_session()](fastapi_app/routers/teacher.py#L140) |
-| GET `/docs` | Framework interactive schema UI | Swagger HTML | No app auth guard | [FastAPI setup](fastapi_app/main.py#L65) |
-| GET `/openapi.json` | Framework schema | JSON OpenAPI schema; auto-generated | No app auth guard | [FastAPI setup](fastapi_app/main.py#L65) |
-| GET/HEAD `/static/{path}` | Mounted static file | File response or404 | Public | [static mount](fastapi_app/main.py#L94) |
+| GET `/teacher` | Old dashboard alias | 302 dashboard | Public redirect | [teacher_dashboard()](../fastapi_app/routers/teacher.py#L65) |
+| GET `/session_report/{session_key}` | Alphanumeric key; result rows sorted by score | Report HTML; missing404, foreign403, invalid422 | Owner | [session_report()](../fastapi_app/routers/teacher.py#L74) |
+| GET `/download_report/{session_key}` | Alphanumeric key; generate questions/options PDF | PDF attachment; same owner errors, filesystem errors may500 | Owner | [download_report()](../fastapi_app/routers/teacher.py#L89) |
+| GET `/export_results/{session_key}` | Alphanumeric key; result CSV | Streamed CSV; owner errors | Owner | [export_results()](../fastapi_app/routers/teacher.py#L257) |
+| GET `/edit_session/{session_key}` | Alphanumeric key; editable set | HTML; owner errors | Owner | [edit_session_form()](../fastapi_app/routers/teacher.py#L187) |
+| POST `/edit_session/{session_key}` | Form timer/difficulty/q_i_text/q_i_opt_A..D/q_i_answer | 302 dashboard; HTML200 invalid text/answer/level/timer | Owner + CSRF | [edit_session()](../fastapi_app/routers/teacher.py#L198) |
+| POST `/clone_session/{session_key}` | Key; clone set/settings | 302 dashboard; flash new key | Owner + CSRF | [clone_session()](../fastapi_app/routers/teacher.py#L171) |
+| POST `/archive_session/{session_key}` | Key; archived=1 | 302 dashboard; owner errors | Owner + CSRF | [archive_session()](../fastapi_app/routers/teacher.py#L151) |
+| POST `/unarchive_session/{session_key}` | Key; archived=0 | 302 dashboard; owner errors | Owner + CSRF | [unarchive_session()](../fastapi_app/routers/teacher.py#L161) |
+| POST `/delete_session/{session_key}` | Key; delete set/results | 302 dashboard; owner errors | Owner + CSRF | [delete_session()](../fastapi_app/routers/teacher.py#L140) |
+| GET `/docs` | Framework interactive schema UI | Swagger HTML | No app auth guard | [FastAPI setup](../fastapi_app/main.py#L65) |
+| GET `/openapi.json` | Framework schema | JSON OpenAPI schema; auto-generated | No app auth guard | [FastAPI setup](../fastapi_app/main.py#L65) |
+| GET/HEAD `/static/{path}` | Mounted static file | File response or404 | Public | [static mount](../fastapi_app/main.py#L94) |
 
 FastAPI schema lists routes generated from the registered app; comments claiming it exposes only session-guarded JSON endpoints should not be relied on. `/redoc` is disabled. No explicit `/health` or readiness endpoint exists.
 
 ## 14.5 Frontend response handling
 
-[apiGet()](frontend/src/bootstrap.ts#L40) sends Accept JSON, throws a generic status message on failure, and returns parsed JSON. [apiSend()](frontend/src/bootstrap.ts#L46) sends JSON and CSRF, tries to extract `error` on non-OK responses, and throws. It does not handle 422 `detail` as a detailed error or automatically redirect on 401. TypeScript generics are compile-time assertions; `res.json()` is not validated at runtime.
+[apiGet()](../frontend/src/bootstrap.ts#L40) sends Accept JSON, throws a generic status message on failure, and returns parsed JSON. [apiSend()](../frontend/src/bootstrap.ts#L46) sends JSON and CSRF, tries to extract `error` on non-OK responses, and throws. It does not handle 422 `detail` as a detailed error or automatically redirect on 401. TypeScript generics are compile-time assertions; `res.json()` is not validated at runtime.
 
-MakeQuiz and WeakTopics catch mutation errors and display them. Journey catches initial fetch errors as an empty library; WeakTopics does the same for an empty topic list. Achievements sets data null after failure and keeps rendering its loading branch. Onboarding/Settings use separate raw fetch code, with incomplete HTTP-error checking. Dashboard recognizes bootstrap by numeric `total_quizzes`; the fallback template provides zero even on join errors, so it can appear preloaded rather than refresh. `flash-error` is hidden in that template and not consumed by Dashboard, meaning some server quiz errors can be invisible in the current UI. Sources: [Dashboard](frontend/src/screens/Dashboard.tsx#L38), [fallback template](templates/student_dashboard.html#L27), [Achievements](frontend/src/screens/Achievements.tsx#L27).
+MakeQuiz and WeakTopics catch mutation errors and display them. Journey catches initial fetch errors as an empty library; WeakTopics does the same for an empty topic list. Achievements sets data null after failure and keeps rendering its loading branch. Onboarding/Settings use separate raw fetch code, with incomplete HTTP-error checking. Dashboard recognizes bootstrap by numeric `total_quizzes`; the fallback template provides zero even on join errors, so it can appear preloaded rather than refresh. `flash-error` is hidden in that template and not consumed by Dashboard, meaning some server quiz errors can be invisible in the current UI. Sources: [Dashboard](../frontend/src/screens/Dashboard.tsx#L38), [fallback template](https://github.com/dinu-vishruth/mcq/blob/a906dfbe7fcf66cbff92ee8d56892948f0880c8d/templates/student_dashboard.html#L27), [Achievements](../frontend/src/screens/Achievements.tsx#L27).
 
 # 15. Security, Privacy, and Failure Handling
 
@@ -1358,7 +1358,7 @@ MakeQuiz and WeakTopics catch mutation errors and display them. Journey catches 
 
 **Verified:** passwords are hashed; login failures have a temporary IP-or-username lockout; SQL values generally use bound placeholders; sessions are signed and have SameSite lax; cookie lifetime is one day; Vercel cookies are secure-only; mutation tokens use random secrets and constant-time comparison; Google OAuth uses one-time session state; document generation/deletion and session-owner operations check ownership; temporary parser filenames are UUID-based; document queries are scoped by resource ID.
 
-Sources: [auth.py](fastapi_app/routers/auth.py#L76), [session setup](fastapi_app/main.py#L79), [CSRF](fastapi_app/security.py#L71), [OAuth](fastapi_app/routers/google_auth.py#L107), [ownership](fastapi_app/routers/api.py#L274). These mechanisms protect particular boundaries; authentication/framework use does not establish overall security.
+Sources: [auth.py](../fastapi_app/routers/auth.py#L76), [session setup](../fastapi_app/main.py#L79), [CSRF](../fastapi_app/security.py#L71), [OAuth](../fastapi_app/routers/google_auth.py#L107), [ownership](../fastapi_app/routers/api.py#L274). These mechanisms protect particular boundaries; authentication/framework use does not establish overall security.
 
 ## 15.2 Concrete gaps supported by source
 
@@ -1425,9 +1425,9 @@ Copy-Item .env.example .env
 python app.py
 ```
 
-Creating a venv is standard local isolation; application commands and environment example are supported by [README](README.md), [requirements](requirements.txt), and [app.py](app.py#L17). Configure placeholder secrets in `.env` before real AI/OAuth use. `python app.py` starts Uvicorn at `127.0.0.1:8000` with reload. The source also supports `uvicorn app:app --reload`. No custom CLI install/migration command is implemented.
+Creating a venv is standard local isolation; application commands and environment example are supported by [README](../README.md), [requirements](../requirements.txt), and [app.py](../app.py#L17). Configure placeholder secrets in `.env` before real AI/OAuth use. `python app.py` starts Uvicorn at `127.0.0.1:8000` with reload. The source also supports `uvicorn app:app --reload`. No custom CLI install/migration command is implemented.
 
-Frontend build/watch commands from [package.json](frontend/package.json):
+Frontend build/watch commands from [package.json](../frontend/package.json):
 
 ```powershell
 cd frontend
@@ -1442,7 +1442,7 @@ Optional local embedding/index dependencies are commented in requirements: `pip 
 
 ## 16.2 Environment loading and required settings
 
-[config.py](config.py#L10) anchors `.env` to the project file, loads it with `override=False`, and records missing-loader/file diagnostics. `env_str()` selects the first nonblank candidate and strips surrounding whitespace/quotes. Not all fields use this helper: some numeric/flag fields use raw getenv, so invalid numeric values can fail import and blank settings may not fall back.
+[config.py](../config.py#L10) anchors `.env` to the project file, loads it with `override=False`, and records missing-loader/file diagnostics. `env_str()` selects the first nonblank candidate and strips surrounding whitespace/quotes. Not all fields use this helper: some numeric/flag fields use raw getenv, so invalid numeric values can fail import and blank settings may not fall back.
 
 | Variable(s) | Source default/role | Requirement and caveat |
 |---|---|---|
@@ -1481,11 +1481,11 @@ Optional local embedding/index dependencies are commented in requirements: `pip 
 
 ## 16.3 Hosted execution and builds
 
-[Procfile](Procfile) specifies `uvicorn app:app --host 0.0.0.0 --port $PORT --workers 2`. Its port interpolation depends on the hosting shell/process environment. Gunicorn is mentioned in some prose but is not the current Procfile command or a requirements entry. On Windows, the shell's `$PORT` behavior differs; use supported Uvicorn arguments for a local manual invocation.
+[Procfile](../Procfile) specifies `uvicorn app:app --host 0.0.0.0 --port $PORT --workers 2`. Its port interpolation depends on the hosting shell/process environment. Gunicorn is mentioned in some prose but is not the current Procfile command or a requirements entry. On Windows, the shell's `$PORT` behavior differs; use supported Uvicorn arguments for a local manual invocation.
 
-[vercel.json](vercel.json) declares the Python builder for `app.py`, `maxDuration=60` in its builder config, and routes all paths to that entry point. It contains no Node build command, so built frontend files must already be present. The actual deployed interpretation/function limits are **Not verified from the current codebase**. Runtime env detection adjusts filesystem paths, secure cookie flag and vector backend, but not durability.
+[vercel.json](../vercel.json) declares the Python builder for `app.py`, `maxDuration=60` in its builder config, and routes all paths to that entry point. It contains no Node build command, so built frontend files must already be present. The actual deployed interpretation/function limits are **Not verified from the current codebase**. Runtime env detection adjusts filesystem paths, secure cookie flag and vector backend, but not durability.
 
-[.vercelignore](.vercelignore) excludes frontend source/tooling, tests, environments, model/training files and local runtime data. [.gitignore](.gitignore) additionally excludes personal review/agent config and broader DB backup suffixes. A deploy command's actual bundle should be inspected; Git exclusions alone do not define Vercel packaging. The existing `.vercelignore` does not explicitly exclude all newly ignored personal paths, the local venv, or every backup suffix.
+[.vercelignore](../.vercelignore) excludes frontend source/tooling, tests, environments, model/training files and local runtime data. [.gitignore](../.gitignore) additionally excludes personal review/agent config and broader DB backup suffixes. A deploy command's actual bundle should be inspected; Git exclusions alone do not define Vercel packaging. The existing `.vercelignore` does not explicitly exclude all newly ignored personal paths, the local venv, or every backup suffix.
 
 ## 16.4 Common configuration failures
 
@@ -1498,7 +1498,7 @@ Optional local embedding/index dependencies are commented in requirements: `pip 
 - Missing/stale assets can break React screens; compare source build output and loaded script paths.
 - PDF export writes relative `reports/` rather than hosted `/tmp`, creating a filesystem incompatibility risk.
 
-Diagnose by logging booleans for credential presence, chosen provider/model/backend, configuration source status, and sanitized error category. Never print actual credentials. Source: [startup logger](fastapi_app/main.py#L42), [provider registry](core/llm/registry.py#L98), [PDF export path](fastapi_app/routers/teacher.py#L93).
+Diagnose by logging booleans for credential presence, chosen provider/model/backend, configuration source status, and sanitized error category. Never print actual credentials. Source: [startup logger](../fastapi_app/main.py#L42), [provider registry](../core/llm/registry.py#L98), [PDF export path](../fastapi_app/routers/teacher.py#L93).
 
 # 17. Performance, Cost, and Scalability
 
@@ -1524,7 +1524,7 @@ The following are **Inferred performance consequences of verified algorithms**. 
 | Analytics | All result-history rows plus weak review sessions | Some SQL aggregates | Dashboard/progress fetch full history; review counts can create many session lookups |
 | Storage | Resources/chunks/cached vectors/results/events/export PDFs | Per-owner doc dedup | Shared cache orphans, external indexes and PDF files not automatically cleaned |
 
-Sources: [embedding agent](core/agents/embedding.py#L28), [retriever](core/rag/retrieval/retriever.py#L55), [SQLite search](core/vectorstore/sqlite_numpy.py#L75), [dashboard](fastapi_app/services/dashboard.py#L84), [review reconstruction](core/repositories/learning_repo.py#L63).
+Sources: [embedding agent](../core/agents/embedding.py#L28), [retriever](../core/rag/retrieval/retriever.py#L55), [SQLite search](../core/vectorstore/sqlite_numpy.py#L75), [dashboard](../fastapi_app/services/dashboard.py#L84), [review reconstruction](../core/repositories/learning_repo.py#L63).
 
 ## 17.3 LLM latency and billable work
 
@@ -1563,19 +1563,19 @@ These are recommendations, not features already implemented. Small local deploym
 
 | File | Tests / coverage |
 |---|---|
-| [tests/test_config_keys.py](tests/test_config_keys.py) | 16: blank/quoted env handling, alternative key names, presence diagnostics, auto provider/model selection, user-facing missing-key guard |
-| [tests/test_rag.py](tests/test_rag.py) | 10: chunking/offsets, hashing determinism/normalization/lexical similarity, SQL ingest/retrieval/dedup/cache |
-| [tests/test_pipeline.py](tests/test_pipeline.py) | 9: QA accepts/rejects/repairs/metadata; stubbed RAG shape; saved-resource legacy path |
-| [tests/test_verification.py](tests/test_verification.py) | 16: retrieval summaries, sufficiency/fail-open, fact confidence/omission/error, short-answer contract/reevaluation/clamping |
-| [tests/test_llm_retry.py](tests/test_llm_retry.py) | 5: controlled429 retries, stop limits, Retry-After/caps, disabled retries; sleep patched |
-| [tests/test_learning.py](tests/test_learning.py) | 4: explanation alignment/static fallback, topic statistics persistence and recommendation component |
-| [tests/test_content.py](tests/test_content.py) | 4: registry intents, flashcard/summary output, unknown intent |
-| [tests/test_features.py](tests/test_features.py) | 8: current save-first upload, background response timing, owner dedup, stored-question review |
-| [tests/test_regression.py](tests/test_regression.py) | 28: auth/lockout/page guards, older upload expectations, scoring/duplicate guard, session management/exports, JSON salvage/Groq recovery |
+| [tests/test_config_keys.py](../tests/test_config_keys.py) | 16: blank/quoted env handling, alternative key names, presence diagnostics, auto provider/model selection, user-facing missing-key guard |
+| [tests/test_rag.py](../tests/test_rag.py) | 10: chunking/offsets, hashing determinism/normalization/lexical similarity, SQL ingest/retrieval/dedup/cache |
+| [tests/test_pipeline.py](../tests/test_pipeline.py) | 9: QA accepts/rejects/repairs/metadata; stubbed RAG shape; saved-resource legacy path |
+| [tests/test_verification.py](../tests/test_verification.py) | 16: retrieval summaries, sufficiency/fail-open, fact confidence/omission/error, short-answer contract/reevaluation/clamping |
+| [tests/test_llm_retry.py](../tests/test_llm_retry.py) | 5: controlled429 retries, stop limits, Retry-After/caps, disabled retries; sleep patched |
+| [tests/test_learning.py](../tests/test_learning.py) | 4: explanation alignment/static fallback, topic statistics persistence and recommendation component |
+| [tests/test_content.py](../tests/test_content.py) | 4: registry intents, flashcard/summary output, unknown intent |
+| [tests/test_features.py](../tests/test_features.py) | 8: current save-first upload, background response timing, owner dedup, stored-question review |
+| [tests/test_regression.py](../tests/test_regression.py) | 28: auth/lockout/page guards, older upload expectations, scoring/duplicate guard, session management/exports, JSON salvage/Groq recovery |
 
-[tests/_client.py](tests/_client.py) wraps FastAPI TestClient with a Flask-shaped interface: response bytes/JSON methods, redirect defaults, and read-only signed-session decoding. It obtains a real CSRF token from a page and inserts it into mutating requests instead of disabling protection. This means valid-token middleware behavior is exercised, but does not provide exhaustive negative CSRF/security coverage.
+[tests/_client.py](../tests/_client.py) wraps FastAPI TestClient with a Flask-shaped interface: response bytes/JSON methods, redirect defaults, and read-only signed-session decoding. It obtains a real CSRF token from a page and inserts it into mutating requests instead of disabling protection. This means valid-token middleware behavior is exercised, but does not provide exhaustive negative CSRF/security coverage.
 
-**Earlier observed result in this session:** separate-process execution yielded **98 passed, 2 failed**. Typecheck/build passed. The two failures are [test_upload_generates_session()](tests/test_regression.py#L193) and [test_upload_rejects_out_of_range_timer()](tests/test_regression.py#L214), whose expectations correspond to immediate quiz generation/settings at `/upload`. The current flow saves first and validates settings in the practice API. These are outstanding test-contract failures, not silently passing gates. Tests were not rerun for this documentation-only task.
+**Earlier observed result in this session:** separate-process execution yielded **98 passed, 2 failed**. Typecheck/build passed. The two failures are [test_upload_generates_session()](../tests/test_regression.py#L193) and [test_upload_rejects_out_of_range_timer()](../tests/test_regression.py#L214), whose expectations correspond to immediate quiz generation/settings at `/upload`. The current flow saves first and validates settings in the practice API. These are outstanding test-contract failures, not silently passing gates. Tests were not rerun for this documentation-only task.
 
 ## 18.2 How to run supported checks
 
@@ -1679,7 +1679,7 @@ This roadmap is **recommendation**, backed by the cited current behavior. It is 
 | Quiz bootstrap includes answer key | Public question/option schema with server-only answers | Separate response contracts; no pre-submit answers in HTML/API |
 | Fixed demo accounts on empty DB | Explicit demo/development flag | Setup/admin provisioning; production creates no known credentials |
 
-Sources: [auth profile](fastapi_app/routers/auth.py#L131), [Google linking](fastapi_app/routers/google_auth.py#L157), [guards](fastapi_app/deps.py#L42), [quiz payload](fastapi_app/routers/student.py#L223), [seed](fastapi_app/database.py#L134).
+Sources: [auth profile](../fastapi_app/routers/auth.py#L131), [Google linking](../fastapi_app/routers/google_auth.py#L157), [guards](../fastapi_app/deps.py#L42), [quiz payload](../fastapi_app/routers/student.py#L223), [seed](../fastapi_app/database.py#L134).
 
 ## 20.2 Reliability and data integrity
 
@@ -1694,7 +1694,7 @@ Sources: [auth profile](fastapi_app/routers/auth.py#L131), [Google linking](fast
 | Incomplete deletion/mismatched export promise | Complete coordinated deletion/export/retention contract | Shared cache reference policy and index cleanup jobs |
 | Silent migration failure/import-time schema work | Versioned controlled migrations and readiness failure | Migration tooling/gates; safer startup |
 
-Evidence: [documents](fastapi_app/routers/documents.py#L116), [submit](fastapi_app/routers/student.py#L236), [Quiz](frontend/src/screens/Quiz.tsx#L26), [schema](core/models/migrations.py), [deletion](core/repositories/document_repo.py#L107).
+Evidence: [documents](../fastapi_app/routers/documents.py#L116), [submit](../fastapi_app/routers/student.py#L236), [Quiz](../frontend/src/screens/Quiz.tsx#L26), [schema](../core/models/migrations.py), [deletion](../core/repositories/document_repo.py#L107).
 
 ## 20.3 Retrieval and generation quality
 
@@ -1714,7 +1714,7 @@ Evaluate on representative PDFs, tables, slides, scans, languages and topic requ
 
 Restore rate/parallel-generation limits at the actual API before model calls; avoid counting only successful sessions. Replace blocking request work with bounded async/offload/job handling; share an end-to-end deadline across all stages/retries. Stop mutating global pipeline flags. Retrieve cached candidate vectors for MMR. Paginate history and use aggregate SQL. Pin/lock Python dependencies, add CI with restored test isolation, and build/cache-version frontend assets automatically.
 
-Retire or archive inactive Flask routes after comparison; update contradictory docstrings; centralize response/error contracts and preference logic. Add structured sanitized trace logs, readiness/health checks and backup-restore verification. Fix reports' hosted path/layout and CSV spreadsheet safety. Unify timezones, badge definitions and score metric labels. Show failure/retry states rather than empty lists, fake progress or indefinite spinners. Sources: [unused throttle](fastapi_app/routers/documents.py#L189), [fallback flag](core/services/mcq_pipeline.py#L229), [MMR](core/rag/retrieval/retriever.py#L67), [Vite](frontend/vite.config.ts#L16), [frontend helpers](frontend/src/bootstrap.ts).
+Retire or archive inactive Flask routes after comparison; update contradictory docstrings; centralize response/error contracts and preference logic. Add structured sanitized trace logs, readiness/health checks and backup-restore verification. Fix reports' hosted path/layout and CSV spreadsheet safety. Unify timezones, badge definitions and score metric labels. Show failure/retry states rather than empty lists, fake progress or indefinite spinners. Sources: [unused throttle](../fastapi_app/routers/documents.py#L189), [fallback flag](../core/services/mcq_pipeline.py#L229), [MMR](../core/rag/retrieval/retriever.py#L67), [Vite](../frontend/vite.config.ts#L16), [frontend helpers](../frontend/src/bootstrap.ts).
 
 Each change adds operational or contract complexity; implement only after identifying the relevant correctness/performance gate. No automatic deployment, monetary budget or implementation timeline is established by this guide.
 

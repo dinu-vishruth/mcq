@@ -2,12 +2,25 @@
 import os
 import secrets
 
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# --- Deployment platform ----------------------------------------------------
+# Each host injects its own marker variable. Read BEFORE .env loading so a stray
+# VERCEL/RENDER entry in a local .env cannot put a laptop into production mode.
+IS_VERCEL = bool(os.environ.get("VERCEL"))
+IS_RENDER = bool(os.environ.get("RENDER"))
+#: Serverless: read-only filesystem, so all writable state has to live in /tmp.
+IS_SERVERLESS = IS_VERCEL
+#: Any hosted environment: separate processes and restarts, so CWD-relative paths
+#: and per-boot random secrets are not acceptable.
+IS_DEPLOYED = IS_VERCEL or IS_RENDER
+
 # Anchor the .env lookup to this file's directory rather than the process CWD.
 # Bare load_dotenv() searches relative to the caller, so launching the server
 # from anywhere but the project root (a systemd unit, an IDE run config, a
 # `uvicorn` invoked from a parent dir) silently found no .env -- which surfaced
 # downstream as "API Key is missing" even though the key was sitting in the file.
-_ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+_ENV_PATH = os.path.join(_ROOT, ".env")
 DOTENV_LOADED = False
 DOTENV_ERROR = ""
 try:
@@ -23,7 +36,9 @@ else:
     # override=False: real environment variables continue to win over .env,
     # which is what deployments rely on.
     DOTENV_LOADED = load_dotenv(_ENV_PATH, override=False)
-    if not DOTENV_LOADED and not os.path.exists(_ENV_PATH):
+    # A deployed host deliberately has no .env; its config is the dashboard's env
+    # vars, so warning about the missing file is noise in the logs.
+    if not DOTENV_LOADED and not os.path.exists(_ENV_PATH) and not IS_DEPLOYED:
         DOTENV_ERROR = f"No .env file at {_ENV_PATH} (fine if you set environment variables directly)."
 
 
@@ -51,46 +66,124 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     # On Vercel each cold start is a fresh process; a random key here would be
     # different per instance, so session cookies signed by one invocation fail
-    # verification on the next — which surfaces as "CSRF session token missing".
-    # Require a stable key in production; only fall back to a random one for
+    # verification on the next -- which surfaces as "CSRF session token missing".
+    # Render restarts the service the same way, so the key has to be stable there
+    # too: sessions would otherwise be dropped on every deploy. Require a fixed
+    # key anywhere the app runs as production; only fall back to a random one for
     # local dev (single long-lived process).
-    if os.environ.get("VERCEL"):
+    if IS_DEPLOYED:
         raise RuntimeError(
-            "SECRET_KEY environment variable is required on Vercel. "
-            "Set it in the project's Environment Variables so session cookies "
-            "stay valid across serverless invocations."
+            "SECRET_KEY environment variable is required when deployed. "
+            "Set it in the host's Environment Variables so session cookies "
+            "stay valid across restarts and instances."
         )
     SECRET_KEY = secrets.token_hex(32)
-# --- Google sign-in (OAuth 2.0) -------------------------------------------
-# Create these at https://console.cloud.google.com/apis/credentials by making an
-# "OAuth client ID" of type "Web application", then add the callback URL to its
-# Authorized redirect URIs:
+# --- OAuth sign-in (Google + GitHub) ---------------------------------------
+# Each provider is independently enabled by setting its client id/secret. Leave
+# them blank to hide the corresponding button on the login page.
+#
+# Google: create an "OAuth client ID" (Web application) at
+#   https://console.cloud.google.com/apis/credentials
+# and add the callback URL to its Authorized redirect URIs:
 #   local:  http://localhost:8000/auth/google/callback
-#   Vercel: https://<your-domain>/auth/google/callback
-# Sign-in is simply hidden when these are unset, so the app runs fine without
-# them and the Google button only appears once it can actually work.
+#   hosted: https://<your-domain>/auth/google/callback
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-# Optional explicit override. When empty the callback URL is derived from the
-# incoming request, which keeps preview deployments working without new config.
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "")
 GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+# GitHub: register an OAuth App at https://github.com/settings/developers and
+# set the callback URL to:
+#   local:  http://localhost:8000/auth/github/callback
+#   hosted: https://<your-domain>/auth/github/callback
+GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
+GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "")
+GITHUB_OAUTH_ENABLED = bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET)
 
 # Accept GROQ_* and GROK_* interchangeably. These are two different companies --
 # Groq (keys look like `gsk_...`) is the inference host, Grok is xAI's model --
 # and the one-letter difference is easy to mistype, so a key set under either
 # spelling is honoured instead of silently reading as "no key at all".
 GROK_API_KEY = env_str("GROK_API_KEY", "GROQ_API_KEY", "XAI_API_KEY")
-GROK_MODEL = env_str("GROK_MODEL", "GROQ_MODEL", default="grok-2-1212")
-DB_PATH = "/tmp/mcq.db" if os.environ.get("VERCEL") else "database/mcq.db"
-UPLOAD_FOLDER = "/tmp/uploads" if os.environ.get("VERCEL") else "uploads"
+# Legacy per-host model variable. Empty by default: each provider now has its
+# own default model (PROVIDER_DEFAULT_MODELS below), so an unset model resolves
+# to something the resolved provider can actually serve. A stale
+# GROK_MODEL=grok-... can no longer be sent to Groq (it used to 404).
+GROK_MODEL = env_str("GROK_MODEL", "GROQ_MODEL", default="")
+
+#: Model used when the operator hasn't pinned one per provider. Registry
+#: resolution starts here; a configured model only survives if it plausibly
+#: belongs to the resolved provider (see core/llm/registry.py).
+PROVIDER_DEFAULT_MODELS = {
+    "groq": "openai/gpt-oss-20b",
+    "xai": "grok-2-1212",
+    "openai": "gpt-4o-mini",
+    "gemini": "gemini-1.5-flash",
+    "anthropic": "claude-sonnet-5",
+}
+
+
+def default_model_for(provider: str) -> str:
+    """The default model for `provider`; empty string for unknown providers."""
+    return PROVIDER_DEFAULT_MODELS.get((provider or "").strip().lower(), "")
+# --- Writable state ---------------------------------------------------------
+# Everything the app creates at runtime hangs off one anchor. DATA_DIR is the
+# only variable a host needs to persist data: point it at a mounted disk and
+# every path below follows. It defaults to the project directory locally, which
+# keeps the existing database/mcq.db in place, and to /tmp on serverless where
+# nothing else is writable. On Render, set DATA_DIR to the Disk mount (/var/data)
+# or the writes land in the ephemeral source checkout instead of the disk.
+DATA_DIR = env_str("DATA_DIR", default="/tmp" if IS_SERVERLESS else _ROOT)
+DB_PATH = env_str("DB_PATH", default=os.path.join(DATA_DIR, "database", "mcq.db"))
+UPLOAD_FOLDER = env_str("UPLOAD_FOLDER", default=os.path.join(DATA_DIR, "uploads"))
+REPORTS_DIR = env_str("REPORTS_DIR", default=os.path.join(DATA_DIR, "reports"))
 ALLOWED_EXT = {"pdf", "docx", "txt", "pptx"}
+
+# --- Persistent database (production) ---------------------------------------
+# When DATABASE_URL is set (e.g. postgresql://user:pass@host/db, the format
+# every managed Postgres provider hands you), the repository layer talks to
+# Postgres through core/models/pg_adapter.py instead of SQLite. Left unset, the
+# app keeps its local-dev SQLite file at DB_PATH. DB_PATH is ignored while a
+# DATABASE_URL is present.
+DATABASE_URL = env_str("DATABASE_URL", default="")
+
+#: Ceiling on a buffered request body. Vercel enforced ~4.5MB for us before our
+#: own code ran; a persistent host applies no such cap, and CSRFMiddleware has to
+#: hold the whole body in memory to read the token and replay it downstream. On a
+#: 512MB instance an unbounded buffer is an outage, so the app enforces its own.
+#: Keep this above MAX_UPLOAD_BYTES.
+MAX_REQUEST_BODY_BYTES = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(8 * 1024 * 1024)))
+
+#: Upload ceilings, enforced before any parsing work happens. The request-body
+#: limit above bounds the raw HTTP body; these bound what the document pipeline
+#: will accept so a small-but-pathological file (thousands of PDF pages) can't
+#: monopolise the instance.
+MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(int(4.5 * 1024 * 1024))))
+MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "300"))
+
+# --- Demo accounts ----------------------------------------------------------
+# Explicit local opt-in only. Passwords are generated at seed time, never fixed.
+SEED_DEMO_USERS = env_str("SEED_DEMO_USERS").lower() in ("1", "true", "yes", "on")
+
+# --- Observability ----------------------------------------------------------
+# JSON is the default because hosted log stores are queried field-by-field; set
+# LOG_FORMAT=text for a human-readable local stream. No prompt/document text is
+# logged either way -- see docs/observability.md.
+LOG_LEVEL = env_str("LOG_LEVEL", default="INFO").upper()
+LOG_FORMAT = env_str("LOG_FORMAT", default="json").lower()
+#: Optional "module:function" callable receiving every structured event. This is
+#: the integration point for LangSmith/Langfuse/OTLP without adding an SDK here.
+OBSERVABILITY_TRACE_HOOK = env_str("OBSERVABILITY_TRACE_HOOK", default="")
+
+# Backend selector for tracing (auto | langsmith | langfuse | hook | none). In
+# "auto" mode the sink is picked from whichever credentials are present.
+OBSERVABILITY_BACKEND = env_str("OBSERVABILITY_BACKEND", default="auto")
 
 # ---------------------------------------------------------------------------
 # Agentic AI + RAG configuration (Phase 1+). All additive; defaults preserve
 # the existing behaviour so nothing changes until a feature flag is flipped.
 # ---------------------------------------------------------------------------
-IS_VERCEL = bool(os.environ.get("VERCEL"))
 
 # --- LLM provider abstraction --------------------------------------------
 # One of: "auto" | "groq" | "xai" | "openai" | "gemini" | "anthropic".
@@ -100,7 +193,9 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "auto").strip().lower()
 # Unified key/model. Falls back through every historical spelling, and a blank
 # LLM_API_KEY no longer shadows a working GROK_API_KEY/GROQ_API_KEY.
 LLM_API_KEY = env_str("LLM_API_KEY", default=GROK_API_KEY)
-LLM_MODEL = env_str("LLM_MODEL", default=GROK_MODEL)
+# Model precedence: LLM_MODEL, then the legacy GROK_MODEL/GROQ_MODEL, then the
+# resolved provider's own default. See core/llm/registry.py.
+LLM_MODEL = env_str("LLM_MODEL", "GROK_MODEL", "GROQ_MODEL", default="")
 
 # Per-provider key overrides (optional; only used when explicitly selected).
 OPENAI_API_KEY = env_str("OPENAI_API_KEY")
@@ -151,11 +246,20 @@ def missing_key_message() -> str:
 LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "45"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.3"))
 
+# gpt-oss on Groq emits hidden chain-of-thought before the JSON answer. Left at
+# the provider default it exhausts max_tokens mid-reasoning, so the JSON never
+# starts and the provider fails validation with an *empty* failed_generation --
+# nothing recoverable, and the learner sees a hard error. "low" cuts that
+# overhead from ~5,900 tokens to a handful while still returning full batches.
+LLM_REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "low").strip()
+
 # Output token budget for MCQ generation. Providers apply a modest default cap
 # (often ~1-4k) which truncates the JSON array mid-object on larger requests --
 # that's what silently turned "25 questions" into a handful. We request a budget
 # scaled to the batch size, floored so small batches still get room to breathe.
 # ~330 tokens covers one question with 4 options plus bloom/source_hint metadata.
+# Sized for the JSON answer only: it assumes reasoning overhead is capped by
+# LLM_REASONING_EFFORT, without which reasoning tokens eat this budget first.
 LLM_TOKENS_PER_QUESTION = int(os.getenv("LLM_TOKENS_PER_QUESTION", "330"))
 LLM_MAX_OUTPUT_TOKENS = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "16000"))
 
@@ -164,19 +268,35 @@ def mcq_token_budget(num_questions: int) -> int:
     """Output token ceiling for a batch of `num_questions` MCQs."""
     return min(LLM_MAX_OUTPUT_TOKENS, max(1500, num_questions * LLM_TOKENS_PER_QUESTION + 400))
 
-# Wall-clock budget for the whole RAG MCQ pipeline. Must stay under the serverless
-# function limit (vercel.json maxDuration=60) so generation is never killed
-# mid-flight; the pipeline stops retrying once this budget (minus one LLM_TIMEOUT
-# of headroom) is exhausted and returns whatever it has collected.
-PIPELINE_DEADLINE_SECONDS = int(os.getenv("PIPELINE_DEADLINE_SECONDS", "55"))
+# Wall-clock budget for the whole RAG MCQ pipeline. On serverless this has to
+# stay under the function limit (vercel.json maxDuration=60) so generation is
+# never killed mid-flight; the pipeline stops retrying once this budget (minus
+# one LLM_TIMEOUT of headroom) is exhausted and returns whatever it has
+# collected. A persistent host has no such cap, so larger quiz sets are allowed
+# the time they actually need.
+PIPELINE_DEADLINE_SECONDS = int(os.getenv("PIPELINE_DEADLINE_SECONDS", "55" if IS_SERVERLESS else "300"))
 
-# --- Upload/generation throttle (app-level, protects the LLM from bursts) --
-# Minimum seconds between two MCQ-generation requests, and the max generations
+# --- Upload/generation throttle (app-level, protects the LLM from bursts) --# Minimum seconds between two MCQ-generation requests, and the max generations
 # allowed per 5-minute window. Set the cooldown to 0 to disable it entirely.
 # Deliberately lenient by default — a single user iterating on their own
 # material shouldn't be blocked; this only guards against runaway loops.
 GENERATION_COOLDOWN_SECONDS = int(os.getenv("GENERATION_COOLDOWN_SECONDS", "3"))
 GENERATION_MAX_PER_5MIN = int(os.getenv("GENERATION_MAX_PER_5MIN", "10"))
+
+# --- Background generation jobs ---------------------------------------------
+# "inline" -> generate inside the HTTP request (the historical behaviour; the
+#             default so local dev and Vercel lose nothing)
+# "rq"     -> hand generation to a Redis Queue worker; POST /api/practice/
+#             generate returns a job_id, results arrive via GET /api/jobs/{id}
+# "auto"   -> "rq" when REDIS_URL is set and the redis+rq packages import,
+#             else "inline".
+GENERATION_BACKEND = env_str("GENERATION_BACKEND", default="auto").strip().lower()
+REDIS_URL = env_str("REDIS_URL", default="")
+QUEUE_NAME = env_str("GENERATION_QUEUE_NAME", default="mcq")
+# Per-job wall-clock budget, in seconds. In queue mode the serverless 60s cap no
+# longer applies -- the worker is a long-lived process -- so the deadline is a
+# job setting the caller can pass on top of the global default below.
+GENERATION_JOB_DEADLINE_SECONDS = int(os.getenv("GENERATION_JOB_DEADLINE_SECONDS", "900"))
 
 # --- AI pipeline selection ------------------------------------------------
 # "legacy"  -> single-shot generate_mcqs (current behaviour, the safe default)
@@ -234,12 +354,31 @@ EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "384"))  # MiniLM native dim
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "128"))
 
 # --- Vector store ---------------------------------------------------------
-# "chroma" (default) -> ChromaDB persistent client
-# "sqlite"           -> vectors as BLOBs in mcq.db + numpy cosine (Vercel-safe)
+# "chroma" (default locally) -> ChromaDB persistent client
+# "sqlite"           -> vectors as BLOBs in mcq.db + numpy cosine (always safe)
 # "faiss"            -> FAISS index (opt-in; needs a compatible wheel)
-# On Vercel the read-only FS forces the sqlite store regardless of this value.
-VECTOR_STORE = os.getenv("VECTOR_STORE", "sqlite" if IS_VERCEL else "chroma").strip().lower()
-CHROMA_PATH = os.getenv("CHROMA_PATH", "/tmp/chroma_db" if IS_VERCEL else "chroma_db")
+# "pgvector"         -> Postgres + pgvector column; requires DATABASE_URL and a
+#                       server with the pgvector extension. Falls back to the
+#                       sqlite store with a warning otherwise.
+# Vercel's read-only FS forces sqlite in the registry regardless of this value.
+# Deployed hosts default to sqlite too: chromadb is deliberately not in
+# requirements.txt (bundle size), so a "chroma" default would only ever reach
+# the registry's degrade-with-a-warning path and hide that the store isn't the
+# one the config claims.
+VECTOR_STORE = os.getenv("VECTOR_STORE", "sqlite" if IS_DEPLOYED else "chroma").strip().lower()
+CHROMA_PATH = env_str("CHROMA_PATH", default=os.path.join(DATA_DIR, "chroma_db"))
+
+# --- Uploaded-file storage -------------------------------------------------
+# "local"  -> UPLOAD_FOLDER on disk (dev / single-host deployments)
+# "s3"     -> any S3-compatible object store (AWS S3, R2, MinIO). Requires the
+#             optional boto3 dependency.
+# "auto"   -> "s3" when an S3_UPLOAD_BUCKET is configured and boto3 is
+#             importable, else "local".
+UPLOAD_BACKEND = env_str("UPLOAD_BACKEND", default="auto").strip().lower()
+S3_UPLOAD_BUCKET = env_str("S3_UPLOAD_BUCKET")
+S3_UPLOAD_PREFIX = env_str("S3_UPLOAD_PREFIX", default="uploads")
+# Endpoint URL for non-AWS S3-compatible stores (R2/MinIO); empty = AWS itself.
+S3_UPLOAD_ENDPOINT = env_str("S3_UPLOAD_ENDPOINT")
 
 # --- Chunking -------------------------------------------------------------
 # Larger chunks mean fewer embeddings and faster indexing. The overlap stays

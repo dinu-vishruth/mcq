@@ -14,8 +14,8 @@ import hashlib
 
 from core.agents.base import Agent
 from core.embeddings import get_embedder
-from core.vectorstore import get_vector_store
 from core.models.db import get_db
+from core.vectorstore import get_vector_store
 
 
 def _hash(text: str) -> str:

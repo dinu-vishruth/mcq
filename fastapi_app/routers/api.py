@@ -7,17 +7,17 @@ are declared once on the model and FastAPI returns a 422 automatically.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
-from datetime import datetime
-from typing import Annotated, Literal
+from datetime import datetime, timezone
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..deps import CurrentApiUser, Db
-from ..services.dashboard import (build_dashboard, level_for_xp, load_prefs,
-                                  study_recommendations)
+from ..services.dashboard import build_dashboard, level_for_xp, load_prefs
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -44,6 +44,9 @@ class PracticeIn(BaseModel):
     topic: str | None = None
     #: Seconds. Upper bound matches the 180-minute limit on /upload.
     timer: int = Field(600, ge=30, le=10800)
+    #: Optional per-job pipeline budget (queue mode only). Not sent by the
+    #: current frontend; defaults to GENERATION_JOB_DEADLINE_SECONDS.
+    deadline_seconds: int | None = Field(None, ge=60, le=3600)
 
 
 # --------------------------------------------------------------------------- #
@@ -58,7 +61,7 @@ async def get_prefs(user: CurrentApiUser, conn: Db):
 
 @router.post("/prefs")
 async def save_prefs(user: CurrentApiUser, conn: Db, payload: PrefsIn):
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     exists = conn.execute("SELECT 1 FROM user_prefs WHERE user_id=?", (user.id,)).fetchone()
     if exists:
         conn.execute(
@@ -115,13 +118,29 @@ async def export_data(user: CurrentApiUser, conn: Db):
     except sqlite3.OperationalError:
         weak = []
 
+    sessions = conn.execute(
+        "SELECT s.session_key, s.timer, s.difficulty, s.mcqs_json, d.title "
+        "FROM sessions s LEFT JOIN documents d ON s.document_id=d.id AND d.owner=? "
+        "WHERE s.teacher=? ORDER BY s.created_at",
+        (user.username, user.username),
+    ).fetchall()
+    documents = conn.execute(
+        "SELECT id, title, source_type, created_at FROM documents WHERE owner=? ORDER BY created_at",
+        (user.username,),
+    ).fetchall()
+
     return JSONResponse(
         {
             "account": dict(account) if account else {},
             "prefs": prefs,
             "results": [dict(r) for r in results],
             "weak_topics": [dict(w) for w in weak],
-            "exported_at": datetime.utcnow().isoformat(),
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "sessions": [{"session_key": row["session_key"],
+                          "title": row["title"] or f"Quiz {row['session_key']}",
+                          "timer": row["timer"], "difficulty": row["difficulty"],
+                          "questions": json.loads(row["mcqs_json"] or "[]")} for row in sessions],
+            "documents": [dict(row) for row in documents],
         },
         headers={"Content-Disposition": 'attachment; filename="mcq_generator_data.json"'},
     )
@@ -138,13 +157,14 @@ async def knowledge_list(user: CurrentApiUser):
     items = []
     for doc in document_repo.list_by_owner(user.username):
         chunk_count = doc.get("chunk_count") or 0
+        status = document_repo.display_status(doc)
         items.append({
             "id": doc["id"],
             "title": doc.get("title") or "Untitled",
             "subject": (doc.get("source_type") or "document").upper(),
             "created_at": doc.get("created_at"),
-            "indexed": doc.get("status") == "ready",
-            "status": doc.get("status"),
+            "indexed": status == "ready",
+            "status": status,
             "topic_count": chunk_count,
             # Estimate study time: ~1.5 min per chunk of material.
             "est_minutes": max(5, round(chunk_count * 1.5)),
@@ -261,19 +281,64 @@ async def achievements_data(user: CurrentApiUser, conn: Db):
 # --------------------------------------------------------------------------- #
 
 @router.post("/practice/generate")
-async def practice_generate(user: CurrentApiUser, payload: PracticeIn):
+def practice_generate(user: CurrentApiUser, payload: PracticeIn):
     """Generate an MCQ set from an indexed Knowledge document and create a session.
 
     Reuses the RAG/agent pipeline (falling back to legacy when a document has no
     retrievable context). Returns the session_key the Quiz screen loads via the
     existing /student_login flow.
+
+    Deliberately sync rather than async: the pipeline blocks on ``requests.post``,
+    and on a single-worker container an ``async def`` handler would hold the event
+    loop for the whole generation -- including the health check, which the host
+    reads as an unresponsive service. Sync handlers run in the threadpool.
+
+    Queue mode (GENERATION_BACKEND=rq): the work is enqueued and this endpoint
+    returns ``{"ok": true, "job_id": ..., "status": "queued"}`` instead of a
+    session_key; the client polls GET /api/jobs/{id}. The default inline mode
+    keeps the original response shape unchanged -- see README "Compatibility".
     """
-    from core.repositories import document_repo
+    from core.repositories import document_repo, job_repo
 
     # Ownership: only practice from your own knowledge.
     doc = document_repo.get(payload.document_id)
     if doc is None or doc["owner"] != user.username:
         raise HTTPException(status_code=404, detail="not found")
+
+    # Per-user throttle before any costly work (queue mode included: enqueuing is
+    # cheap but the job still burns LLM calls). Uses its own connection because
+    # this is a sync handler running in the threadpool -- see rate_limits.
+    from ..rate_limits import check_generation_throttle_for_user
+
+    throttle_message = check_generation_throttle_for_user(user.username)
+    if throttle_message:
+        raise HTTPException(status_code=429, detail=throttle_message)
+
+    from core.services.job_runner import (
+        create_job,
+        enqueue_job,
+        generation_backend,
+        run_generation_job,
+    )
+
+    if generation_backend() == "rq":
+        job_id = create_job(
+            user_id=user.id, username=user.username, document_id=payload.document_id,
+            num_questions=payload.num_questions, difficulty=payload.difficulty,
+            topic=(payload.topic or "").strip() or None, timer=payload.timer,
+            deadline_seconds=payload.deadline_seconds,
+        )
+        if enqueue_job(job_id):
+            return {"ok": True, "job_id": job_id, "status": "queued"}
+        # Redis/queue hiccup: still do the work rather than fail the request.
+        try:
+            run_generation_job(job_id)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+        job = job_repo.get(job_id) or {}
+        result = job_repo.public_view(job).get("result") or {}
+        return {"ok": True, "session_key": result.get("session_key"),
+                "count": result.get("count", 0), "job_id": job_id}
 
     try:
         from core.services.mcq_pipeline import generate_from_document

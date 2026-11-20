@@ -4,17 +4,20 @@ Same schema work the Flask ``init_db()`` did: create the base tables, apply the
 additive ALTERs, ensure login_attempts, seed demo accounts on an empty database,
 then run the agentic/RAG migrations.
 
-Why it runs on every boot: on Vercel the database lives at /tmp/mcq.db, which is
-part of the ephemeral instance. A cold start gets an empty filesystem, so the
-schema has to be (re)created before the first request. Every statement is
-idempotent, so doing this locally against a real file is harmless.
+Why it runs on every boot: every statement is idempotent, and on Vercel the
+database lives in /tmp — part of the ephemeral instance, so a cold start gets an
+empty filesystem and the schema has to be recreated before the first request. On
+a host with a persistent disk (Render) the file survives restarts and this
+upgrade path is what applies new columns to the existing database.
 """
 from __future__ import annotations
 
 import os
+import secrets
 import sqlite3
 
 import config
+from core.models.db import open_connection
 
 #: Project root, so data files resolve independently of the process CWD.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,7 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('teacher', 'student')),
+    role TEXT NOT NULL DEFAULT 'user',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS sessions (
@@ -67,6 +70,7 @@ _ADD_COLUMNS = [
     # Google sign-in: OAuth accounts have no password, so password_hash gets a
     # placeholder and these columns carry the provider identity instead.
     ("users", "google_id", "TEXT"),
+    ("users", "github_id", "TEXT"),
     ("users", "picture", "TEXT"),
     ("users", "auth_provider", "TEXT DEFAULT 'local'"),
 ]
@@ -81,14 +85,29 @@ def init_db() -> None:
     afterwards (the test suite, a CLI override) had its tables created in one
     database while queries ran against another -- surfacing as
     "no such table: login_attempts".
+
+    With DATABASE_URL set the whole boot schema comes from the numbered SQL
+    migrations in database/migrations/ (Postgres dialect); SQLite keeps the
+    programmatic path below. Nothing in Production-Persistence changes the local
+    development flow.
     """
+    from core.models import db as db_mod
+
+    if db_mod.is_postgres():
+        conn = db_mod.get_db()
+        try:
+            from core.models.sql_migrations import run_sql_migrations
+            run_sql_migrations(conn, "postgres")
+        finally:
+            conn.close()
+        return
+
     db_path = config.DB_PATH
     db_dir = os.path.dirname(db_path)
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir, exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = open_connection(db_path)
     try:
         try:
             if os.path.exists(_SCHEMA_FILE):
@@ -125,6 +144,10 @@ def init_db() -> None:
         try:
             from core.models.migrations import run_migrations
             run_migrations(conn)
+            # Numbered SQL migrations (currently the background-job table) run
+            # after the programmatic schema so both paths stay additive.
+            from core.models.sql_migrations import run_sql_migrations
+            run_sql_migrations(conn, "sqlite")
         except Exception as exc:
             print(f"[WARNING] Agentic/RAG migrations skipped: {exc}")
     finally:
@@ -132,18 +155,22 @@ def init_db() -> None:
 
 
 def _seed_demo_users(conn: sqlite3.Connection) -> None:
-    """Seed teacher/student demo accounts, but only into an empty users table."""
+    """Explicit opt-in for an empty local database; print random passwords once."""
+    if not config.SEED_DEMO_USERS:
+        return
     try:
         from werkzeug.security import generate_password_hash
 
         if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
+            accounts = [(name, secrets.token_urlsafe(24)) for name in ("teacher", "student")]
             conn.executemany(
                 "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
                 [
-                    ("teacher", generate_password_hash("teacher123"), "teacher"),
-                    ("student", generate_password_hash("student123"), "student"),
+                    (name, generate_password_hash(password), "user") for name, password in accounts
                 ],
             )
             conn.commit()
+            for name, password in accounts:
+                print(f"[local demo] username={name} password={password}")
     except Exception as exc:
         print(f"[WARNING] Failed to seed default users: {exc}")

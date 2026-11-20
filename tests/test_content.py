@@ -17,8 +17,8 @@ config.DB_PATH = os.path.join(_TMP, "content.db")
 config.EMBEDDING_BACKEND = "hashing"
 config.VECTOR_STORE = "sqlite"
 
-from core.models.migrations import run_migrations
 from core.embeddings import reset_embedder
+from core.models.migrations import run_migrations
 from core.vectorstore import reset_vector_store
 
 

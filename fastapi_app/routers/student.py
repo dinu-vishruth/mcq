@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import random
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Request
@@ -54,7 +54,7 @@ async def dashboard(request: Request, user: CurrentUser, conn: Db):
     data = build_dashboard(conn, user.id, user.username)
     # Embedded in data-bootstrap by the template, so the React island has
     # everything it needs on first paint -- no follow-up request, no spinner.
-    return render(request, "student_dashboard.html", **data, bootstrap=data)
+    return render(request, "dashboard.html", **data, bootstrap=data)
 
 
 @router.get("/progress")
@@ -168,7 +168,7 @@ async def achievements(request: Request, user: CurrentUser):
 
 @router.get("/student_login")
 async def student_login_form(request: Request, user: CurrentUser):
-    return render(request, "student_dashboard.html")
+    return render(request, "dashboard.html")
 
 
 @router.post("/student_login")
@@ -182,7 +182,7 @@ async def student_login(
     key = session_key.strip()
 
     def reject(message: str):
-        return render(request, "student_dashboard.html", error=message)
+        return render(request, "dashboard.html", error=message)
 
     if not key.isalnum():
         return reject("Invalid session key format")
@@ -210,10 +210,10 @@ async def mcq_test(request: Request, user: CurrentUser, conn: Db):
     if not row:
         return RedirectResponse("/student_login", status_code=302)
     if _already_attempted(conn, key, user.id):
-        return render(request, "student_dashboard.html", error="You have already taken this test.")
+        return render(request, "dashboard.html", error="You have already taken this test.")
 
-    # Shuffle option ORDER only. Question order and answer_text are untouched,
-    # which is what lets /submit rebuild the quiz from the DB and still score it.
+    # Shuffle choices without exposing which one is correct. /submit grades
+    # against the original database questions, never against browser metadata.
     randomized = []
     for question in json.loads(row["mcqs_json"]):
         options = list(question["options"])
@@ -223,7 +223,6 @@ async def mcq_test(request: Request, user: CurrentUser, conn: Db):
         randomized.append({
             "question": question["question"],
             "options": options,
-            "answer_text": question["answer_text"],
         })
 
     return render(
@@ -250,7 +249,7 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     ]
 
     if _already_attempted(conn, key, user.id):
-        return render(request, "student_dashboard.html", error="You have already taken this test.")
+        return render(request, "dashboard.html", error="You have already taken this test.")
 
     form = await request.form()
     student_name = (form.get("student_name") or "").strip() or user.username or "Student"
@@ -279,7 +278,7 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
         "INSERT INTO results (session_key, student_name, user_id, score, total, "
         "submitted_at, detail_json, time_spent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (key, student_name, user.id, score, len(questions),
-         datetime.utcnow().isoformat(), json.dumps(details), time_spent),
+         datetime.now(timezone.utc).isoformat(), json.dumps(details), time_spent),
     )
     conn.commit()
 

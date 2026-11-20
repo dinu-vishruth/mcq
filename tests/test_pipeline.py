@@ -16,9 +16,9 @@ config.DB_PATH = os.path.join(_TMP, "pipe.db")
 config.EMBEDDING_BACKEND = "hashing"
 config.VECTOR_STORE = "sqlite"
 
-from core.models.migrations import run_migrations
 from core.agents.quality_assurance import QualityAssuranceAgent
 from core.embeddings import reset_embedder
+from core.models.migrations import run_migrations
 from core.vectorstore import reset_vector_store
 
 
@@ -102,10 +102,10 @@ class TestPipelineWithStubbedLLM(unittest.TestCase):
 
     def _install_stub(self, questions):
         """Patch get_llm() used by every LLM-calling agent in the pipeline."""
-        import core.agents.question as qmod
-        import core.agents.difficulty as dmod
         import core.agents.context_validation as cvmod
+        import core.agents.difficulty as dmod
         import core.agents.fact_verification as fvmod
+        import core.agents.question as qmod
 
         class StubLLM:
             def complete_json(self, messages, **kw):

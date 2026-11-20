@@ -11,9 +11,9 @@ When config.AI_PIPELINE == "rag" it routes to the retrieval pipeline instead
 (wired in Phase 4). Until then the behaviour is byte-for-byte the legacy path.
 """
 import config
-from utils.text_cleaner import clean_text
-from core.llm import get_llm, LLMError
+from core.llm import LLMError, get_llm
 from core.prompts import mcq as mcq_prompts
+from utils.text_cleaner import clean_text
 
 
 class MCQGenerationError(Exception):

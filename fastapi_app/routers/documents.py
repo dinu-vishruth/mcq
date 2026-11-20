@@ -1,48 +1,63 @@
-"""Document upload: instant quiz generation (/upload) and store-only (/ingest_resource).
+"""Document upload: /upload and /ingest_resource both store + index a document.
 
 Port of core/routes/documents.py. Both routes share one extraction helper so
-they behave identically on file handling; they differ in what happens next --
-/upload generates a quiz and never saves a resource, /ingest_resource saves a
-resource and never generates a quiz.
+they behave identically on file handling; they differ only in where the user
+lands afterwards -- /upload redirects to the library (/knowledge), where quiz
+settings are chosen, /ingest_resource back to the journey (/journey).
 
-mcq_generator is imported as a MODULE (not the function) so tests patching
-models.mcq_generator.generate_mcqs at the source take effect here. This is also
-where AI_PIPELINE (legacy vs rag) is honoured, since generate_mcqs dispatches.
+Uploads are validated (size, magic bytes, PDF page count/encryption) before any
+parser runs, then the extracted text is indexed inline by the ingestion service.
 """
 from __future__ import annotations
 
 import os
-import threading
 import uuid
-from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
 
-import config
-import models.mcq_generator as mcq_generator
 from config import ALLOWED_EXT, UPLOAD_FOLDER
-from models.pdf_processor import (extract_text_from_docx, extract_text_from_pdf,
-                                  extract_text_from_pptx)
-from utils.session_manager import create_session_key
+from models.pdf_processor import (
+    extract_text_from_docx,
+    extract_text_from_pdf,
+    extract_text_from_pptx,
+)
 from utils.text_cleaner import clean_text
 
-from ..deps import CurrentUser, Db
+from ..deps import CurrentUser
 from ..templating import render
-from ..uploads import FileStorageAdapter, size_of
+from ..uploads import FileStorageAdapter, UploadValidationError, size_of, validate_upload
 
 router = APIRouter(tags=["documents"])
 
-#: Vercel rejects request bodies over this size before our code ever runs, so we
-#: fail with a useful message rather than letting the platform return a raw 413.
-MAX_UPLOAD_BYTES = int(4.5 * 1024 * 1024)
 
-MIN_QUESTIONS, MAX_QUESTIONS = 1, 30
-MIN_TIMER_MINUTES, MAX_TIMER_MINUTES = 1, 180
-VALID_DIFFICULTIES = ("easy", "medium", "hard")
+def persist_original_file(user: str, upload: UploadFile, source_ext: str) -> None:
+    """Keep the original upload in the object store (best effort, never fatal).
 
+    Text extraction works straight out of the request stream, so without this
+    step the file bytes are gone after the request ends -- on serverless hosts
+    the filesystem is wiped right after. Saving via core.storage keeps the bytes
+    reachable from later code (re-extraction, debugging) and becomes durable in
+    production when S3_UPLOAD_BUCKET is set.
 
+    Deliberately non-fatal: extraction already succeeded, so a storage hiccup
+    must not turn a completed upload into an error for the user. Local dev keeps
+    a plain disk copy under UPLOAD_FOLDER.
+    """
+    if upload is None or not upload.filename:
+        return
+    try:
+        from core.storage import get_upload_store
+
+        key = f"{user}/{uuid.uuid4().hex}-{os.path.basename(upload.filename)}"
+        upload.file.seek(0)
+        get_upload_store().save(key, upload.file, size_hint=size_of(upload))
+    except Exception as exc:
+        print(f"[WARNING] Could not persist original upload '{upload.filename}': {exc}")
+
+#: App-enforced upload ceiling lives in config.MAX_UPLOAD_BYTES so the limit and
+#: the error message can't drift apart. Enforced by uploads.validate_upload.
 class ExtractError(Exception):
     """Carries a user-safe message when text can't be pulled from an upload."""
 
@@ -69,15 +84,14 @@ def extract_upload_text(
         if upload is None or not upload.filename or "." not in upload.filename:
             raise ExtractError("Please upload a valid file.")
 
-        if size_of(upload) > MAX_UPLOAD_BYTES:
-            raise ExtractError(
-                "File is too large! Vercel limits file uploads to 4.5 MB. "
-                "Please compress or split your file."
-            )
-
         ext = upload.filename.rsplit(".", 1)[1].lower()
         if ext not in ALLOWED_EXT:
             raise ExtractError("Unsupported file type.")
+        # Size, magic bytes, PDF page count / encryption -- all before parsing.
+        try:
+            validate_upload(upload, ext)
+        except UploadValidationError as exc:
+            raise ExtractError(str(exc)) from exc
         source_ext = ext
         if not source_title:
             source_title = upload.filename.rsplit(".", 1)[0].strip() or upload.filename
@@ -113,34 +127,31 @@ def extract_upload_text(
 
 
 @router.post("/ingest_resource")
-async def ingest_resource(
+def ingest_resource(
     request: Request,
     user: CurrentUser,
     file: UploadFile | None = None,
     title: Annotated[str, Form()] = "",
     extracted_text: Annotated[str, Form()] = "",
 ):
-    """Store + index a document as a saved resource, then route straight to practice."""
+    """Store + index a document as a saved resource, then return to the library."""
     try:
         text, resolved_title, source_ext = extract_upload_text(file, title, extracted_text)
     except ExtractError as exc:
         return render(request, "add_resource.html", error=str(exc))
 
-    # Store-only flow: keep the saved resource in the library and do not start a
-    # quiz generation session as a side effect. The actual indexing work is moved
-    # to a daemon thread so the redirect completes immediately and the user isn't
-    # forced to wait for chunking + embedding before returning to the library.
+    # Indexing runs inline. It used to be handed to a daemon thread so the redirect
+    # could return before chunking + embedding finished, but nothing waits for that
+    # thread: on a serverless host the function is frozen the moment the response
+    # is sent, so the thread died mid-write and the library listed a resource that
+    # had never been stored -- which later failed to generate a quiz. Being sync
+    # also means a real failure shows up as an error here instead of as a phantom
+    # entry. This handler is a plain def, so the work runs in the threadpool.
+    persist_original_file(user.username, file, source_ext)
+    from core.services.ingestion_service import ingest_document
+
     try:
-        from core.services.ingestion_service import ingest_document
-
-        def _run_ingest():
-            try:
-                ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
-            except Exception as exc:
-                print(f"[ingest_resource] background indexing failed: {exc}")
-
-        thread = threading.Thread(target=_run_ingest, daemon=True)
-        thread.start()
+        ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
     except Exception as exc:
         return render(
             request, "add_resource.html",
@@ -156,7 +167,7 @@ async def upload_form(request: Request, user: CurrentUser):
 
 
 @router.post("/upload")
-async def upload(
+def upload(
     request: Request,
     user: CurrentUser,
     file: UploadFile | None = None,
@@ -178,44 +189,10 @@ async def upload(
         from core.services.ingestion_service import ingest_document
         doc_res = ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
         doc_id = doc_res.get("document_id") if isinstance(doc_res, dict) else None
+        persist_original_file(user.username, file, source_ext)
     except Exception as exc:
         return reject(f"Could not save this resource: {exc}. Please try another file.")
 
     if doc_id:
         return RedirectResponse(f"/knowledge?doc={doc_id}", status_code=302)
     return RedirectResponse("/knowledge", status_code=302)
-
-
-def _check_generation_throttle(conn, username: str) -> str | None:
-    """Rate-limit MCQ generation; returns an error message or None.
-
-    Protects the LLM from request bursts. Only counts sessions that actually
-    triggered generation: weak-topic REVIEW sessions (difficulty='review') are
-    rebuilt from stored data with no LLM call, so they must not count. Lenient by
-    default so a single user iterating on their own material isn't blocked.
-    """
-    cooldown = config.GENERATION_COOLDOWN_SECONDS
-    max_per_window = config.GENERATION_MAX_PER_5MIN
-    if cooldown <= 0:
-        return None
-
-    recent = conn.execute(
-        "SELECT created_at FROM sessions WHERE teacher=? AND COALESCE(difficulty,'') != 'review' "
-        "ORDER BY created_at DESC LIMIT ?",
-        (username, max_per_window),
-    ).fetchall()
-    if not recent:
-        return None
-
-    now = datetime.utcnow()
-    if (now - datetime.fromisoformat(recent[0]["created_at"])).total_seconds() < cooldown:
-        return "Please wait a few seconds between generation requests."
-
-    if len(recent) >= max_per_window:
-        oldest = datetime.fromisoformat(recent[-1]["created_at"])
-        if (now - oldest).total_seconds() < 300:
-            return (
-                f"You can only generate {max_per_window} quiz sets every 5 minutes. "
-                "Please wait a moment."
-            )
-    return None

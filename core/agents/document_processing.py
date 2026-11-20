@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from utils.text_cleaner import clean_text
-from core.rag.chunker import chunk_text, Chunk
 from core.agents.base import Agent
+from core.rag.chunker import Chunk, chunk_text
+from utils.text_cleaner import clean_text
 
 
 @dataclass

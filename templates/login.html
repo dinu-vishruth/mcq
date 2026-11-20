@@ -111,17 +111,15 @@
           {% else %}
           <button type="button" class="oauth-btn" data-oauth="Google">{{ icon("google") }} Google</button>
           {% endif %}
+          {% if github_oauth_enabled %}
+          <a href="/auth/github" class="oauth-btn">{{ icon("github") }} GitHub</a>
+          {% else %}
           <button type="button" class="oauth-btn" data-oauth="GitHub">{{ icon("github") }} GitHub</button>
+          {% endif %}
         </div>
 
         <p class="authx-alt">Don't have an account? <a href="/signup" class="authx-link">Create Account</a></p>
 
-        <div class="demo-hint">
-          <span class="dh-title">Try the demo</span>
-          <div>
-            <code>student</code> / <code>student123</code>
-          </div>
-        </div>
       </div>
     </section>
   </div>

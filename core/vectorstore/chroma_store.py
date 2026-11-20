@@ -11,7 +11,7 @@ registry forces the SQLite store there regardless of VECTOR_STORE.
 from __future__ import annotations
 
 import config
-from core.vectorstore.base import VectorStore, SearchHit
+from core.vectorstore.base import SearchHit, VectorStore
 
 
 class ChromaStore(VectorStore):
@@ -71,5 +71,6 @@ class ChromaStore(VectorStore):
     def delete_document(self, document_id: int) -> None:
         try:
             self._client.delete_collection(name=f"doc_{document_id}")
-        except Exception:
-            pass
+        except Exception as exc:
+            if type(exc).__name__ != "NotFoundError":
+                raise

@@ -11,7 +11,7 @@ noting while reading:
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Form, Request
@@ -26,7 +26,17 @@ router = APIRouter(tags=["auth"])
 #: Failed logins allowed per IP/username before a temporary lockout.
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_WINDOW = timedelta(minutes=5)
-MIN_PASSWORD_LENGTH = 8
+MIN_PASSWORD_LENGTH = 10
+
+
+def _password_error(password: str) -> str | None:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        return f"Password must be at least {MIN_PASSWORD_LENGTH} characters long."
+    classes = (any(c.islower() for c in password), any(c.isupper() for c in password),
+               any(c.isdigit() for c in password), any(not c.isalnum() for c in password))
+    if sum(classes) < 2:
+        return "Password must use at least two of lowercase letters, uppercase letters, numbers or symbols."
+    return None
 
 
 @router.get("/")
@@ -48,14 +58,15 @@ async def signup(
     username: Annotated[str, Form()] = "",
     password: Annotated[str, Form()] = "",
 ):
-    username, password = username.strip(), password.strip()
+    username = username.strip()
 
     if not username or not password:
         return render(request, "signup.html", error="All fields are required.")
-    if len(password) < MIN_PASSWORD_LENGTH:
+    password_error = _password_error(password)
+    if password_error:
         return render(
             request, "signup.html",
-            error=f"Password must be at least {MIN_PASSWORD_LENGTH} characters long.",
+            error=password_error,
         )
 
     # Single unified "User" role. The DB role column has a legacy CHECK
@@ -64,7 +75,7 @@ async def signup(
     try:
         conn.execute(
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-            (username, generate_password_hash(password), "student"),
+            (username, generate_password_hash(password), "user"),
         )
         conn.commit()
     except sqlite3.IntegrityError:
@@ -80,14 +91,14 @@ async def login(
     username: Annotated[str, Form()] = "",
     password: Annotated[str, Form()] = "",
 ):
-    username, password = username.strip(), password.strip()
+    username = username.strip()
     ip = request.client.host if request.client else None
 
-    window_start = (datetime.utcnow() - LOCKOUT_WINDOW).isoformat()
+    window_start = (datetime.now(timezone.utc) - LOCKOUT_WINDOW).isoformat()
     failures = conn.execute(
         """
         SELECT COUNT(*) FROM login_attempts
-        WHERE (ip=? OR username=?) AND success=0 AND attempt_time > ?
+        WHERE ip=? AND username=? AND success=0 AND attempt_time > ?
         """,
         (ip, username, window_start),
     ).fetchone()[0]
@@ -103,7 +114,7 @@ async def login(
 
     conn.execute(
         "INSERT INTO login_attempts (ip, username, attempt_time, success) VALUES (?, ?, ?, ?)",
-        (ip, username, datetime.utcnow().isoformat(), 1 if ok else 0),
+        (ip, username, datetime.now(timezone.utc).isoformat(), 1 if ok else 0),
     )
     conn.commit()
 
@@ -137,7 +148,7 @@ async def profile(
     password: Annotated[str, Form()] = "",
 ):
     row = conn.execute("SELECT * FROM users WHERE id=?", (user.id,)).fetchone()
-    new_username, new_email, new_password = username.strip(), email.strip(), password.strip()
+    new_username, new_email, new_password = username.strip(), email.strip(), password
 
     try:
         if not new_username:
@@ -148,22 +159,34 @@ async def profile(
             ).fetchone()
             if taken:
                 raise ValueError("Username already exists.")
-        if new_password and len(new_password) < MIN_PASSWORD_LENGTH:
-            raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long.")
+        password_error = _password_error(new_password) if new_password else None
+        if password_error:
+            raise ValueError(password_error)
     except ValueError as exc:
         return render(request, "profile.html", user=row, error=str(exc))
 
-    if new_password:
-        conn.execute(
-            "UPDATE users SET username=?, email=?, password_hash=? WHERE id=?",
-            (new_username, new_email, generate_password_hash(new_password), user.id),
-        )
-    else:
-        conn.execute(
-            "UPDATE users SET username=?, email=? WHERE id=?",
-            (new_username, new_email, user.id),
-        )
-    conn.commit()
+    try:
+        if new_password:
+            conn.execute(
+                "UPDATE users SET username=?, email=?, password_hash=? WHERE id=?",
+                (new_username, new_email, generate_password_hash(new_password), user.id),
+            )
+        else:
+            conn.execute(
+                "UPDATE users SET username=?, email=? WHERE id=?",
+                (new_username, new_email, user.id),
+            )
+        if new_username != row["username"]:
+            # Preserve the existing username ownership model consistently. All
+            # dependent names change in the SAME transaction as the account.
+            for table, column in (("sessions", "teacher"), ("documents", "owner"),
+                                  ("generation_jobs", "username")):
+                conn.execute(f"UPDATE {table} SET {column}=? WHERE {column}=?",
+                             (new_username, row["username"]))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
     request.session["username"] = new_username
     flash(request, "Profile updated successfully!", "success")
@@ -172,21 +195,8 @@ async def profile(
 
 @router.post("/delete_account")
 async def delete_account(request: Request, user: CurrentUser, conn: Db):
-    # A single user may own generated sessions (by username) and quiz results
-    # (by user_id), plus learning data. Remove all of it.
-    conn.execute(
-        "DELETE FROM results WHERE session_key IN "
-        "(SELECT session_key FROM sessions WHERE teacher=?)",
-        (user.username,),
-    )
-    conn.execute("DELETE FROM sessions WHERE teacher=?", (user.username,))
-    for table in ("results", "learning_history", "weak_topics", "user_prefs"):
-        try:
-            conn.execute(f"DELETE FROM {table} WHERE user_id=?", (user.id,))
-        except sqlite3.OperationalError:
-            pass  # additive table not present on an older database
-    conn.execute("DELETE FROM users WHERE id=?", (user.id,))
-    conn.commit()
+    from core.services.account_data import delete_account_data
+    delete_account_data(conn, user.id, user.username)
 
     request.session.clear()
     # flash() writes to the session, so it must come after clear().
