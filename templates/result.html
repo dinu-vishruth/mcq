@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Your Results — MCQ Generator</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/dist/app.css">
+  <link rel="stylesheet" href="{{ frontend_asset('css') }}">
 </head>
 
 <body>
@@ -25,7 +25,7 @@
          "explanations": explanations
        } | tojson }}'></div>
 
-  <script type="module" src="/static/dist/app.js"></script>
+  <script type="module" src="{{ frontend_asset('js') }}"></script>
 </body>
 
 </html>

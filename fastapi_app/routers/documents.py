@@ -162,11 +162,32 @@ async def upload(
     file: UploadFile | None = None,
     title: Annotated[str, Form()] = "",
     extracted_text: Annotated[str, Form()] = "",
+    num_questions: Annotated[str | None, Form()] = None,
+    difficulty: Annotated[str, Form()] = "medium",
+    timer: Annotated[str, Form()] = "10",
 ):
-    """Upload a document, save it to the library, then redirect to MakeQuiz
-    where the user configures difficulty, question count, and timer before generating."""
+    """Save material for quiz setup, or honor an older Generate & Start form.
+
+    Older screens supply num_questions/difficulty/timer and expect an immediate
+    quiz. Newer upload-only screens omit them and configure the quiz next.
+    """
     def reject(message: str):
         return render(request, "upload.html", error=message)
+
+    # Already-open versions of the upload screen submit Generate & Start here.
+    # Preserve that contract instead of silently treating generation as upload.
+    if num_questions is not None:
+        try:
+            count = int(num_questions)
+            minutes = int(timer)
+            if not 1 <= count <= 30:
+                raise ValueError("Number of questions must be between 1 and 30.")
+            if not 1 <= minutes <= 180:
+                raise ValueError("Time limit must be between 1 and 180 minutes.")
+            if difficulty not in ("easy", "medium", "hard"):
+                raise ValueError("Invalid difficulty level selected.")
+        except ValueError as exc:
+            return reject(str(exc))
 
     try:
         text, resolved_title, source_ext = extract_upload_text(file, title, extracted_text)
@@ -180,6 +201,28 @@ async def upload(
         doc_id = doc_res.get("document_id") if isinstance(doc_res, dict) else None
     except Exception as exc:
         return reject(f"Could not save this resource: {exc}. Please try another file.")
+
+    if num_questions is not None:
+        try:
+            from core.models.db import get_db
+            conn = get_db()
+            try:
+                throttled = _check_generation_throttle(conn, user.username)
+            finally:
+                conn.close()
+            if throttled:
+                return reject(throttled)
+            mcqs = mcq_generator.generate_mcqs(text, num_questions=count, difficulty=difficulty)
+            if not mcqs:
+                return reject("No questions were generated. Please try again.")
+            key = create_session_key(
+                teacher=user.username, difficulty=difficulty, timer=minutes * 60,
+                mcqs=mcqs, document_id=doc_id,
+            )
+        except Exception as exc:
+            return reject(f"Could not generate this quiz: {exc}")
+        request.session["session_key"] = key
+        return RedirectResponse("/mcq_test", status_code=302)
 
     if doc_id:
         return RedirectResponse(f"/knowledge?doc={doc_id}", status_code=302)

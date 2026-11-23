@@ -7,7 +7,7 @@
   <title>Practice — Examly</title>
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/dist/app.css">
+  <link rel="stylesheet" href="{{ frontend_asset('css') }}">
 </head>
 
 <body>
@@ -19,7 +19,7 @@
          "username": session.username or "there",
          "document_id": document_id | default(none)
        } | tojson }}'></div>
-  <script type="module" src="/static/dist/app.js"></script>
+  <script type="module" src="{{ frontend_asset('js') }}"></script>
 </body>
 
 </html>

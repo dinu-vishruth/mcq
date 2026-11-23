@@ -1,0 +1,418 @@
+{
+  "_chunk-AppShell-CzCjb9aG.js": {
+    "file": "chunk-AppShell-CzCjb9aG.js",
+    "name": "AppShell",
+    "imports": [
+      "src/main.tsx",
+      "_chunk-cn-CR1n-2Uj.js",
+      "_chunk-Card-DhSLjn4-.js"
+    ]
+  },
+  "_chunk-Badge-CLFjQpNd.js": {
+    "file": "chunk-Badge-CLFjQpNd.js",
+    "name": "Badge",
+    "imports": [
+      "src/main.tsx",
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-Button-CDIV0Z5O.js": {
+    "file": "chunk-Button-CDIV0Z5O.js",
+    "name": "Button",
+    "imports": [
+      "src/main.tsx",
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-Card-DhSLjn4-.js": {
+    "file": "chunk-Card-DhSLjn4-.js",
+    "name": "Card",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js",
+      "src/main.tsx"
+    ]
+  },
+  "_chunk-ProgressBar-6srJC1DW.js": {
+    "file": "chunk-ProgressBar-6srJC1DW.js",
+    "name": "ProgressBar",
+    "imports": [
+      "src/main.tsx",
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-arrow-right-pDZsIeZz.js": {
+    "file": "chunk-arrow-right-pDZsIeZz.js",
+    "name": "arrow-right",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-award-sMI2t7Kt.js": {
+    "file": "chunk-award-sMI2t7Kt.js",
+    "name": "award",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-brain-BCV49UJ8.js": {
+    "file": "chunk-brain-BCV49UJ8.js",
+    "name": "brain",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-check-nuBRmkgJ.js": {
+    "file": "chunk-check-nuBRmkgJ.js",
+    "name": "check",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-chevron-right-CIVbqWTf.js": {
+    "file": "chunk-chevron-right-CIVbqWTf.js",
+    "name": "chevron-right",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-circle-check-hKsvxg7t.js": {
+    "file": "chunk-circle-check-hKsvxg7t.js",
+    "name": "circle-check",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-clock-DTf73tsJ.js": {
+    "file": "chunk-clock-DTf73tsJ.js",
+    "name": "clock",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-cloud-upload-BXoWatff.js": {
+    "file": "chunk-cloud-upload-BXoWatff.js",
+    "name": "cloud-upload",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-cn-CR1n-2Uj.js": {
+    "file": "chunk-cn-CR1n-2Uj.js",
+    "name": "cn",
+    "imports": [
+      "src/main.tsx"
+    ]
+  },
+  "_chunk-dumbbell-SCceG_oX.js": {
+    "file": "chunk-dumbbell-SCceG_oX.js",
+    "name": "dumbbell",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-extract-CpSQuXRb.js": {
+    "file": "chunk-extract-CpSQuXRb.js",
+    "name": "extract",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-index-4QiEvLtu.js": {
+    "file": "chunk-index-4QiEvLtu.js",
+    "name": "index",
+    "imports": [
+      "src/main.tsx",
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-layers-CFI905If.js": {
+    "file": "chunk-layers-CFI905If.js",
+    "name": "layers",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-library-Ao62wKN5.js": {
+    "file": "chunk-library-Ao62wKN5.js",
+    "name": "library",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-loader-circle-CO93zZJw.js": {
+    "file": "chunk-loader-circle-CO93zZJw.js",
+    "name": "loader-circle",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-plus-DnqhHI8x.js": {
+    "file": "chunk-plus-DnqhHI8x.js",
+    "name": "plus",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-rotate-ccw-CbwRvRNL.js": {
+    "file": "chunk-rotate-ccw-CbwRvRNL.js",
+    "name": "rotate-ccw",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-sparkles-CJknnI-q.js": {
+    "file": "chunk-sparkles-CJknnI-q.js",
+    "name": "sparkles",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-target-BKYWp1w_.js": {
+    "file": "chunk-target-BKYWp1w_.js",
+    "name": "target",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "_chunk-trash-2-_JMal2-u.js": {
+    "file": "chunk-trash-2-_JMal2-u.js",
+    "name": "trash-2",
+    "imports": [
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "src/main.tsx": {
+    "file": "app-DzmSVn2f.js",
+    "name": "main",
+    "src": "src/main.tsx",
+    "isEntry": true,
+    "dynamicImports": [
+      "src/screens/Dashboard.tsx",
+      "src/screens/MakeQuiz.tsx",
+      "src/screens/MakeQuiz.tsx",
+      "src/screens/Journey.tsx",
+      "src/screens/AddResource.tsx",
+      "src/screens/Quiz.tsx",
+      "src/screens/Result.tsx",
+      "src/screens/Upload.tsx",
+      "src/screens/Progress.tsx",
+      "src/screens/WeakTopics.tsx",
+      "src/screens/Achievements.tsx",
+      "src/screens/Settings.tsx"
+    ],
+    "css": [
+      "app-Bk2XB6kT.css"
+    ]
+  },
+  "src/screens/Achievements.tsx": {
+    "file": "chunk-Achievements-DsOWKLa_.js",
+    "name": "Achievements",
+    "src": "src/screens/Achievements.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx",
+      "_chunk-AppShell-CzCjb9aG.js",
+      "_chunk-Card-DhSLjn4-.js",
+      "_chunk-ProgressBar-6srJC1DW.js",
+      "_chunk-loader-circle-CO93zZJw.js",
+      "_chunk-award-sMI2t7Kt.js",
+      "_chunk-target-BKYWp1w_.js",
+      "_chunk-cn-CR1n-2Uj.js"
+    ]
+  },
+  "src/screens/AddResource.tsx": {
+    "file": "chunk-AddResource-DzzxBkHk.js",
+    "name": "AddResource",
+    "src": "src/screens/AddResource.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx",
+      "_chunk-Card-DhSLjn4-.js",
+      "_chunk-Button-CDIV0Z5O.js",
+      "_chunk-AppShell-CzCjb9aG.js",
+      "_chunk-extract-CpSQuXRb.js",
+      "_chunk-cn-CR1n-2Uj.js",
+      "_chunk-library-Ao62wKN5.js",
+      "_chunk-check-nuBRmkgJ.js",
+      "_chunk-cloud-upload-BXoWatff.js",
+      "_chunk-brain-BCV49UJ8.js",
+      "_chunk-layers-CFI905If.js",
+      "_chunk-index-4QiEvLtu.js"
+    ]
+  },
+  "src/screens/Dashboard.tsx": {
+    "file": "chunk-Dashboard-Cm4x1riw.js",
+    "name": "Dashboard",
+    "src": "src/screens/Dashboard.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx",
+      "_chunk-Card-DhSLjn4-.js",
+      "_chunk-Button-CDIV0Z5O.js",
+      "_chunk-Badge-CLFjQpNd.js",
+      "_chunk-ProgressBar-6srJC1DW.js",
+      "_chunk-cn-CR1n-2Uj.js",
+      "_chunk-index-4QiEvLtu.js",
+      "_chunk-AppShell-CzCjb9aG.js",
+      "_chunk-award-sMI2t7Kt.js",
+      "_chunk-sparkles-CJknnI-q.js",
+      "_chunk-dumbbell-SCceG_oX.js",
+      "_chunk-rotate-ccw-CbwRvRNL.js",
+      "_chunk-layers-CFI905If.js",
+      "_chunk-arrow-right-pDZsIeZz.js",
+      "_chunk-check-nuBRmkgJ.js",
+      "_chunk-loader-circle-CO93zZJw.js",
+      "_chunk-target-BKYWp1w_.js",
+      "_chunk-brain-BCV49UJ8.js",
+      "_chunk-clock-DTf73tsJ.js",
+      "_chunk-chevron-right-CIVbqWTf.js"
+    ]
+  },
+  "src/screens/Journey.tsx": {
+    "file": "chunk-Journey-BQLu652a.js",
+    "name": "Journey",
+    "src": "src/screens/Journey.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx",
+      "_chunk-AppShell-CzCjb9aG.js",
+      "_chunk-Card-DhSLjn4-.js",
+      "_chunk-Button-CDIV0Z5O.js",
+      "_chunk-Badge-CLFjQpNd.js",
+      "_chunk-plus-DnqhHI8x.js",
+      "_chunk-loader-circle-CO93zZJw.js",
+      "_chunk-library-Ao62wKN5.js",
+      "_chunk-cn-CR1n-2Uj.js",
+      "_chunk-circle-check-hKsvxg7t.js",
+      "_chunk-layers-CFI905If.js",
+      "_chunk-clock-DTf73tsJ.js",
+      "_chunk-dumbbell-SCceG_oX.js",
+      "_chunk-trash-2-_JMal2-u.js"
+    ]
+  },
+  "src/screens/MakeQuiz.tsx": {
+    "file": "chunk-MakeQuiz-XtOYVbC5.js",
+    "name": "MakeQuiz",
+    "src": "src/screens/MakeQuiz.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx",
+      "_chunk-AppShell-CzCjb9aG.js",
+      "_chunk-Card-DhSLjn4-.js",
+      "_chunk-Button-CDIV0Z5O.js",
+      "_chunk-cloud-upload-BXoWatff.js",
+      "_chunk-chevron-right-CIVbqWTf.js",
+      "_chunk-library-Ao62wKN5.js",
+      "_chunk-loader-circle-CO93zZJw.js",
+      "_chunk-plus-DnqhHI8x.js",
+      "_chunk-cn-CR1n-2Uj.js",
+      "_chunk-clock-DTf73tsJ.js",
+      "_chunk-sparkles-CJknnI-q.js"
+    ]
+  },
+  "src/screens/Progress.tsx": {
+    "file": "chunk-Progress-CW18is6F.js",
+    "name": "Progress",
+    "src": "src/screens/Progress.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx",
+      "_chunk-AppShell-CzCjb9aG.js",
+      "_chunk-Card-DhSLjn4-.js",
+      "_chunk-Badge-CLFjQpNd.js",
+      "_chunk-ProgressBar-6srJC1DW.js",
+      "_chunk-circle-check-hKsvxg7t.js",
+      "_chunk-target-BKYWp1w_.js",
+      "_chunk-award-sMI2t7Kt.js",
+      "_chunk-cn-CR1n-2Uj.js",
+      "_chunk-clock-DTf73tsJ.js"
+    ]
+  },
+  "src/screens/Quiz.tsx": {
+    "file": "chunk-Quiz-DE3Kq_4y.js",
+    "name": "Quiz",
+    "src": "src/screens/Quiz.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx",
+      "_chunk-Button-CDIV0Z5O.js",
+      "_chunk-ProgressBar-6srJC1DW.js",
+      "_chunk-brain-BCV49UJ8.js",
+      "_chunk-clock-DTf73tsJ.js",
+      "_chunk-index-4QiEvLtu.js",
+      "_chunk-cn-CR1n-2Uj.js",
+      "_chunk-check-nuBRmkgJ.js",
+      "_chunk-arrow-right-pDZsIeZz.js"
+    ]
+  },
+  "src/screens/Result.tsx": {
+    "file": "chunk-Result-DzkRMHcc.js",
+    "name": "Result",
+    "src": "src/screens/Result.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx",
+      "_chunk-Card-DhSLjn4-.js",
+      "_chunk-Button-CDIV0Z5O.js",
+      "_chunk-Badge-CLFjQpNd.js",
+      "_chunk-brain-BCV49UJ8.js",
+      "_chunk-cn-CR1n-2Uj.js",
+      "_chunk-check-nuBRmkgJ.js",
+      "_chunk-target-BKYWp1w_.js",
+      "_chunk-sparkles-CJknnI-q.js"
+    ]
+  },
+  "src/screens/Settings.tsx": {
+    "file": "chunk-Settings-BvSenK5q.js",
+    "name": "Settings",
+    "src": "src/screens/Settings.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx",
+      "_chunk-AppShell-CzCjb9aG.js",
+      "_chunk-Card-DhSLjn4-.js",
+      "_chunk-Button-CDIV0Z5O.js",
+      "_chunk-cn-CR1n-2Uj.js",
+      "_chunk-check-nuBRmkgJ.js",
+      "_chunk-sparkles-CJknnI-q.js",
+      "_chunk-trash-2-_JMal2-u.js"
+    ]
+  },
+  "src/screens/Upload.tsx": {
+    "file": "chunk-Upload-DA5KCRQK.js",
+    "name": "Upload",
+    "src": "src/screens/Upload.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx",
+      "_chunk-Card-DhSLjn4-.js",
+      "_chunk-Button-CDIV0Z5O.js",
+      "_chunk-AppShell-CzCjb9aG.js",
+      "_chunk-extract-CpSQuXRb.js",
+      "_chunk-sparkles-CJknnI-q.js",
+      "_chunk-check-nuBRmkgJ.js",
+      "_chunk-cloud-upload-BXoWatff.js",
+      "_chunk-brain-BCV49UJ8.js",
+      "_chunk-layers-CFI905If.js",
+      "_chunk-cn-CR1n-2Uj.js",
+      "_chunk-index-4QiEvLtu.js"
+    ]
+  },
+  "src/screens/WeakTopics.tsx": {
+    "file": "chunk-WeakTopics-9UZYMJvk.js",
+    "name": "WeakTopics",
+    "src": "src/screens/WeakTopics.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "src/main.tsx",
+      "_chunk-AppShell-CzCjb9aG.js",
+      "_chunk-Card-DhSLjn4-.js",
+      "_chunk-Button-CDIV0Z5O.js",
+      "_chunk-ProgressBar-6srJC1DW.js",
+      "_chunk-loader-circle-CO93zZJw.js",
+      "_chunk-circle-check-hKsvxg7t.js",
+      "_chunk-cn-CR1n-2Uj.js",
+      "_chunk-rotate-ccw-CbwRvRNL.js"
+    ]
+  }
+}
