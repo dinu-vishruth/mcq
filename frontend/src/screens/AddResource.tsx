@@ -69,6 +69,7 @@ export default function AddResource({ data }: { data: AddResourceData }) {
         const sampled = sampleText(text, 150000);
         if (extractedRef.current) extractedRef.current.value = sampled;
         fileRef.current?.removeAttribute("required");
+        if (fileRef.current) fileRef.current.value = "";
         setStage(3);
         setTimeout(() => setStage(4), 250);
         setTimeout(() => setStage(5), 500);
@@ -120,6 +121,18 @@ export default function AddResource({ data }: { data: AddResourceData }) {
             <input ref={extractedRef} type="hidden" name="extracted_text" />
             <input type="hidden" name="title" value={title} />
 
+            {/* Keep the selected file mounted while extraction and submission run. */}
+            <input
+              ref={fileRef}
+              type="file"
+              name="file"
+              id="file-input"
+              accept=".pdf,.docx,.pptx,.txt"
+              required
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) pickFile(f); }}
+            />
+
             {!busy ? (
               <>
                 <label
@@ -144,16 +157,6 @@ export default function AddResource({ data }: { data: AddResourceData }) {
                   </p>
                   <p className="text-text-3 text-sm">PDF, DOCX, PPTX or TXT · up to 50 MB</p>
                   {fileName && <p className="text-success text-sm font-medium mt-1">{fileName}</p>}
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    name="file"
-                    id="file-input"
-                    accept=".pdf,.docx,.pptx,.txt"
-                    required
-                    className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) pickFile(f); }}
-                  />
                 </label>
 
                 <div className="mt-5">

@@ -115,6 +115,19 @@ export default function Upload({ data }: { data: UploadData }) {
           <form ref={formRef} action="/upload" method="post" encType="multipart/form-data" onSubmit={onSubmit}>
             <input type="hidden" name="csrf_token" value={csrfToken()} />
             <input ref={extractedRef} type="hidden" name="extracted_text" />
+            <input type="hidden" name="title" value={fileName} />
+
+            {/* Keep the selected file mounted while extraction and submission run. */}
+            <input
+              ref={fileRef}
+              type="file"
+              name="file"
+              id="file-input"
+              accept=".pdf,.docx,.pptx,.txt"
+              required
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) pickFile(f); }}
+            />
 
             {!busy ? (
               <>
@@ -140,16 +153,6 @@ export default function Upload({ data }: { data: UploadData }) {
                   </p>
                   <p className="text-text-3 text-sm">PDF, DOCX, PPTX or TXT · up to 50 MB</p>
                   {fileName && <p className="text-success text-sm font-medium mt-1">{fileName}</p>}
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    name="file"
-                    id="file-input"
-                    accept=".pdf,.docx,.pptx,.txt"
-                    required
-                    className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) pickFile(f); }}
-                  />
                 </label>
 
                 <Button type="submit" size="lg" className="w-full mt-6" leftIcon={<UploadCloud className="w-4 h-4" />}>

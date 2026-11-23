@@ -44,6 +44,9 @@ _MODEL_HINTS = {
 # Retired Groq models map to the current default. Active GPT-OSS models must
 # remain selectable; a rate limit is not a model deprecation.
 _DEPRECATED_MODELS = {
+    # Groq decommissioned both Compound systems on 2026-09-21.
+    "groq/compound",
+    "groq/compound-mini",
     "llama-3.3-70b-versatile",
     "llama-3.1-70b-versatile",
     "llama-3.1-8b-instant",

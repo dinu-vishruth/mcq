@@ -168,6 +168,17 @@ class TestGroqModelMigration(unittest.TestCase):
                     self.assertEqual(llm.model, "openai/gpt-oss-20b")
                     self.assertEqual(llm.base_url, "https://api.groq.com/openai/v1")
 
+    def test_compound_models_are_migrated_before_api_request(self):
+        for provider in ("auto", "groq"):
+            for retired in ("groq/compound", "groq/compound-mini"):
+                response = Mock(status_code=200)
+                response.json.return_value = {"choices": [{"message": {"content": '{"questions": []}'}}]}
+                with self.subTest(provider=provider, model=retired), patch.multiple(
+                    config, LLM_PROVIDER=provider, LLM_API_KEY="gsk_test", LLM_MODEL=retired
+                ), patch("core.llm.openai_compatible.requests.post", return_value=response) as post:
+                    registry.build_llm().complete_json([{"role": "user", "content": "Generate JSON"}])
+                    self.assertEqual(post.call_args.kwargs["json"]["model"], "openai/gpt-oss-20b")
+
     def test_active_gpt_oss_models_are_preserved(self):
         for provider in ("auto", "groq"):
             for model in ("openai/gpt-oss-20b", "openai/gpt-oss-120b"):
