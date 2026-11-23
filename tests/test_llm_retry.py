@@ -65,10 +65,12 @@ class TestRetry(unittest.TestCase):
         p.complete_json([{"role": "user", "content": "hi"}])
         self.assertEqual(self.waits, [5.0])          # used the provider's hint
 
-    def test_retry_after_capped_by_max_wait(self):
+    def test_long_retry_after_does_not_retry_before_provider_permits(self):
         p = _FlakyProvider(fail_times=1, retry_after=999.0)
-        p.complete_json([{"role": "user", "content": "hi"}])
-        self.assertEqual(self.waits, [8.0])          # clamped to LLM_RETRY_MAX_WAIT
+        with self.assertRaises(RateLimitError):
+            p.complete_json([{"role": "user", "content": "hi"}])
+        self.assertEqual(p.calls, 1)
+        self.assertEqual(self.waits, [])
 
     def test_no_retries_when_disabled(self):
         config.LLM_MAX_RETRIES = 0
@@ -77,6 +79,17 @@ class TestRetry(unittest.TestCase):
             p.complete_json([{"role": "user", "content": "hi"}])
         self.assertEqual(p.calls, 1)
         self.assertEqual(self.waits, [])
+
+    def test_http_date_retry_after_is_parsed(self):
+        from datetime import datetime, timedelta, timezone
+        from email.utils import format_datetime
+        from types import SimpleNamespace
+
+        when = datetime.now(timezone.utc) + timedelta(seconds=60)
+        response = SimpleNamespace(headers={"Retry-After": format_datetime(when, usegmt=True)})
+        wait = LLMProvider._parse_retry_after(response)
+        self.assertGreater(wait, 55)
+        self.assertLessEqual(wait, 60)
 
 
 if __name__ == "__main__":

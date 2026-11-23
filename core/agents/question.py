@@ -46,5 +46,7 @@ class QuestionAgent(Agent):
             mcqs = data
         else:
             raise LLMError("JSON structure is missing 'questions' array key.")
+        if not isinstance(mcqs, list):
+            raise LLMError("The AI service returned an invalid question array. Please retry.")
         self._log(f"generated {len(mcqs)} raw questions ({difficulty})")
         return mcqs

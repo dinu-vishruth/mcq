@@ -35,7 +35,9 @@ class DifficultyAgent(Agent):
             return {"matched": mcqs, "mismatched_indices": []}
 
         mismatched = set()
-        for g in grades:
+        for g in grades if isinstance(grades, list) else []:
+            if not isinstance(g, dict) or type(g.get("matches_requested")) is not bool:
+                continue
             try:
                 idx = int(g.get("index"))
             except (TypeError, ValueError):

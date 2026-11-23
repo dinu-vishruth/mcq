@@ -7,11 +7,13 @@ difficulty)` and `MCQGenerationError` — so app.py and test_mcq.py are unchange
 Internally it now delegates to the provider-agnostic LLM layer (core.llm) and the
 versioned prompt in core.prompts.mcq, which also fixes the old api.xai.com typo.
 
-When config.AI_PIPELINE == "rag" it routes to the retrieval pipeline instead
-(wired in Phase 4). Until then the behaviour is byte-for-byte the legacy path.
+When config.AI_PIPELINE == "rag" it routes to the retrieval pipeline. Both
+paths enforce the same typed MCQ contract and use source-grounded prompts.
 """
 import config
 from core.llm import LLMError, get_llm
+from core.llm.budget import BudgetExceeded, generation_budget, remaining
+from core.models.questions import attach_evidence, normalized, validate_questions
 from core.prompts import mcq as mcq_prompts
 from core.services.personalization import system_prompt
 from utils.text_cleaner import clean_text
@@ -23,20 +25,12 @@ class MCQGenerationError(Exception):
 
 
 def _structurally_valid(mcqs):
-    """Filter to well-formed MCQs. Same rules as the original implementation."""
-    valid = []
-    for q in mcqs:
-        if not isinstance(q, dict):
-            continue
-        if "question" in q and "options" in q and "answer_text" in q:
-            if isinstance(q["options"], list) and len(q["options"]) == 4:
-                if all(isinstance(o, dict) and "label" in o and "text" in o for o in q["options"]):
-                    valid.append(q)
-    return valid
+    """Apply the shared deterministic MCQ contract."""
+    return validate_questions(mcqs)[0]
 
 
 def _validate(mcqs, num_questions):
-    """Structural validation, identical rules to the original implementation."""
+    """Validate using the same contract as RAG and persistence."""
     valid = _structurally_valid(mcqs)
     if not valid:
         raise MCQGenerationError("No valid questions could be structured from the AI response. Please retry.")
@@ -52,6 +46,7 @@ def _extract_questions(data):
     raise MCQGenerationError("JSON structure is missing 'questions' array key.")
 
 
+@generation_budget
 def generate_mcqs(text, num_questions=5, difficulty="medium"):
     """
     Generate high-quality MCQs. Difficulty: easy / medium / hard.
@@ -75,7 +70,15 @@ def generate_mcqs(text, num_questions=5, difficulty="medium"):
         else:
             return generate_mcqs_rag(text, num_questions=num_questions, difficulty=difficulty)
 
-    # Legacy single-shot path — same 150k truncation, same prompt wording.
+    return generate_mcqs_legacy(text, num_questions, difficulty)
+
+
+@generation_budget
+def generate_mcqs_legacy(text, num_questions=5, difficulty="medium"):
+    text = clean_text(text)
+    if not text:
+        raise MCQGenerationError("No readable source text was provided.")
+    # The direct generation path keeps its input ceiling and shares RAG's prompt.
     max_chars = 150000
     if len(text) > max_chars:
         text = text[:max_chars]
@@ -94,7 +97,15 @@ def generate_mcqs(text, num_questions=5, difficulty="medium"):
         if need <= 0:
             break
 
-        prompt = mcq_prompts.legacy_prompt(text, need, difficulty)
+        try:
+            remaining()
+        except BudgetExceeded:
+            if collected:
+                break
+            raise
+        prompt = mcq_prompts.rag_prompt(text, need, difficulty)
+        if collected:
+            prompt += "\nDo not repeat these accepted questions:\n" + "\n".join(q["question"] for q in collected)
         messages = [
             {"role": "system", "content": system_prompt(mcq_prompts.SYSTEM)},
             {"role": "user", "content": prompt},
@@ -111,8 +122,14 @@ def generate_mcqs(text, num_questions=5, difficulty="medium"):
             break
 
         before = len(collected)
-        for q in _structurally_valid(_extract_questions(data)):
-            key = (q.get("question") or "").strip().lower()
+        try:
+            questions = _extract_questions(data)
+        except MCQGenerationError:
+            if collected:
+                break
+            raise
+        for q in _structurally_valid(questions):
+            key = normalized(q["question"])
             if key and key not in seen:
                 seen.add(key)
                 collected.append(q)
@@ -123,4 +140,4 @@ def generate_mcqs(text, num_questions=5, difficulty="medium"):
     if not collected:
         raise MCQGenerationError("No valid questions could be structured from the AI response. Please retry.")
 
-    return collected[:num_questions]
+    return attach_evidence(collected[:num_questions], text)

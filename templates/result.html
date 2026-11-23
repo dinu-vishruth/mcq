@@ -21,6 +21,8 @@
        data-page="result"
        data-bootstrap='{{ {
          "score": score,
+         "session_key": session_key,
+         "enrichment_pending": enrichment_pending | default(false),
          "total": total,
          "details": details,
          "explanations": explanations,

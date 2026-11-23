@@ -61,6 +61,7 @@ class LLMProvider(abc.ABC):
         import time
 
         import config
+        from core.llm.budget import remaining
         from core.observability import log_event
 
         max_retries = max(0, int(getattr(config, "LLM_MAX_RETRIES", 3)))
@@ -71,6 +72,7 @@ class LLMProvider(abc.ABC):
 
         attempt = 0
         while True:
+            remaining()
             self.last_usage = None
             started = time.perf_counter()
             try:
@@ -87,7 +89,12 @@ class LLMProvider(abc.ABC):
                     raise
                 # Prefer the provider's own hint; else exponential backoff.
                 wait = e.retry_after if e.retry_after is not None else base * (2 ** attempt)
+                available = remaining()
+                if e.retry_after is not None and wait > max_wait:
+                    raise  # Never retry before the provider permits it.
                 wait = min(wait, max_wait)
+                if available is not None and wait + 0.1 >= available:
+                    raise
                 attempt += 1
                 log_event("llm.retry", provider=provider, model=self.model,
                           attempt=attempt, max_retries=max_retries,
@@ -111,6 +118,7 @@ class LLMProvider(abc.ABC):
                     json_mode=json_mode, prompt_chars=prompt_chars,
                     max_tokens=max_tokens, usage=self.last_usage,
                 )
+                remaining()
                 return result
 
     def complete_json(self, messages: list[dict], *, temperature: float | None = None,
@@ -121,12 +129,20 @@ class LLMProvider(abc.ABC):
 
     @staticmethod
     def _parse_retry_after(resp) -> float | None:
-        """Best-effort parse of the Retry-After header (delta-seconds form)."""
+        """Accept both HTTP delta-seconds and HTTP-date Retry-After values."""
         try:
             val = resp.headers.get("Retry-After") or resp.headers.get("retry-after")
             if val is None:
                 return None
-            return max(0.0, float(val))
+            try:
+                return max(0.0, float(val))
+            except ValueError:
+                from datetime import datetime, timezone
+                from email.utils import parsedate_to_datetime
+                when = parsedate_to_datetime(val)
+                if when.tzinfo is None:
+                    when = when.replace(tzinfo=timezone.utc)
+                return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
         except (TypeError, ValueError):
             return None
 

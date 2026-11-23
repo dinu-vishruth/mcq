@@ -203,13 +203,18 @@ def upload(
         if throttle:
             return reject(throttle)
         try:
+            import config
+            from core.llm.budget import time_budget
+            from core.services.generation_limits import generation_slot
             from models.mcq_generator import generate_mcqs
             from utils.session_manager import create_session_key
-            questions = generate_mcqs(text, num_questions=count, difficulty=difficulty)
-            if not questions:
-                raise ValueError("No questions could be generated. Please try again.")
-            key = create_session_key(teacher=user.username, difficulty=difficulty,
-                                     timer=minutes * 60, mcqs=questions, owner_id=user.id)
+            seconds = min(config.PIPELINE_DEADLINE_SECONDS, 50) if config.IS_SERVERLESS else config.PIPELINE_DEADLINE_SECONDS
+            with generation_slot(user.id, user.username, seconds=seconds), time_budget(seconds):
+                questions = generate_mcqs(text, num_questions=count, difficulty=difficulty)
+                if not questions:
+                    raise ValueError("No questions could be generated. Please try again.")
+                key = create_session_key(teacher=user.username, difficulty=difficulty,
+                                         timer=minutes * 60, mcqs=questions, owner_id=user.id)
         except Exception as exc:
             return reject(f"Could not generate quiz: {exc}")
         request.session["session_key"] = key

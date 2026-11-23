@@ -11,6 +11,12 @@ export interface SettingsData {
   email: string;
   error?: string;
   flash?: string;
+  flash_error?: boolean;
+  auth_provider?: string;
+  google_connected?: boolean;
+  github_connected?: boolean;
+  google_enabled?: boolean;
+  github_enabled?: boolean;
 }
 
 const GOALS = ["college", "placement", "interview", "competitive", "certification", "personal"];
@@ -71,7 +77,7 @@ export default function Settings({ data }: { data: SettingsData }) {
         </motion.div>
 
         {data.flash && (
-          <div className="mb-4 px-4 py-3 rounded-md bg-success/10 border border-success/20 text-success text-sm flex items-center gap-2">
+          <div role="status" className={`mb-4 px-4 py-3 rounded-md border text-sm flex items-center gap-2 ${data.flash_error ? "bg-danger/10 border-danger/20 text-danger" : "bg-success/10 border-success/20 text-success"}`}>
             <Check className="w-4 h-4" /> {data.flash}
           </div>
         )}
@@ -101,6 +107,30 @@ export default function Settings({ data }: { data: SettingsData }) {
             </div>
             <Button type="submit" leftIcon={<Check className="w-4 h-4" />}>Save Changes</Button>
           </form>
+        </Card>
+
+        <Card className="mb-5">
+          <h2 className="text-lg">Connected sign-in methods</h2>
+          <p className="text-text-2 text-sm mt-2 mb-4">Connect a provider to this account explicitly. Matching email addresses never merges accounts.</p>
+          {(["google", "github"] as const).map((provider) => (
+            <div key={provider} className="mb-4 last:mb-0">
+              <p className="text-sm font-medium mb-2">{provider === "google" ? "Google" : "GitHub"}</p>
+              {data[`${provider}_connected`] ? <p className="text-success text-sm">Connected</p> :
+                data[`${provider}_enabled`] ? (
+                  <form method="post" action={`/auth/${provider}/link`} className="space-y-2">
+                    <input type="hidden" name="csrf_token" value={csrfToken()} />
+                    {(data.auth_provider ?? "local") === "local" && (
+                      <label className="block text-sm text-text-2">
+                        Confirm current password
+                        <input type="password" name="password" required autoComplete="current-password"
+                          className="block w-full h-11 mt-1 px-3 rounded-md bg-inset border border-white/10" />
+                      </label>
+                    )}
+                    <Button type="submit" variant="secondary">Connect {provider === "google" ? "Google" : "GitHub"}</Button>
+                  </form>
+                ) : <p className="text-text-2 text-sm">Unavailable on this server.</p>}
+            </div>
+          ))}
         </Card>
 
         {/* Learning preferences */}

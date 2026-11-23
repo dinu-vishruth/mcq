@@ -17,14 +17,20 @@
     form still posts to /profile. flash() messages are surfaced via the payload.
     Learning prefs/xp/streak read from the additive user_prefs table.
   #}
-  {% set _flash = get_flashed_messages() %}
+  {% set _flash = get_flashed_messages(with_categories=true) %}
   <div id="root"
        data-page="settings"
        data-bootstrap='{{ {
          "username": user["username"],
          "email": user["email"] or "",
+         "auth_provider": user["auth_provider"] or "local",
+         "google_connected": user["google_id"] is not none,
+         "github_connected": user["github_id"] is not none,
+         "google_enabled": google_oauth_enabled,
+         "github_enabled": github_oauth_enabled,
          "error": error | default(""),
-         "flash": (_flash[0] if _flash else "")
+         "flash_error": (_flash[0][0] == "error" if _flash else false),
+         "flash": (_flash[0][1] if _flash else "")
        } | tojson }}'></div>
 
   <script type="module" src="{{ frontend_asset('js') }}"></script>

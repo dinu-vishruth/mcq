@@ -4,6 +4,7 @@ import { Check, X, Target, Sparkles, Brain, Home } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { apiSend } from "@/bootstrap";
 
 interface Detail {
   question: string;
@@ -11,8 +12,12 @@ interface Detail {
   correct: string;
   is_correct: boolean;
   confidence?: "know" | "maybe" | "no_idea" | null;
+  verification?: "verified" | "unverified";
+  sources?: { quote: string; document_id?: number | null; chunk_index?: number | null }[];
 }
 export interface ResultData {
+  session_key?: string;
+  enrichment_pending?: boolean;
   score: number;
   total: number;
   details: Detail[];
@@ -85,7 +90,34 @@ function Confetti() {
 }
 
 export default function Result({ data }: { data: ResultData }) {
-  const { score, total, details, explanations } = data;
+  const { score, total } = data;
+  const [details, setDetails] = useState(data.details);
+  const [explanations, setExplanations] = useState(data.explanations);
+  const [feedback, setFeedback] = useState<"loading" | "done" | "failed">(data.enrichment_pending ? "loading" : "done");
+  useEffect(() => {
+    if (!data.session_key || !data.enrichment_pending) return;
+    let cancelled = false;
+    async function loadFeedback() {
+      const until = Date.now() + 60000;
+      try {
+        while (!cancelled && Date.now() < until) {
+          const response = await apiSend<{ details: Detail[]; explanations: string[]; pending: boolean; failed: boolean }>(
+            `/api/results/${encodeURIComponent(data.session_key!)}/enrich`, "POST", {}, 55000,
+          );
+          if (cancelled) return;
+          setDetails(response.details);
+          setExplanations(response.explanations);
+          if (!response.pending) { setFeedback(response.failed ? "failed" : "done"); return; }
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        if (!cancelled) setFeedback("failed");
+      } catch {
+        if (!cancelled) setFeedback("failed");
+      }
+    }
+    void loadFeedback();
+    return () => { cancelled = true; };
+  }, [data.session_key, data.enrichment_pending]);
   const pct = total > 0 ? (score / total) * 100 : 0;
   const wrong = total - score;
   const headline = pct >= 70 ? "Outstanding work" : pct >= 40 ? "Good effort" : "Keep practicing";
@@ -147,6 +179,8 @@ export default function Result({ data }: { data: ResultData }) {
         </div>
 
         {/* AI insight */}
+        {feedback === "loading" && <p role="status" className="mb-4 text-sm text-text-2">Your score is saved. Preparing learning feedback…</p>}
+        {feedback === "failed" && <p role="status" className="mb-4 text-sm text-warning">Optional learning feedback could not load. Your score and answers are saved.</p>}
         <Card className="mb-6 bg-gradient-to-br from-accent/[0.08] to-card border-accent/20">
           <div className="flex items-start gap-3">
             <span className="grid place-items-center w-9 h-9 rounded-sm bg-violet/10 text-violet shrink-0"><Sparkles className="w-4 h-4" /></span>
@@ -193,6 +227,15 @@ export default function Result({ data }: { data: ResultData }) {
                     {explanations[i]}
                   </div>
                 )}
+                {!!d.sources?.length && (
+                  <div className="mt-3 text-sm text-text-2">
+                    <p className="font-medium text-text mb-1">Supporting excerpt</p>
+                    {d.sources.map((source, index) => <blockquote key={index} className="border-l-2 border-accent/50 pl-3 mb-2">{source.quote}</blockquote>)}
+                  </div>
+                )}
+                <p className="mt-3 text-xs text-text-2">
+                  {d.verification === "verified" ? "AI source check passed. Use the excerpt to review the answer." : "AI-generated answer. Check it against your study material."}
+                </p>
               </Card>
             </motion.div>
           ))}

@@ -56,7 +56,39 @@ def get_for_user(job_id: str, username: str | None = None, *, user_id: int | Non
     allowed = job is not None and (job.get("user_id") == user_id if user_id is not None else job.get("username") == username)
     if not allowed:
         return None
+    if job["status"] in (STATUS_QUEUED, STATUS_RUNNING):
+        params = json.loads(job.get("params_json") or "{}")
+        reservation_id = params.get("reservation_id")
+        if reservation_id:
+            from core.services.generation_limits import lease_remaining, release
+            if lease_remaining(reservation_id, job["user_id"]) <= 0:
+                conn = get_db()
+                try:
+                    conn.execute(
+                        "UPDATE generation_jobs SET status=?, error=?, updated_at=? "
+                        "WHERE id=? AND status IN (?,?)",
+                        (STATUS_FAILED, "Generation expired. Please retry.", _now(), job_id,
+                         STATUS_QUEUED, STATUS_RUNNING),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+                release(reservation_id)
+                return get(job_id)
     return job
+
+
+def claim(job_id: str) -> bool:
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "UPDATE generation_jobs SET status=?, updated_at=? WHERE id=? AND status=? RETURNING id",
+            (STATUS_RUNNING, _now(), job_id, STATUS_QUEUED),
+        ).fetchone()
+        conn.commit()
+        return row is not None
+    finally:
+        conn.close()
 
 
 def set_running(job_id: str) -> None:

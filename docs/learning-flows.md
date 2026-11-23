@@ -53,4 +53,48 @@ In the Vercel project serving your production domain:
 
 The status endpoint validates local configuration, not provider connectivity,
 key validity, billing or quota. Those are confirmed only by a successful real
-generation. OAuth sign-in repairs are deferred as requested.
+generation.
+
+## Private quizzes, AI time budgets, and evidence
+
+Quizzes are private to their immutable owner ID, including join, draft, resume,
+and submission. New session keys use a full UUID. Legacy quizzes with unassigned
+ownership remain inaccessible until an operator applies a reviewed ownership map.
+
+Migration 007 adds generation reservations for SQLite and Postgres. A transaction
+admits at most one in-flight generation per user, even when cooldowns are disabled.
+Failed attempts count toward the five-minute attempt limit. Reservations are
+released on completion/failure and expire after a crash. Queued requests transfer
+their reservation to the worker; duplicate deliveries cannot claim a job twice.
+A queue outage returns a retryable failure instead of running a worker-sized job
+inside the web request.
+
+`PIPELINE_DEADLINE_SECONDS` supplies a request-local deadline shared by retrieval,
+LLM requests, retries and fallback generation. Vercel inline requests are capped
+at 50 seconds. Network timeouts shrink to the remaining budget; retries never
+sleep beyond it or retry earlier than the provider's Retry-After. This is
+cooperative deadline enforcement, not a mechanism for killing arbitrary Python
+code or a database query. RQ's worker timeout supplies the separate job process
+limit when queue mode is configured.
+
+Submission commits the score and redirects without calling the AI. The visible
+result page starts a separate CSRF-protected `POST /api/results/{key}/enrich`.
+Its atomic claim prevents repeated provider calls/analysis across tabs, and
+expired claims become a visible feedback failure without replaying partial
+learning writes. Old results are marked done by the migration to avoid
+reanalyzing historical attempts. Connections and blocking work run in the
+thread pool, leaving the event loop available.
+`RESULT_ENRICHMENT_DEADLINE_SECONDS` defaults to 12 seconds for optional AI feedback
+and topic labeling. Existing grounded explanations are reused without another
+explanation call; enrichment failure cannot discard the result.
+
+Both generation modes, session persistence and edited quizzes use the shared MCQ
+contract: four distinct text options and exactly one matching answer. RAG
+verification accepts only typed boolean/confidence verdicts. Missing or malformed
+verdicts remain explicitly unverified; explicit failures are rejected.
+
+Source excerpts are retained only when they occur in the actual generation
+context and source chunk. The application supplies document/chunk IDs rather
+than trusting model-generated IDs. Supporting excerpts, verification status and
+generated explanations are stored with scored results and shown only after
+grading. A matching excerpt establishes provenance, not proof of factual truth.

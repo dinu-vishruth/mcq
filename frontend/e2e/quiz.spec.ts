@@ -20,6 +20,8 @@ test('saved resource opens without reupload; Skip and Submit lead to durable pri
   await expect(page).toHaveURL(/mcq_test/);
   const quizData = JSON.parse(await page.locator('#root').getAttribute('data-bootstrap') || '{}');
   expect(JSON.stringify(quizData)).not.toContain('answer_text');
+  expect(JSON.stringify(quizData)).not.toContain('sources');
+  expect(JSON.stringify(quizData)).not.toContain('explanation');
   await page.getByRole('button', { name: /Mitochondria/ }).click();
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await page.getByRole('button', { name: 'Skip', exact: true }).click();
@@ -32,9 +34,12 @@ test('saved resource opens without reupload; Skip and Submit lead to durable pri
   for (const explanation of await explanations.all()) {
     await expect(explanation).toContainText('Mitochondria produce ATP through cellular respiration.');
   }
+  await expect(page.getByText('Supporting excerpt', { exact: true })).toHaveCount(2);
+  await expect(page.locator('blockquote')).toHaveText(['Mitochondria produce ATP', 'Mitochondria produce ATP']);
   const resultURL = page.url();
   await page.reload();
   await expect(page.getByText('1 / 2 correct')).toBeVisible();
+  await expect(page.getByText('Supporting excerpt', { exact: true })).toHaveCount(2);
   await page.goto('/mcq_test');
   await expect(page).toHaveURL(resultURL);
   const stranger = await browser.newContext();
@@ -65,4 +70,29 @@ test('one-off upload reaches settings and failed generation preserves material f
   await page.unroute('**/api/practice/generate');
   await page.getByRole('button', { name: 'Generate & Start' }).click();
   await expect(page).toHaveURL(/mcq_test/);
+});
+
+test('saved score renders before optional learning feedback finishes', async ({ page }) => {
+  let releaseFeedback!: () => void;
+  const held = new Promise<void>(resolve => { releaseFeedback = resolve; });
+  await page.route('**/api/results/*/enrich', async route => {
+    await held;
+    await route.continue();
+  });
+  try {
+    await page.goto('/journey');
+    await page.getByRole('button', { name: 'Make Quiz', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Generate & Start' }).click();
+    await expect(page).toHaveURL(/mcq_test/);
+    await page.getByRole('button', { name: 'Skip', exact: true }).click();
+    await page.getByRole('button', { name: 'Skip', exact: true }).click();
+    await page.getByRole('button', { name: 'Submit Answers', exact: true }).click();
+    await expect(page).toHaveURL(/results\/[a-z0-9]+/);
+    await expect(page.getByText('0 / 2 correct', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Your score is saved\. Preparing learning feedback/)).toBeVisible();
+    releaseFeedback();
+    await expect(page.getByText(/Your score is saved\. Preparing learning feedback/)).toHaveCount(0);
+  } finally {
+    releaseFeedback();
+  }
 });

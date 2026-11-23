@@ -174,7 +174,7 @@ async def unarchive_session(
 async def clone_session(
     request: Request, user: CurrentUser, session_row: OwnedSession, conn: Db
 ):
-    new_key = str(uuid.uuid4())[:8]
+    new_key = uuid.uuid4().hex
     conn.execute(
         "INSERT INTO sessions (session_key, teacher, created_at, difficulty, timer, "
         "mcqs_json, teacher_user_id, archived) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
@@ -215,6 +215,10 @@ async def edit_session(
             raise ValueError("Invalid difficulty value.")
 
         updated = [_parse_edited_question(form, i) for i in range(len(original))]
+        from core.models.questions import validate_questions
+        updated, rejected = validate_questions(updated)
+        if rejected:
+            raise ValueError(rejected[0]["reason"])
     except ValueError as exc:
         return render(
             request, "edit_session.html",

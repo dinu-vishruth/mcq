@@ -15,14 +15,19 @@ import json
 import random
 import sqlite3
 import time
+from contextlib import closing
 from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
+import config
 import models.explanation_engine as explanation_engine
+from core.llm.budget import remaining, time_budget
+from core.models.db import get_db
 from core.repositories import session_repo
 from utils.session_manager import validate_session_key
 
@@ -81,7 +86,7 @@ def _clean_draft(questions, answers, confidence):
 @router.post("/api/quiz-attempt")
 async def save_quiz_draft(draft: QuizDraft, user: CurrentApiUser, conn: Db):
     row = session_repo.get(draft.session_key)
-    if not row:
+    if not row or row["teacher_user_id"] != user.id:
         raise HTTPException(404, "Quiz not found")
     questions = json.loads(row["mcqs_json"])
     answers, confidence = _clean_draft(questions, draft.answers, draft.confidence)
@@ -272,11 +277,11 @@ async def student_login(
         return reject("Invalid session key format")
     if not validate_session_key(key):
         return reject("Invalid session key")
+    quiz = session_repo.get(key)
+    if quiz is None or quiz["teacher_user_id"] != user.id:
+        return reject("Quiz not found in your account")
     if _already_attempted(conn, key, user.id):
         return RedirectResponse(f"/results/{key}", status_code=302)
-    quiz = session_repo.get(key)
-    if quiz is None:
-        return reject("Session not found")
 
     # Only the key goes in the cookie; mcqs + timer are re-read from the DB.
     request.session["session_key"] = key
@@ -291,7 +296,7 @@ async def mcq_test(request: Request, user: CurrentUser, conn: Db):
         return RedirectResponse("/student_login", status_code=302)
 
     row = session_repo.get(key)
-    if not row:
+    if not row or row["teacher_user_id"] != user.id:
         return RedirectResponse("/student_login", status_code=302)
     if _already_attempted(conn, key, user.id):
         return RedirectResponse(f"/results/{key}", status_code=303)
@@ -324,7 +329,7 @@ async def mcq_test(request: Request, user: CurrentUser, conn: Db):
 @router.get("/results/{session_key}")
 async def quiz_result(request: Request, session_key: str, user: CurrentUser, conn: Db):
     row = conn.execute(
-        "SELECT score, total, detail_json, metadata_json FROM results "
+        "SELECT score, total, detail_json, metadata_json, enrichment_status FROM results "
         "WHERE session_key=? AND user_id=? ORDER BY id LIMIT 1", (session_key, user.id),
     ).fetchone()
     if row is None:
@@ -340,12 +345,25 @@ async def quiz_result(request: Request, session_key: str, user: CurrentUser, con
     ]
     return render(request, "result.html", score=row["score"], total=row["total"],
                   details=details, explanations=explanations, xp_awarded=metadata.get("xp_awarded", 0),
+                  session_key=session_key, enrichment_pending=row["enrichment_status"] in ("pending", "running"),
                   notice=("Time expired. Only answers saved before the deadline were scored."
                           if metadata.get("late") else None))
 
 
 @router.post("/submit")
-async def submit(request: Request, user: CurrentUser, conn: Db):
+async def submit(request: Request, user: CurrentUser):
+    form = await request.form()
+    # Open the connection in the same worker that owns scoring and enrichment.
+    # No SQLite connection is transferred across thread boundaries.
+    return await run_in_threadpool(_submit_with_connection, request, user, form)
+
+
+def _submit_with_connection(request, user, form):
+    with closing(get_db()) as conn:
+        return _submit(request, user, form, conn)
+
+
+def _submit(request, user, form, conn):
     key = request.session.get("session_key")
     if not key:
         return RedirectResponse("/student_login", status_code=302)
@@ -354,12 +372,9 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     # text against answer_text -- both stable across the render-time shuffle --
     # so the stored mcqs are the source of truth.
     stored = session_repo.get(key)
-    if not stored:
+    if not stored or stored["teacher_user_id"] != user.id:
         return RedirectResponse("/student_login", status_code=302)
-    questions = [
-        {"question": q["question"], "answer_text": q["answer_text"]}
-        for q in json.loads(stored["mcqs_json"])
-    ]
+    questions = json.loads(stored["mcqs_json"])
 
     if _already_attempted(conn, key, user.id):
         return RedirectResponse(f"/results/{key}", status_code=303)
@@ -370,7 +385,6 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     if not attempt:
         return _dashboard_response(request, user, conn, "Please join the quiz before submitting.")
 
-    form = await request.form()
     student_name = (form.get("student_name") or "").strip() or user.username or "Student"
     now = time.time()
     time_spent = max(0, int(min(now, attempt["deadline"]) - attempt["started_at"]))
@@ -396,6 +410,7 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
             "correct": question["answer_text"],
             "is_correct": is_correct,
             "confidence": confidence,
+            **{field: question[field] for field in ("explanation", "sources", "verification") if field in question},
         })
 
     # Claim the attempt in the same transaction as the result, including when
@@ -411,40 +426,20 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
 
     conn.execute(
         "INSERT INTO results (session_key, student_name, user_id, score, total, "
-        "submitted_at, detail_json, time_spent, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "submitted_at, detail_json, time_spent, metadata_json, enrichment_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
         (key, student_name, user.id, score, len(questions),
          datetime.utcnow().isoformat(), json.dumps(details), time_spent, json.dumps({"late": late})),
     )
     conn.commit()
 
-    # Explanation failures must never discard an already completed assessment.
-    from core.services.personalization import learning_profile
-    try:
-        with learning_profile(user.id):
-            explanations = explanation_engine.explain_answers(details)
-    except Exception:
-        explanations = ["Explanation is temporarily unavailable." for _ in details]
-
-    for index, detail in enumerate(details):
-        detail["explanation"] = explanations[index] if index < len(explanations) else "Explanation is temporarily unavailable."
+    # Commit useful source-grounded feedback before optional provider work.
+    # Generation metadata stays server-side until the quiz is graded.
+    for detail in details:
+        detail.setdefault("verification", "unverified")
+        detail.setdefault("explanation", "Explanation is temporarily unavailable.")
     conn.execute("UPDATE results SET detail_json=? WHERE session_key=? AND user_id=?",
                  (json.dumps(details), key, user.id))
     conn.commit()
-
-    # Weak-concept detection. Best-effort: wrapped so any failure here can never
-    # affect the student's score or result page.
-    try:
-        difficulty_row = conn.execute(
-            "SELECT difficulty FROM sessions WHERE session_key=?", (key,)
-        ).fetchone()
-        from core.services.learning_service import analyse_submission
-        analyse_submission(
-            details, user_id=user.id, session_key=key,
-            difficulty=(difficulty_row["difficulty"] if difficulty_row else None) or "medium",
-        )
-    except Exception as exc:
-        print(f"[WARNING] Learning analysis skipped: {exc}")
-
     # Gamification: 10 XP per correct answer + 5 completion bonus, and advance
     # the daily streak. Best-effort -- never affects scoring.
     xp_awarded = 0
@@ -460,3 +455,84 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     conn.commit()
 
     return RedirectResponse(f"/results/{key}", status_code=303)
+
+
+def _feedback_payload(row):
+    details = json.loads(row["detail_json"])
+    return {"details": details,
+            "explanations": [detail.get("explanation") or "Explanation is temporarily unavailable." for detail in details],
+            "pending": row["enrichment_status"] in ("pending", "running"),
+            "failed": row["enrichment_status"] == "failed"}
+
+
+@router.post("/api/results/{session_key}/enrich")
+def enrich_result(session_key: str, user: CurrentApiUser):
+    """Optional feedback starts only after the durable score page is visible.
+
+    A conditional claim prevents double billing and repeated learning analysis
+    across reloads/tabs. Crashed claims expire to a visible failure, not an
+    uncontrolled automatic replay of partially completed analysis.
+    """
+    with closing(get_db()) as conn:
+        row = conn.execute("SELECT * FROM results WHERE session_key=? AND user_id=? ORDER BY id LIMIT 1",
+                           (session_key, user.id)).fetchone()
+        if row is None:
+            raise HTTPException(404, "Quiz result not found")
+        if row["enrichment_status"] == "running" and (row["enrichment_deadline"] or 0) <= time.time():
+            conn.execute("UPDATE results SET enrichment_status='failed' WHERE id=? AND enrichment_status='running'",
+                         (row["id"],))
+            conn.commit()
+            row = conn.execute("SELECT * FROM results WHERE id=?", (row["id"],)).fetchone()
+        if row["enrichment_status"] != "pending":
+            return _feedback_payload(row)
+        claimed = conn.execute(
+            "UPDATE results SET enrichment_status='running', enrichment_deadline=? "
+            "WHERE id=? AND enrichment_status='pending' RETURNING id",
+            (time.time() + max(1, config.RESULT_ENRICHMENT_DEADLINE_SECONDS) + 30, row["id"]),
+        ).fetchone()
+        conn.commit()
+        if not claimed:
+            return _feedback_payload(conn.execute("SELECT * FROM results WHERE id=?", (row["id"],)).fetchone())
+        try:
+            _enrich_feedback(conn, row, user, session_key)
+            conn.execute("UPDATE results SET enrichment_status='done' WHERE id=?", (row["id"],))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            conn.execute("UPDATE results SET enrichment_status='failed' WHERE id=?", (row["id"],))
+            conn.commit()
+        return _feedback_payload(conn.execute("SELECT * FROM results WHERE id=?", (row["id"],)).fetchone())
+
+
+def _enrich_feedback(conn, row, user, key):
+    details = json.loads(row["detail_json"])
+    stored = session_repo.get(key)
+    # Old shared assessments may have a different source owner. Do not retrieve
+    # someone else's Library context while enriching a historical result.
+    owned = stored is not None and stored["teacher_user_id"] == user.id
+    document_id = stored["document_id"] if owned else None
+    difficulty = stored["difficulty"] if stored is not None else "medium"
+    from core.services.personalization import learning_profile
+    with time_budget(config.RESULT_ENRICHMENT_DEADLINE_SECONDS):
+        missing = [detail for detail in details if detail["explanation"] == "Explanation is temporarily unavailable."]
+        if missing:
+            try:
+                remaining()
+                with learning_profile(user.id):
+                    explanations = (explanation_engine.explain_answers(missing, document_id=document_id)
+                                    if document_id else explanation_engine.explain_answers(missing))
+                for detail, explanation in zip(missing, explanations):
+                    if isinstance(explanation, str) and explanation.strip():
+                        detail["explanation"] = explanation
+            except Exception:
+                pass  # The scored result and generated explanations already exist.
+        conn.execute("UPDATE results SET detail_json=? WHERE session_key=? AND user_id=?",
+                     (json.dumps(details), key, user.id))
+        conn.commit()
+        try:
+            remaining()
+            from core.services.learning_service import analyse_submission
+            analyse_submission(details, user_id=user.id, session_key=key,
+                               difficulty=difficulty)
+        except Exception as exc:
+            print(f"[WARNING] Learning analysis skipped: {type(exc).__name__}")

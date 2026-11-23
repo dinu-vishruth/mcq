@@ -41,7 +41,7 @@ class PracticeIn(BaseModel):
     upload_id: str | None = Field(None, pattern=r"^[a-f0-9]{32}$")
     num_questions: int = Field(5, ge=1, le=30)
     difficulty: Literal["easy", "medium", "hard"] = "medium"
-    topic: str | None = None
+    topic: str | None = Field(None, max_length=200)
     #: Seconds. Upper bound matches the 180-minute limit on /upload.
     timer: int = Field(600, ge=30, le=10800)
     #: Optional per-job pipeline budget (queue mode only). Not sent by the
@@ -275,6 +275,7 @@ def generation_status(user: CurrentApiUser):
     from core.services.generation_status import generation_available
     available = generation_available()
     return {"available": available,
+            "timeout_seconds": min(config.PIPELINE_DEADLINE_SECONDS, 50) if config.IS_SERVERLESS else config.PIPELINE_DEADLINE_SECONDS,
             "message": "" if available else config.USER_FACING_AI_UNAVAILABLE}
 
 
@@ -305,9 +306,8 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
     session_key; the client polls GET /api/jobs/{id}. The default inline mode
     keeps the original response shape unchanged -- see README "Compatibility".
     """
-    from core.repositories import document_repo, job_repo, quiz_upload_repo
+    from core.repositories import document_repo, quiz_upload_repo
     from core.services.generation_status import require_generation
-    from core.services.personalization import learning_profile
 
     source = None
     if payload.upload_id:
@@ -321,21 +321,23 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
 
     require_generation()
 
-    # Per-user throttle before any costly work (queue mode included: enqueuing is
-    # cheap but the job still burns LLM calls). Uses its own connection because
-    # this is a sync handler running in the threadpool -- see rate_limits.
-    from ..rate_limits import check_generation_throttle_for_user
+    import config
+    from core.llm.budget import time_budget
+    from core.services.generation_limits import generation_slot
+    from core.services.job_runner import generation_backend
 
-    throttle_message = check_generation_throttle_for_user(user.username, user_id=user.id)
-    if throttle_message:
-        raise HTTPException(status_code=429, detail=throttle_message)
+    inline_budget = min(config.PIPELINE_DEADLINE_SECONDS, 50) if config.IS_SERVERLESS else config.PIPELINE_DEADLINE_SECONDS
+    queued = source is None and generation_backend() == "rq"
+    seconds = (payload.deadline_seconds or config.GENERATION_JOB_DEADLINE_SECONDS) + 120 if queued else inline_budget
+    with generation_slot(user.id, user.username, seconds=seconds) as reservation:
+        with time_budget(inline_budget):
+            return _generate_reserved(user, payload, source, reservation)
 
-    from core.services.job_runner import (
-        create_job,
-        enqueue_job,
-        generation_backend,
-        run_generation_job,
-    )
+
+def _generate_reserved(user, payload, source, reservation):
+    from core.repositories import job_repo, quiz_upload_repo
+    from core.services.job_runner import create_job, enqueue_job, generation_backend
+    from core.services.personalization import learning_profile
 
     if source is not None:
         # One-off text never enters document ingestion, embeddings or Library.
@@ -362,19 +364,13 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
             user_id=user.id, username=user.username, document_id=payload.document_id,
             num_questions=payload.num_questions, difficulty=payload.difficulty,
             topic=(payload.topic or "").strip() or None, timer=payload.timer,
-            deadline_seconds=payload.deadline_seconds,
+            deadline_seconds=payload.deadline_seconds, reservation_id=reservation.id,
         )
         if enqueue_job(job_id):
+            reservation.transferred = True
             return {"ok": True, "job_id": job_id, "status": "queued"}
-        # Redis/queue hiccup: still do the work rather than fail the request.
-        try:
-            run_generation_job(job_id)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=str(exc))
-        job = job_repo.get(job_id) or {}
-        result = job_repo.public_view(job).get("result") or {}
-        return {"ok": True, "session_key": result.get("session_key"),
-                "count": result.get("count", 0), "job_id": job_id}
+        job_repo.set_failed(job_id, "The generation queue is unavailable. Please retry shortly.")
+        raise HTTPException(503, "The generation queue is unavailable. Please retry shortly.")
 
     try:
         from core.services.mcq_pipeline import generate_from_document

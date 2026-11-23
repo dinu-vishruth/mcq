@@ -273,11 +273,12 @@ def mcq_token_budget(num_questions: int) -> int:
 
 # Wall-clock budget for the whole RAG MCQ pipeline. On serverless this has to
 # stay under the function limit (vercel.json maxDuration=60) so generation is
-# never killed mid-flight; the pipeline stops retrying once this budget (minus
-# one LLM_TIMEOUT of headroom) is exhausted and returns whatever it has
+# protected by a shared remaining-time budget. The pipeline stops retrying
+# when that budget is exhausted and returns whatever it has
 # collected. A persistent host has no such cap, so larger quiz sets are allowed
 # the time they actually need.
-PIPELINE_DEADLINE_SECONDS = int(os.getenv("PIPELINE_DEADLINE_SECONDS", "55" if IS_SERVERLESS else "300"))
+PIPELINE_DEADLINE_SECONDS = int(os.getenv("PIPELINE_DEADLINE_SECONDS", "50" if IS_SERVERLESS else "300"))
+RESULT_ENRICHMENT_DEADLINE_SECONDS = int(os.getenv("RESULT_ENRICHMENT_DEADLINE_SECONDS", "12"))
 
 # --- Upload/generation throttle (app-level, protects the LLM from bursts) --# Minimum seconds between two MCQ-generation requests, and the max generations
 # allowed per 5-minute window. Set the cooldown to 0 to disable it entirely.

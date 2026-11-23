@@ -10,10 +10,15 @@ import uuid
 from datetime import datetime
 
 from core.models.db import get_db
+from core.models.questions import validate_questions
 
 
 def create_session(teacher, difficulty, timer, mcqs, document_id=None, *, owner_id=None) -> str:
-    key = str(uuid.uuid4())[:8]
+    valid, rejected = validate_questions(mcqs, trusted_metadata=True)
+    if rejected or not valid:
+        raise ValueError("The generated quiz did not pass question validation. Please retry.")
+    mcqs = valid
+    key = uuid.uuid4().hex
     conn = get_db()
     try:
         if owner_id is None:

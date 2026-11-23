@@ -38,7 +38,7 @@ export function csrfToken(): string {
 // centralize it. Mutations automatically attach the CSRF header expected by the
 // Flask-WTF-protected /api endpoints.
 export async function apiGet<T = any>(path: string): Promise<T> {
-  const res = await fetch(path, { headers: { Accept: "application/json" } });
+  const res = await fetchWithTimeout(path, { headers: { Accept: "application/json" } }, 15000);
   if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
   return res.json();
 }
@@ -47,8 +47,9 @@ export async function apiSend<T = any>(
   path: string,
   method: "POST" | "DELETE" | "PUT",
   body?: unknown,
+  timeoutMs = 65000,
 ): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetchWithTimeout(path, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -56,7 +57,7 @@ export async function apiSend<T = any>(
       "X-CSRFToken": csrfToken(),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  }, timeoutMs);
   if (!res.ok) {
     let msg = `${method} ${path} failed: ${res.status}`;
     try {
@@ -68,4 +69,17 @@ export async function apiSend<T = any>(
     throw new Error(msg);
   }
   return res.json();
+}
+
+async function fetchWithTimeout(path: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(path, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("The request took too long. Your material is kept; please retry shortly.");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }

@@ -199,7 +199,7 @@ async def delete_account(request: Request, user: CurrentUser, conn: Db):
     conn.execute("DELETE FROM quiz_attempts WHERE user_id=? OR session_key IN "
                  "(SELECT session_key FROM sessions WHERE teacher_user_id=?)", (user.id, user.id))
     conn.execute("DELETE FROM sessions WHERE teacher_user_id=?", (user.id,))
-    for table in ("results", "learning_history", "weak_topics", "user_prefs", "quiz_uploads", "generation_jobs", "chat_history"):
+    for table in ("results", "learning_history", "weak_topics", "user_prefs", "quiz_uploads", "generation_jobs", "generation_requests", "chat_history"):
         conn.execute(f"DELETE FROM {table} WHERE user_id=?", (user.id,))
     conn.execute("DELETE FROM users WHERE id=?", (user.id,))
     conn.commit()

@@ -29,7 +29,11 @@ class TestSavedResults(Base):
         self.addCleanup(analyse.stop)
 
     def payload(self, response):
-        return json.loads(html.unescape(re.search(rb"data-bootstrap='([^']+)'", response.data).group(1).decode()))
+        payload = json.loads(html.unescape(re.search(rb"data-bootstrap='([^']+)'", response.data).group(1).decode()))
+        if payload.get("enrichment_pending"):
+            self.c.post(f"/api/results/{payload['session_key']}/enrich", json={})
+            return self.payload(self.c.get(f"/results/{payload['session_key']}"))
+        return payload
 
     def test_duplicate_submission_returns_original_score_and_explanations(self):
         with patch("models.explanation_engine.explain_answers", return_value=["Explanation one", "Explanation two"]) as explain:
@@ -56,6 +60,10 @@ class TestSavedResults(Base):
             with ThreadPoolExecutor(max_workers=2) as pool:
                 responses = list(pool.map(lambda c: c.post("/submit", data={"q-0": "4"}), [self.c, other]))
             self.assertTrue(all(r.status_code == 303 for r in responses))
+            explanation.assert_not_called()
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                feedback = list(pool.map(lambda c: c.post(f"/api/results/{self.key}/enrich", json={}), [self.c, other]))
+            self.assertTrue(all(r.status_code == 200 for r in feedback))
             explanation.assert_called_once()
         db = get_db()
         self.assertEqual(db.execute("SELECT COUNT(*) FROM results WHERE session_key=?", (self.key,)).fetchone()[0], 1)
@@ -64,6 +72,7 @@ class TestSavedResults(Base):
     def test_explanation_failure_still_saves_score(self):
         with patch("models.explanation_engine.explain_answers", side_effect=RuntimeError("AI unavailable")):
             response = self.c.post("/submit", data={"q-0": "4"})
+            self.c.post(f"/api/results/{self.key}/enrich", json={})
         result = self.payload(self.c.get(response.headers["Location"]))
         self.assertEqual(result["score"], 1)
         self.assertTrue(all(result["explanations"]))

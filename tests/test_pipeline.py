@@ -178,8 +178,8 @@ class TestPipelineWithStubbedLLM(unittest.TestCase):
         def _fake_generate(text, num_questions=5, difficulty="medium"):
             calls["n"] += 1
             return questions[:num_questions]
-        prev_gen = legacy_mod.generate_mcqs
-        legacy_mod.generate_mcqs = _fake_generate
+        prev_gen = legacy_mod.generate_mcqs_legacy
+        legacy_mod.generate_mcqs_legacy = _fake_generate
 
         prev_mode = config.AI_PIPELINE
         config.AI_PIPELINE = "legacy"
@@ -194,7 +194,7 @@ class TestPipelineWithStubbedLLM(unittest.TestCase):
             mcqs = generate_from_document(ing["document_id"], num_questions=3, difficulty="medium")
         finally:
             config.AI_PIPELINE = prev_mode
-            legacy_mod.generate_mcqs = prev_gen
+            legacy_mod.generate_mcqs_legacy = prev_gen
 
         self.assertEqual(calls["n"], 1)          # exactly one single-shot call
         self.assertEqual(len(mcqs), 3)

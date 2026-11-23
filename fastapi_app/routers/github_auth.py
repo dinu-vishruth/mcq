@@ -9,17 +9,19 @@ the user profile endpoint may not expose a verified email, so we fetch
 from __future__ import annotations
 
 import secrets
+from typing import Annotated
 from urllib.parse import urlencode, urlsplit
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from werkzeug.security import generate_password_hash
 
 import config
 
-from ..deps import Db
-from ..templating import render
+from ..deps import CurrentUser, Db
+from ..oauth_linking import confirm_account, link_identity
+from ..templating import flash, render
 
 router = APIRouter(tags=["oauth"])
 
@@ -47,6 +49,17 @@ def _redirect_uri(request: Request) -> str:
 
 @router.get("/auth/github")
 async def github_login(request: Request):
+    return _start_login(request)
+
+
+@router.post("/auth/github/link")
+async def connect_provider(request: Request, user: CurrentUser, conn: Db,
+                           password: Annotated[str, Form()] = ""):
+    confirm_account(conn, user.id, password)
+    return _start_login(request, link_user_id=user.id)
+
+
+def _start_login(request: Request, link_user_id: int | None = None):
     if not config.GITHUB_OAUTH_ENABLED:
         return render(
             request, "login.html",
@@ -56,11 +69,16 @@ async def github_login(request: Request):
     redirect_uri = _redirect_uri(request)
     callback = urlsplit(redirect_uri)
     if callback.netloc.lower() != request.url.netloc.lower():
+        if link_user_id is not None:
+            raise HTTPException(400, "Connect sign-in methods from Settings on the registered application URL.")
         # Start on the callback host so the session cookie returns with state.
         # This also moves Vercel preview visitors to the registered production URL.
         target = callback._replace(path="/auth/github", query="", fragment="")
         return RedirectResponse(target.geturl(), status_code=302)
 
+    request.session.pop(_STATE_SESSION_KEY + "_link_user_id", None)
+    if link_user_id is not None:
+        request.session[_STATE_SESSION_KEY + "_link_user_id"] = link_user_id
     state = secrets.token_urlsafe(32)
     request.session[_STATE_SESSION_KEY] = state
     request.session[_STATE_SESSION_KEY + "_redirect_uri"] = redirect_uri
@@ -82,10 +100,14 @@ async def github_callback(
     state: str | None = None,
     error: str | None = None,
 ):
+    link_user_id = request.session.pop(_STATE_SESSION_KEY + "_link_user_id", None)
     expected_state = request.session.pop(_STATE_SESSION_KEY, None)
     redirect_uri = request.session.pop(_STATE_SESSION_KEY + "_redirect_uri", None)
 
     def fail(message: str):
+        if link_user_id is not None:
+            flash(request, message, "error")
+            return RedirectResponse("/profile", status_code=303)
         return render(request, "login.html", error=message)
 
     if error:
@@ -102,7 +124,18 @@ async def github_callback(
     except ValueError as exc:
         return fail(str(exc))
 
+    if link_user_id is not None:
+        if request.session.get("user_id") != link_user_id:
+            return fail("Your sign-in changed during account linking. Please try again from Settings.")
+        try:
+            link_identity(conn, link_user_id, "github", str(profile.get("id") or ""))
+        except ValueError as exc:
+            return fail(str(exc))
+        flash(request, "Sign-in method connected.", "success")
+        return RedirectResponse("/profile", status_code=303)
+
     user = _upsert_github_user(conn, profile)
+    request.session.clear()
     request.session["user_id"] = user["id"]
     request.session["username"] = user["username"]
     return RedirectResponse("/dashboard", status_code=302)
@@ -141,7 +174,7 @@ async def _fetch_github_profile(code: str, redirect_uri: str) -> dict:
 
         if not profile.get("id"):
             raise ValueError("GitHub did not return a complete account profile. Please try again.")
-        # Only verified addresses may link an existing local account. The public
+        # Store verified contact addresses only. The public
         # profile's email field does not include its verification status.
         profile["email"] = ""
         emails_response = await client.get(
@@ -173,15 +206,7 @@ def _upsert_github_user(conn, profile: dict) -> dict:
 
     existing = conn.execute("SELECT * FROM users WHERE github_id=?", (github_id,)).fetchone()
 
-    if existing is None and email:
-        existing = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
-        if existing is not None:
-            conn.execute(
-                "UPDATE users SET github_id=?, picture=?, auth_provider='github' WHERE id=?",
-                (github_id, picture, existing["id"]),
-            )
-            conn.commit()
-
+    # Email is contact data, never proof of ownership of a local account.
     if existing is not None:
         return {"id": existing["id"], "username": existing["username"]}
 

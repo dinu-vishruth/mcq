@@ -9,7 +9,7 @@ Two execution modes share the same core (``run_generation_job``):
 
 The job row, not the queue, is the source of truth: GET /api/jobs/{id} can be
 served by any web instance, and a retried/duplicated queue delivery is harmless
-because results overwrite the same row id.
+because a conditional database update lets only one delivery claim each job.
 """
 from __future__ import annotations
 
@@ -46,12 +46,13 @@ def _queue():
 
 def create_job(*, user_id: int, username: str, document_id: int, num_questions: int,
                difficulty: str, topic: str | None, timer: int,
-               deadline_seconds: int | None = None) -> str:
+               deadline_seconds: int | None = None, reservation_id: str | None = None) -> str:
     params = {
         "num_questions": num_questions,
         "difficulty": difficulty,
         "topic": topic,
         "timer": timer,
+        "reservation_id": reservation_id,
         # Resolution order: caller override -> job default. Never the serverless
         # request cap: a queued job isn't bound by maxDuration.
         "deadline_seconds": deadline_seconds or config.GENERATION_JOB_DEADLINE_SECONDS,
@@ -67,7 +68,7 @@ def create_job(*, user_id: int, username: str, document_id: int, num_questions: 
 
 
 def enqueue_job(job_id: str) -> bool:
-    """Try to enqueue. False means the caller should run inline instead."""
+    """Try to enqueue. False is a retryable queue outage, never an inline job."""
     job = job_repo.get(job_id)
     if job is None:
         return False
@@ -86,7 +87,7 @@ def enqueue_job(job_id: str) -> bool:
 def run_generation_job(job_id: str) -> None:
     """Execute one generation job. Safe to call from the worker or inline."""
     job = job_repo.get(job_id)
-    if job is None:
+    if job is None or not job_repo.claim(job_id):
         return
 
     from core.services.mcq_pipeline import generate_from_document
@@ -99,12 +100,18 @@ def run_generation_job(job_id: str) -> None:
     timer = int(params.get("timer") or 600)
     deadline = int(params.get("deadline_seconds") or config.GENERATION_JOB_DEADLINE_SECONDS)
 
-    job_repo.set_running(job_id)
     started = time.perf_counter()
     log_event("job.started", job_id=job_id, document_id=job["document_id"],
               requested=num_questions, difficulty=difficulty, deadline_seconds=deadline)
+    reservation_id = params.get("reservation_id")
     try:
-        with timed("job.generate", job_id=job_id, document_id=job["document_id"]) as stage:
+        if reservation_id:
+            from core.services.generation_limits import lease_remaining
+            deadline = min(deadline, lease_remaining(reservation_id, job["user_id"]))
+            if deadline <= 0:
+                raise ValueError("Generation expired before it could start. Please retry.")
+        from core.llm.budget import time_budget
+        with time_budget(deadline), timed("job.generate", job_id=job_id, document_id=job["document_id"]) as stage:
             from core.services.personalization import learning_profile
             with learning_profile(job["user_id"]):
                 mcqs = generate_from_document(
@@ -138,3 +145,7 @@ def run_generation_job(job_id: str) -> None:
                   error=str(exc),
                   duration_ms=round((time.perf_counter() - started) * 1000, 2))
         raise
+    finally:
+        if reservation_id:
+            from core.services.generation_limits import release
+            release(reservation_id)

@@ -11,6 +11,7 @@ from __future__ import annotations
 import requests
 
 from core.llm.base import LLMError, LLMProvider, RateLimitError
+from core.llm.budget import http_timeout
 
 URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
@@ -53,11 +54,11 @@ class AnthropicProvider(LLMProvider):
         }
 
         try:
-            resp = requests.post(URL, headers=headers, json=payload, timeout=self.timeout)
+            resp = requests.post(URL, headers=headers, json=payload, timeout=http_timeout(self.timeout))
         except requests.exceptions.Timeout:
             raise LLMError("The request to the AI API timed out. Please try again with a shorter text.")
         except requests.exceptions.RequestException as re:
-            raise LLMError(f"Network error when connecting to the AI API: {re}")
+            raise LLMError("Could not reach the AI service. Please retry shortly.") from re
 
         if resp.status_code == 401:
             raise LLMError("Invalid API key! Please check your ANTHROPIC_API_KEY.")
@@ -65,7 +66,7 @@ class AnthropicProvider(LLMProvider):
             raise RateLimitError("API rate limit exceeded! Please wait a moment and try again.",
                                  retry_after=self._parse_retry_after(resp))
         if resp.status_code != 200:
-            raise LLMError(f"API request failed with status code {resp.status_code}: {resp.text[:300]}")
+            raise LLMError(f"The AI service could not complete this request (status {resp.status_code}). Please retry shortly.")
 
         try:
             data = resp.json()

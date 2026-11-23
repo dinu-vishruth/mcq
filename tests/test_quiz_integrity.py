@@ -91,7 +91,7 @@ class TestQuizIntegrity(Base):
             response = other.post('/api/quiz-attempt', json={
                 'session_key': self.key, 'answers': {'0': FIXED_MCQS[0]['answer_text']},
             })
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 404)
         self.assertEqual(self._client_factory().post('/api/quiz-attempt', json={
             'session_key': self.key,
         }).status_code, 401)

@@ -53,11 +53,12 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
   const [uploadTitle, setUploadTitle] = useState("");
   const [useUpload, setUseUpload] = useState(Boolean(uploadId));
   const [aiReady, setAiReady] = useState(false);
+  const [requestSeconds, setRequestSeconds] = useState(300);
   const [aiMessage, setAiMessage] = useState("Checking quiz generation availability...");
 
   useEffect(() => {
-    apiGet<{ available: boolean; message: string }>("/api/generation/status")
-      .then((status) => { setAiReady(status.available); setAiMessage(status.message); })
+    apiGet<{ available: boolean; message: string; timeout_seconds?: number }>("/api/generation/status")
+      .then((status) => { setAiReady(status.available); setAiMessage(status.message); setRequestSeconds(status.timeout_seconds ?? 300); })
       .catch(() => setAiMessage("Could not check quiz availability. Refresh to try again."));
     if (uploadId) {
       apiGet<{ title: string }>(`/api/quiz-uploads/${uploadId}`)
@@ -85,14 +86,16 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
     setGenerating(true);
     setError("");
     try {
-      let res = await apiSend<{ session_key?: string; job_id?: string }>("/api/practice/generate", "POST", {
+      let res = await apiSend<{ session_key?: string; job_id?: string; count?: number }>("/api/practice/generate", "POST", {
         ...(useUpload ? { upload_id: uploadId } : { document_id: docId }),
         num_questions: count,
         difficulty,
         topic: topic.trim() || undefined,
         timer: timerMinutes * 60,
-      });
+      }, (requestSeconds + 10) * 1000);
+      const pollUntil = Date.now() + 20 * 60 * 1000;
       while (!res.session_key && res.job_id) {
+        if (Date.now() >= pollUntil) throw new Error("Quiz generation has not finished. Return to this page shortly before trying again.");
         await new Promise((resolve) => setTimeout(resolve, 1500));
         const job = await apiGet<{ status: string; error?: string; result?: { session_key: string } }>(`/api/jobs/${res.job_id}`);
         if (job.status === "failed") throw new Error(job.error || "Quiz generation failed. Please retry.");

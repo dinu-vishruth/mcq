@@ -37,7 +37,9 @@ class ContextValidationAgent(Agent):
             self._log(f"validation skipped ({e}); treating context as sufficient")
             return {"sufficient": True, "confidence": 0.0, "reason": "validator unavailable"}
 
-        sufficient = bool(data.get("sufficient", True)) if isinstance(data, dict) else True
+        sufficient = data.get("sufficient") if isinstance(data, dict) else None
+        if type(sufficient) is not bool:
+            return {"sufficient": True, "confidence": 0.0, "reason": "validator response invalid"}
         try:
             confidence = float(data.get("confidence", 0.0)) if isinstance(data, dict) else 0.0
         except (TypeError, ValueError):

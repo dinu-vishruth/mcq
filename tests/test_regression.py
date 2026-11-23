@@ -195,9 +195,9 @@ class TestAuthGating(Base):
 class TestGenerationAndQuizFlow(Base):
     """The core contract: generate -> session_key -> take -> submit -> score."""
 
-    def _make_session(self):
+    def _make_session(self, owner):
         from utils.session_manager import create_session_key
-        return create_session_key(teacher="teach3", difficulty="medium", timer=120, mcqs=FIXED_MCQS)
+        return create_session_key(teacher=owner, difficulty="medium", timer=120, mcqs=FIXED_MCQS)
 
     def test_upload_prepares_temporary_material_and_defers_quiz_setup(self):
         c = self.client()
@@ -237,7 +237,7 @@ class TestGenerationAndQuizFlow(Base):
         c = self.client()
         self._seed_user("stud3", "password123", "student")
         self._login(c, "stud3", "password123")
-        key = self._make_session()
+        key = self._make_session("stud3")
 
         # Join
         r = c.post("/student_login", data={"session_key": key}, follow_redirects=False)
@@ -275,7 +275,7 @@ class TestGenerationAndQuizFlow(Base):
         c = self.client()
         self._seed_user("stud4", "password123", "student")
         self._login(c, "stud4", "password123")
-        key = self._make_session()
+        key = self._make_session("stud4")
         c.post("/student_login", data={"session_key": key})
         c.get("/mcq_test")
         form = {f"q-{i}": q["answer_text"] for i, q in enumerate(FIXED_MCQS)}

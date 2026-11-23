@@ -12,6 +12,7 @@ from __future__ import annotations
 import requests
 
 from core.llm.base import LLMError, LLMProvider, RateLimitError
+from core.llm.budget import http_timeout
 
 # Canonical base URLs per provider id.
 BASE_URLS = {
@@ -61,11 +62,11 @@ class OpenAICompatibleProvider(LLMProvider):
 
         try:
             resp = requests.post(f"{self.base_url}/chat/completions",
-                                 headers=headers, json=payload, timeout=self.timeout)
+                                 headers=headers, json=payload, timeout=http_timeout(self.timeout))
         except requests.exceptions.Timeout:
             raise LLMError("The request to the AI API timed out. Please try again with a shorter text.")
         except requests.exceptions.RequestException as re:
-            raise LLMError(f"Network error when connecting to the AI API: {re}")
+            raise LLMError("Could not reach the AI service. Please retry shortly.") from re
 
         if resp.status_code == 401:
             # Distinguish "wrong key" from "right key, wrong provider": a Groq
@@ -89,7 +90,7 @@ class OpenAICompatibleProvider(LLMProvider):
             salvaged = self._failed_generation(resp)
             if salvaged:
                 return salvaged
-            raise LLMError(f"API request failed with status code {resp.status_code}: {resp.text[:300]}")
+            raise LLMError(f"The AI service could not complete this request (status {resp.status_code}). Please retry shortly.")
 
         try:
             data = resp.json()

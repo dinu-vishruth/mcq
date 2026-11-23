@@ -10,6 +10,7 @@ from __future__ import annotations
 import requests
 
 from core.llm.base import LLMError, LLMProvider, RateLimitError
+from core.llm.budget import http_timeout
 
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -43,11 +44,11 @@ class GeminiProvider(LLMProvider):
 
         url = f"{BASE_URL}/{self.model}:generateContent?key={self.api_key}"
         try:
-            resp = requests.post(url, json=payload, timeout=self.timeout)
+            resp = requests.post(url, json=payload, timeout=http_timeout(self.timeout))
         except requests.exceptions.Timeout:
             raise LLMError("The request to the AI API timed out. Please try again with a shorter text.")
         except requests.exceptions.RequestException as re:
-            raise LLMError(f"Network error when connecting to the AI API: {re}")
+            raise LLMError("Could not reach the AI service. Please retry shortly.") from re
 
         if resp.status_code == 401 or resp.status_code == 403:
             raise LLMError("Invalid API key! Please check your GEMINI_API_KEY.")
@@ -55,7 +56,7 @@ class GeminiProvider(LLMProvider):
             raise RateLimitError("API rate limit exceeded! Please wait a moment and try again.",
                                  retry_after=self._parse_retry_after(resp))
         if resp.status_code != 200:
-            raise LLMError(f"API request failed with status code {resp.status_code}: {resp.text[:300]}")
+            raise LLMError(f"The AI service could not complete this request (status {resp.status_code}). Please retry shortly.")
 
         try:
             data = resp.json()

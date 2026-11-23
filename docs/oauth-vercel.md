@@ -89,3 +89,21 @@ the same host with a stable `SECRET_KEY`.
 
 Provider references: [Google web-server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server)
 and [GitHub OAuth web flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps).
+
+## Explicit account linking
+
+Sign-in identifies accounts only by Google subject or GitHub ID. An email match
+never attaches a provider to an existing password account: local email fields
+are not verified. Signing in with a new provider may therefore create a separate
+account, even when the email matches.
+
+To connect a provider to an existing account, sign in to that account and use
+Settings → Connected sign-in methods. Password accounts must confirm their current
+password; the CSRF-protected POST then starts OAuth and binds its state to that
+user ID. The callback refuses a changed signed-in identity or a provider already
+attached to another account. Linking must start on the registered callback host.
+It never merges learning records or replaces an existing provider identity.
+
+Existing links made by older versions are retained. Review any known suspicious
+links before public release; changing the linking rule cannot prove how an old
+link was originally established.

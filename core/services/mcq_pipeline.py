@@ -11,8 +11,9 @@ are unchanged. Extra keys (bloom, source_hint) may be present and are ignored by
 the existing UI.
 
 Never sends the whole document to the LLM: only retrieved, budgeted context.
-Falls back to the legacy single-shot generator if anything in the RAG path
-fails, so enabling AI_PIPELINE=rag can never make generation worse than before.
+Explicit fallback cases use the direct generator under the same request-local
+deadline. Both modes enforce the shared MCQ contract; fact checks are optional
+and unavailable checks remain explicitly unverified.
 """
 from __future__ import annotations
 
@@ -27,6 +28,9 @@ from core.agents.planner import PlannerAgent
 from core.agents.quality_assurance import QualityAssuranceAgent
 from core.agents.question import InsufficientContextError, QuestionAgent
 from core.agents.retriever import RetrieverAgent
+from core.llm.base import LLMError
+from core.llm.budget import BudgetExceeded, generation_budget, remaining
+from core.models.questions import attach_evidence, normalized
 from core.observability import log_event, timed
 from core.services.ingestion_service import ingest_document
 
@@ -48,6 +52,7 @@ def _retrieval_query(difficulty: str, topic: str | None) -> str:
     return f"The most important concepts, facts and relationships for {difficulty} exam questions."
 
 
+@generation_budget
 def _collect_mcqs(context: str, num_questions: int, difficulty: str,
                   *, deadline_seconds: int | None = None, on_progress=None) -> list[dict]:
     """Generate -> QA -> Fact-verify -> Difficulty, regenerating only the
@@ -72,7 +77,7 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
     attempts = 0
     max_attempts = _max_attempts(num_questions)
     budget = deadline_seconds if deadline_seconds is not None else config.PIPELINE_DEADLINE_SECONDS
-    deadline = time.monotonic() + max(1, budget - config.LLM_TIMEOUT)
+    deadline = time.monotonic() + max(0, budget)
     started = time.perf_counter()
 
     while len(collected) < num_questions and attempts < max_attempts:
@@ -80,11 +85,22 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
             log_event("pipeline.deadline_reached", attempts=attempts,
                       collected=len(collected), requested=num_questions)
             break  # out of time budget; return what we have
+        try:
+            remaining()
+        except BudgetExceeded:
+            if collected:
+                break
+            raise
         attempts += 1
         need = num_questions - len(collected)
 
         with timed("question", attempt=attempts, requested=need) as stage:
-            raw = question_agent.run(context, need, difficulty)  # may raise InsufficientContextError
+            try:
+                raw = question_agent.run(context, need, difficulty)
+            except LLMError:
+                if collected:
+                    break
+                raise  # may raise InsufficientContextError
             stage["mcqs"] = len(raw) if isinstance(raw, list) else 0
 
         # Structural QA (deterministic contract guard).
@@ -97,7 +113,8 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
         if config.FACT_VERIFICATION_ENABLED and valid:
             with timed("fact_verification", attempt=attempts) as stage:
                 verified, rejected = verifier.run(valid, context)
-                stage["passed"] = len(verified)
+                stage["passed"] = sum(q.get("verification") == "verified" for q in verified)
+                stage["unverified"] = sum(q.get("verification") != "verified" for q in verified)
                 stage["rejected"] = len(rejected)
             valid = verified
         else:
@@ -112,7 +129,7 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
         # De-duplicate by question text across attempts.
         seen, deduped = set(), []
         for q in collected:
-            key = q["question"].strip().lower()
+            key = normalized(q["question"])
             if key not in seen:
                 seen.add(key)
                 deduped.append(q)
@@ -127,9 +144,10 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
     log_event("pipeline.complete", requested=num_questions, collected=len(collected),
               attempts=attempts, difficulty=difficulty,
               duration_ms=round((time.perf_counter() - started) * 1000, 2))
-    return collected[:num_questions]
+    return attach_evidence(collected[:num_questions], context)
 
 
+@generation_budget
 def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medium",
                       *, owner: str = "", title: str = "", user_request: str = "") -> list[dict]:
     # 1. Planner: for the standard upload flow, params are explicit; a free-form
@@ -183,20 +201,25 @@ def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medi
     if not collected:
         return _legacy_fallback(text, num_questions, difficulty)
 
-    return collected
+    return attach_evidence(collected, context, hits=hits, document_id=document_id)
 
 
+@generation_budget
 def generate_from_text(text: str, num_questions: int = 5, difficulty: str = "medium",
                        *, topic: str | None = None) -> list[dict]:
     """Generate from temporary input without ingesting it into the Library."""
-    context = text[:config.CONTEXT_MAX_CHARS]
+    source = text[:config.CONTEXT_MAX_CHARS]
+    context = source
     if topic:
         context = f"Focus requested by the learner: {topic[:200]}\n\nSOURCE:\n{context}"
     if config.AI_PIPELINE == "rag":
-        return _collect_mcqs(context, num_questions, difficulty)
-    return _legacy_from_context(context, num_questions, difficulty)
+        questions = _collect_mcqs(context, num_questions, difficulty)
+    else:
+        questions = _legacy_from_context(context, num_questions, difficulty)
+    return attach_evidence(questions, source)
 
 
+@generation_budget
 def generate_from_document(document_id: int, num_questions: int = 5,
                            difficulty: str = "medium", *, topic: str | None = None,
                            deadline_seconds: int | None = None,
@@ -236,7 +259,7 @@ def generate_from_document(document_id: int, num_questions: int = 5,
             raise ValueError(f"Could not generate questions from this source: {e}")
         if not mcqs:
             raise ValueError("Could not generate questions from this source. Try a different difficulty or topic.")
-        return mcqs[:num_questions]
+        return attach_evidence(mcqs[:num_questions], context, hits=hits, document_id=document_id)
 
     # There's no fuller-text fallback here (the raw document text isn't in hand),
     # so a confident INSUFFICIENT verdict surfaces as a clear, actionable error
@@ -258,7 +281,7 @@ def generate_from_document(document_id: int, num_questions: int = 5,
 
     if not collected:
         raise ValueError("Could not generate questions from this source. Try a different difficulty or topic.")
-    return collected
+    return attach_evidence(collected, context, hits=hits, document_id=document_id)
 
 
 def _legacy_from_context(context, num_questions, difficulty) -> list[dict]:
@@ -277,11 +300,5 @@ def _legacy_fallback(text, num_questions, difficulty, reason: str = "") -> list[
     """Use the original single-shot generator. Import locally to avoid a cycle."""
     if reason:
         log_event("pipeline.legacy_fallback", reason=reason)
-    # Temporarily force legacy to avoid recursion back into this pipeline.
-    prev = config.AI_PIPELINE
-    config.AI_PIPELINE = "legacy"
-    try:
-        from models.mcq_generator import generate_mcqs
-        return generate_mcqs(text, num_questions=num_questions, difficulty=difficulty)
-    finally:
-        config.AI_PIPELINE = prev
+    from models.mcq_generator import generate_mcqs_legacy
+    return generate_mcqs_legacy(text, num_questions=num_questions, difficulty=difficulty)
