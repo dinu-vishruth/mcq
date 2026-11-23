@@ -4,7 +4,7 @@ import config
 from core.models.db import get_db
 from core.services.demo_service import SAMPLE_TITLE
 from tests._client import make_client_factory
-from tests.test_regression import Base, FIXED_MCQS, app_module
+from tests.test_regression import FIXED_MCQS, Base, app_module
 
 
 class TestDemo(Base):
@@ -34,7 +34,8 @@ class TestDemo(Base):
 
     def test_visitors_have_separate_demo_resources(self):
         first, second = self.client(), self.client()
-        first.post("/demo"); second.post("/demo")
+        first.post("/demo")
+        second.post("/demo")
         a = first.get("/api/knowledge").get_json()["items"]
         b = second.get("/api/knowledge").get_json()["items"]
         self.assertNotEqual(a[0]["id"], b[0]["id"])

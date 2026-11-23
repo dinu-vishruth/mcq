@@ -20,7 +20,7 @@ from core.repositories import document_repo
 
 
 def ingest_document(raw_text: str, *, owner: str = "", title: str = "",
-                    source_type: str = "paste") -> dict:
+                    source_type: str = "paste", owner_id: int | None = None) -> dict:
     """Return {"document_id", "reused", "chunk_count", "embed_stats"}."""
     processed = DocumentProcessingAgent().run(raw_text, title=title, source_type=source_type)
 
@@ -30,7 +30,7 @@ def ingest_document(raw_text: str, *, owner: str = "", title: str = "",
     # Scoped to the owner: dedup must not hand this user another user's document,
     # which previously left the second uploader with no row and an empty library.
     dh = document_repo.doc_hash(processed.text)
-    existing = document_repo.find_by_hash(dh, owner=owner)
+    existing = document_repo.find_by_hash(dh, owner=owner, owner_id=owner_id)
     if existing is not None and existing["status"] == "ready":
         return {"document_id": existing["id"], "reused": True,
                 "chunk_count": existing["chunk_count"], "embed_stats": None}
@@ -40,7 +40,7 @@ def ingest_document(raw_text: str, *, owner: str = "", title: str = "",
     else:
         document_id = document_repo.create(
             dh, owner, title or (source_type + " document"),
-            source_type, processed.char_count, meta=processed.metadata,
+            source_type, processed.char_count, meta=processed.metadata, owner_id=owner_id,
         )
 
     document_repo.set_status(document_id, "chunked", chunk_count=len(processed.chunks))

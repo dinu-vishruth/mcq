@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import config
 from core.agents.base import Agent
-from core.llm import get_llm, LLMError
+from core.llm import LLMError, get_llm
 from core.prompts import mcq as mcq_prompts
+from core.services.personalization import system_prompt
 
 
 class InsufficientContextError(LLMError):
@@ -26,7 +27,7 @@ class QuestionAgent(Agent):
     def run(self, context: str, num_questions: int, difficulty: str) -> list[dict]:
         prompt = mcq_prompts.rag_prompt(context, num_questions, difficulty)
         messages = [
-            {"role": "system", "content": mcq_prompts.SYSTEM},
+            {"role": "system", "content": system_prompt(mcq_prompts.SYSTEM)},
             {"role": "user", "content": prompt},
         ]
         # Low temperature keeps questions faithful to the context, not the

@@ -12,12 +12,12 @@ import json
 import random
 from datetime import datetime
 
-from flask import (Blueprint, render_template, request, session, redirect, url_for)
+from flask import Blueprint, redirect, render_template, request, session, url_for
 
+import models.explanation_engine as explanation_engine
 from core.models.db import get_db
 from core.repositories import session_repo
 from utils.session_manager import validate_session_key
-import models.explanation_engine as explanation_engine
 
 student_bp = Blueprint("student", __name__)
 

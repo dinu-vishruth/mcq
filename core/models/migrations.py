@@ -141,6 +141,8 @@ def _documents_needs_owner_scoped_dedup(conn: sqlite3.Connection) -> bool:
     if row is None or not row[0]:
         return False  # Fresh DB: SCHEMA above already has the composite UNIQUE.
     ddl = " ".join(row[0].split())
+    if "owner_user_id" in ddl:
+        return False  # The immutable-ownership migration supersedes this rebuild.
     return "doc_hash TEXT UNIQUE" in ddl or "UNIQUE(doc_hash, owner)" not in ddl
 
 

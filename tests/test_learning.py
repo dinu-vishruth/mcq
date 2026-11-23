@@ -14,9 +14,9 @@ _TMP = tempfile.mkdtemp(prefix="mcq_learn_")
 config.DB_PATH = os.path.join(_TMP, "learn.db")
 config.LLM_API_KEY = "test-key"  # force the AI path (stubbed below)
 
-from core.models.migrations import run_migrations
-from core.agents.explanation import ExplanationAgent
 from core.agents.evaluation import EvaluationAgent
+from core.agents.explanation import ExplanationAgent
+from core.models.migrations import run_migrations
 from core.repositories import learning_repo
 
 

@@ -1,0 +1,128 @@
+{
+  "generated_at": "2026-10-29T15:36:14+00:00",
+  "mode": "stub",
+  "model": "stub",
+  "dataset": "evals/dataset.jsonl",
+  "summary": {
+    "cases": 6,
+    "passed": 6,
+    "pass_rate": 1.0,
+    "mean_count_ratio": 1.0,
+    "mean_validity": 1.0,
+    "mean_grounded": 1.0,
+    "mean_keyword_coverage": 1.0,
+    "mean_duplicate_rate": 0.0,
+    "total_seconds": 0.0
+  },
+  "cases": [
+    {
+      "id": "biology-cell-energy",
+      "requested": 5,
+      "generated": 5,
+      "count_ratio": 1.0,
+      "validity": 1.0,
+      "grounded": 1.0,
+      "keyword_coverage": 1.0,
+      "matched_keywords": [
+        "mitochondria",
+        "ATP",
+        "glucose",
+        "oxygen"
+      ],
+      "duplicate_rate": 0.0,
+      "passed": true,
+      "seconds": 0.0
+    },
+    {
+      "id": "history-printing-press",
+      "requested": 5,
+      "generated": 5,
+      "count_ratio": 1.0,
+      "validity": 1.0,
+      "grounded": 1.0,
+      "keyword_coverage": 1.0,
+      "matched_keywords": [
+        "Gutenberg",
+        "movable type",
+        "Mainz",
+        "literacy"
+      ],
+      "duplicate_rate": 0.0,
+      "passed": true,
+      "seconds": 0.0
+    },
+    {
+      "id": "dbms-transactions",
+      "requested": 5,
+      "generated": 5,
+      "count_ratio": 1.0,
+      "validity": 1.0,
+      "grounded": 1.0,
+      "keyword_coverage": 1.0,
+      "matched_keywords": [
+        "atomicity",
+        "durability",
+        "isolation",
+        "commit",
+        "rollback"
+      ],
+      "duplicate_rate": 0.0,
+      "passed": true,
+      "seconds": 0.0
+    },
+    {
+      "id": "physics-newton",
+      "requested": 4,
+      "generated": 4,
+      "count_ratio": 1.0,
+      "validity": 1.0,
+      "grounded": 1.0,
+      "keyword_coverage": 1.0,
+      "matched_keywords": [
+        "inertia",
+        "force",
+        "acceleration",
+        "mass"
+      ],
+      "duplicate_rate": 0.0,
+      "passed": true,
+      "seconds": 0.0
+    },
+    {
+      "id": "cs-binary-search",
+      "requested": 4,
+      "generated": 4,
+      "count_ratio": 1.0,
+      "validity": 1.0,
+      "grounded": 1.0,
+      "keyword_coverage": 1.0,
+      "matched_keywords": [
+        "sorted",
+        "logarithmic",
+        "midpoint",
+        "O(log n)"
+      ],
+      "duplicate_rate": 0.0,
+      "passed": true,
+      "seconds": 0.0
+    },
+    {
+      "id": "chem-periodic-trends",
+      "requested": 4,
+      "generated": 4,
+      "count_ratio": 1.0,
+      "validity": 1.0,
+      "grounded": 1.0,
+      "keyword_coverage": 1.0,
+      "matched_keywords": [
+        "electronegativity",
+        "ionization energy",
+        "atomic radius",
+        "groups"
+      ],
+      "duplicate_rate": 0.0,
+      "passed": true,
+      "seconds": 0.0
+    }
+  ]
+}

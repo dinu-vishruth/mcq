@@ -8,7 +8,7 @@ from unittest.mock import patch
 import config
 from core.models.db import get_db
 from tests._client import make_client_factory
-from tests.test_regression import Base, FIXED_MCQS, app_module
+from tests.test_regression import FIXED_MCQS, Base, app_module
 from utils.session_manager import create_session_key
 
 
@@ -25,7 +25,8 @@ class TestSavedResults(Base):
         self.key = create_session_key("results_learner", "easy", 600, FIXED_MCQS)
         self.c.post("/student_login", data={"session_key": self.key})
         analyse = patch("core.services.learning_service.analyse_submission")
-        self.analyse = analyse.start(); self.addCleanup(analyse.stop)
+        self.analyse = analyse.start()
+        self.addCleanup(analyse.stop)
 
     def payload(self, response):
         return json.loads(html.unescape(re.search(rb"data-bootstrap='([^']+)'", response.data).group(1).decode()))
@@ -82,7 +83,8 @@ class TestSavedResults(Base):
                    (self.key, "results_learner", json.dumps([{
                        "question": "Example", "selected": "", "correct": "Answer", "is_correct": False,
                    }])))
-        db.commit(); db.close()
+        db.commit()
+        db.close()
         result = self.payload(self.c.get(f"/results/{self.key}"))
         self.assertEqual(result["score"], 0)
         self.assertIn("Not answered", result["explanations"][0])

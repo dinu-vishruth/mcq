@@ -1,9 +1,9 @@
 """Keep already-open upload forms working across frontend releases."""
 from unittest.mock import patch
 
-from tests.test_regression import Base, FIXED_MCQS
-import models.mcq_generator as mcq_module
 import models.explanation_engine as explanation_module
+import models.mcq_generator as mcq_module
+from tests.test_regression import FIXED_MCQS, Base
 
 
 class TestUploadContract(Base):
@@ -43,14 +43,18 @@ class TestUploadContract(Base):
         quiz = self.c.get("/mcq_test")
         self.assertEqual(quiz.status_code, 200)
         self.assertIn(b'data-page="quiz"', quiz.data)
-        self.assertIn(b'1200', quiz.data)
+        import html
+        import json
+        import re
+        data = json.loads(html.unescape(re.search(r"data-bootstrap='([^']*)'", quiz.data.decode()).group(1)))
+        self.assertAlmostEqual(data["deadline"] - data["server_now"], 1200, delta=2)
 
     def test_upload_and_continue_still_opens_settings(self):
         with patch("core.services.ingestion_service.ingest_document", return_value={"document_id": 42}), patch(
             "models.mcq_generator.generate_mcqs"
         ) as generate:
             response = self.c.post("/upload", data={"extracted_text": "Study material."})
-        self.assertEqual(response.headers["Location"], "/knowledge?doc=42")
+        self.assertTrue(response.headers["Location"].startswith("/knowledge?upload="))
         generate.assert_not_called()
 
     def test_old_form_rejects_invalid_settings_without_generation(self):

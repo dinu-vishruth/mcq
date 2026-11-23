@@ -18,11 +18,11 @@ from dataclasses import dataclass
 from typing import Callable
 
 import config
-from core.agents.retriever import RetrieverAgent
 from core.agents.context_builder import ContextBuilderAgent
-from core.llm import get_llm, LLMError
-from core.services.ingestion_service import ingest_document
+from core.agents.retriever import RetrieverAgent
+from core.llm import LLMError, get_llm
 from core.prompts import content as prompts
+from core.services.ingestion_service import ingest_document
 
 
 @dataclass

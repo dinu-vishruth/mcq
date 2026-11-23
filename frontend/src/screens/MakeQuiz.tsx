@@ -49,6 +49,23 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
 
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(data.error ?? "");
+  const uploadId = qs("upload");
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [useUpload, setUseUpload] = useState(Boolean(uploadId));
+  const [aiReady, setAiReady] = useState(false);
+  const [aiMessage, setAiMessage] = useState("Checking quiz generation availability...");
+
+  useEffect(() => {
+    apiGet<{ available: boolean; message: string }>("/api/generation/status")
+      .then((status) => { setAiReady(status.available); setAiMessage(status.message); })
+      .catch(() => setAiMessage("Could not check quiz availability. Refresh to try again."));
+    if (uploadId) {
+      apiGet<{ title: string }>(`/api/quiz-uploads/${uploadId}`)
+        .then((source) => setUploadTitle(source.title))
+        .catch((err) => setError(err instanceof Error ? err.message : "Upload unavailable. Please upload it again."));
+    }
+  }, [uploadId]);
+
 
   useEffect(() => {
     apiGet<{ items: KnowledgeItem[] }>("/api/knowledge")
@@ -63,17 +80,28 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
   }, []); // eslint-disable-line
 
   async function generate() {
-    if (!docId) { setError("Choose a saved resource first, or upload new material above."); return; }
+    if (!aiReady) return;
+    if (useUpload ? !uploadTitle : !docId) { setError("Choose a saved resource first, or upload new material above."); return; }
     setGenerating(true);
     setError("");
     try {
-      const res = await apiSend<{ session_key: string }>("/api/practice/generate", "POST", {
-        document_id: docId,
+      let res = await apiSend<{ session_key?: string; job_id?: string }>("/api/practice/generate", "POST", {
+        ...(useUpload ? { upload_id: uploadId } : { document_id: docId }),
         num_questions: count,
         difficulty,
         topic: topic.trim() || undefined,
         timer: timerMinutes * 60,
       });
+      while (!res.session_key && res.job_id) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const job = await apiGet<{ status: string; error?: string; result?: { session_key: string } }>(`/api/jobs/${res.job_id}`);
+        if (job.status === "failed") throw new Error(job.error || "Quiz generation failed. Please retry.");
+        if (job.status === "done") {
+          if (!job.result?.session_key) throw new Error("The quiz could not be opened. Please retry.");
+          res = job.result;
+        }
+      }
+      if (!res.session_key) throw new Error("The quiz could not be opened. Please retry.");
       const form = document.createElement("form");
       form.method = "POST";
       form.action = "/student_login";
@@ -116,6 +144,14 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
         </div>
 
         {/* Path 2: generate from a saved Learning Journey resource */}
+        {uploadId && (
+          <button type="button" onClick={() => setUseUpload(true)} className="block w-full text-left mb-4">
+            <Card pad="md" className={useUpload ? "border-accent" : ""}>
+              <p className="font-medium">{uploadTitle || "Uploaded quiz material"}</p>
+              <p className="text-text-2 text-sm mt-1">For this quiz only. This material is not saved to your Library.</p>
+            </Card>
+          </button>
+        )}
         <Card pad="md" className="mb-4">
           <label className="flex items-center gap-2 text-sm font-medium mb-3"><Library className="w-4 h-4 text-accent" /> Saved resource</label>
           {loadingList ? (
@@ -130,9 +166,9 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {items.map((k) => (
-                <button key={k.id} onClick={() => setDocId(k.id)} className="text-left">
+                <button key={k.id} onClick={() => { setDocId(k.id); setUseUpload(false); }} className="text-left">
                   <div className={`px-3.5 py-3 rounded-md border text-sm transition-colors ${
-                    docId === k.id ? "border-accent bg-accent/8 text-text" : "border-white/10 text-text-2 hover:bg-white/[0.03]"}`}>
+                    !useUpload && docId === k.id ? "border-accent bg-accent/8 text-text" : "border-white/10 text-text-2 hover:bg-white/[0.03]"}`}>
                     <div className="font-medium truncate">{k.title}</div>
                     <div className="text-text-3 text-xs mt-0.5">{k.topic_count} topics</div>
                   </div>
@@ -167,9 +203,10 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
         </Setting>
 
         {error && <div className="mt-4 text-danger text-sm bg-danger/8 border border-danger/20 rounded-md px-4 py-3">{error}</div>}
+        {aiMessage && <p role="status" className="mt-4 text-text-2 text-sm">{aiMessage}</p>}
 
         <div className="mt-6">
-          <Button size="lg" className="w-full" onClick={generate} disabled={generating || !docId}
+          <Button size="lg" className="w-full" onClick={generate} disabled={generating || !aiReady || (useUpload ? !uploadTitle : !docId)}
             leftIcon={generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             rightIcon={!generating ? <ChevronRight className="w-4 h-4" /> : undefined}>
             {generating ? "Generating your quiz…" : "Generate & Start"}

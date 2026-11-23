@@ -14,9 +14,9 @@ in the templates already handle.
 """
 from __future__ import annotations
 
-from pathlib import Path
-from functools import lru_cache
 import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from fastapi import Request
@@ -54,6 +54,7 @@ templates.env.globals["frontend_asset"] = frontend_asset
 # signup.html use it to decide whether to render the Google button as a working
 # link or an inert placeholder.
 templates.env.globals["google_oauth_enabled"] = config.GOOGLE_OAUTH_ENABLED
+templates.env.globals["github_oauth_enabled"] = config.GITHUB_OAUTH_ENABLED
 
 
 def flash(request: Request, message: str, category: str = "message") -> None:

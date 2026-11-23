@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import abc
 import json
+import logging
 from typing import Any
 
 
@@ -37,6 +38,9 @@ class LLMProvider(abc.ABC):
         self.model = model
         self.timeout = timeout
         self.temperature = temperature
+        #: Raw provider usage dict from the most recent successful call (None
+        #: when the provider didn't report it). Read by complete() for logging.
+        self.last_usage: dict | None = None
 
     @abc.abstractmethod
     def _complete_once(self, messages: list[dict], *, temperature: float | None = None,
@@ -55,26 +59,59 @@ class LLMProvider(abc.ABC):
         """
         # Imported lazily so tests that stub config still see current values.
         import time
+
         import config
+        from core.observability import log_event
 
         max_retries = max(0, int(getattr(config, "LLM_MAX_RETRIES", 3)))
         base = float(getattr(config, "LLM_RETRY_BACKOFF", 1.5))
         max_wait = float(getattr(config, "LLM_RETRY_MAX_WAIT", 8))
+        provider = getattr(self, "provider_id", "unknown")
+        prompt_chars = sum(len(m.get("content") or "") for m in messages)
 
         attempt = 0
         while True:
+            self.last_usage = None
+            started = time.perf_counter()
             try:
-                return self._complete_once(messages, temperature=temperature,
-                                           max_tokens=max_tokens, json_mode=json_mode)
+                result = self._complete_once(messages, temperature=temperature,
+                                             max_tokens=max_tokens, json_mode=json_mode)
             except RateLimitError as e:
+                log_event(
+                    "llm.rate_limited", level=logging.WARNING, provider=provider,
+                    model=self.model, attempt=attempt + 1,
+                    duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                    retry_after=e.retry_after,
+                )
                 if attempt >= max_retries:
                     raise
                 # Prefer the provider's own hint; else exponential backoff.
                 wait = e.retry_after if e.retry_after is not None else base * (2 ** attempt)
                 wait = min(wait, max_wait)
                 attempt += 1
-                print(f"[llm] 429 rate limit; retry {attempt}/{max_retries} in {wait:.1f}s")
+                log_event("llm.retry", provider=provider, model=self.model,
+                          attempt=attempt, max_retries=max_retries,
+                          wait_seconds=round(wait, 2))
                 time.sleep(wait)
+                continue
+            except Exception as exc:
+                log_event(
+                    "llm.call", level=logging.ERROR, provider=provider,
+                    model=self.model, status="error",
+                    error_type=type(exc).__name__,
+                    duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                    json_mode=json_mode, prompt_chars=prompt_chars,
+                )
+                raise
+            else:
+                log_event(
+                    "llm.call", provider=provider, model=self.model, status="ok",
+                    attempt=attempt + 1,
+                    duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                    json_mode=json_mode, prompt_chars=prompt_chars,
+                    max_tokens=max_tokens, usage=self.last_usage,
+                )
+                return result
 
     def complete_json(self, messages: list[dict], *, temperature: float | None = None,
                       max_tokens: int | None = None) -> Any:

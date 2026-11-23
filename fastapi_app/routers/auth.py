@@ -78,7 +78,7 @@ async def signup(
     try:
         conn.execute(
             "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-            (username, generate_password_hash(password), "student"),
+            (username, generate_password_hash(password), "user"),
         )
         conn.commit()
     except sqlite3.IntegrityError:
@@ -126,6 +126,10 @@ async def login(
 
     request.session["user_id"] = user["id"]
     request.session["username"] = user["username"]
+    from ..services.dashboard import load_prefs
+    prefs = load_prefs(conn, user["id"]) or {}
+    if not prefs.get("onboarded"):
+        return RedirectResponse("/onboarding", status_code=302)
     return RedirectResponse("/dashboard", status_code=302)
 
 
@@ -186,19 +190,17 @@ async def profile(
 
 @router.post("/delete_account")
 async def delete_account(request: Request, user: CurrentUser, conn: Db):
-    # A single user may own generated sessions (by username) and quiz results
-    # (by user_id), plus learning data. Remove all of it.
-    conn.execute(
-        "DELETE FROM results WHERE session_key IN "
-        "(SELECT session_key FROM sessions WHERE teacher=?)",
-        (user.username,),
-    )
-    conn.execute("DELETE FROM sessions WHERE teacher=?", (user.username,))
-    for table in ("results", "learning_history", "weak_topics", "user_prefs"):
-        try:
-            conn.execute(f"DELETE FROM {table} WHERE user_id=?", (user.id,))
-        except sqlite3.OperationalError:
-            pass  # additive table not present on an older database
+    # Ownership is immutable. Never infer it from a reusable username.
+    conn.execute("DELETE FROM chunks WHERE document_id IN "
+                 "(SELECT id FROM documents WHERE owner_user_id=?)", (user.id,))
+    conn.execute("UPDATE sessions SET document_id=NULL WHERE document_id IN "
+                 "(SELECT id FROM documents WHERE owner_user_id=?)", (user.id,))
+    conn.execute("DELETE FROM documents WHERE owner_user_id=?", (user.id,))
+    conn.execute("DELETE FROM quiz_attempts WHERE user_id=? OR session_key IN "
+                 "(SELECT session_key FROM sessions WHERE teacher_user_id=?)", (user.id, user.id))
+    conn.execute("DELETE FROM sessions WHERE teacher_user_id=?", (user.id,))
+    for table in ("results", "learning_history", "weak_topics", "user_prefs", "quiz_uploads", "generation_jobs", "chat_history"):
+        conn.execute(f"DELETE FROM {table} WHERE user_id=?", (user.id,))
     conn.execute("DELETE FROM users WHERE id=?", (user.id,))
     conn.commit()
 

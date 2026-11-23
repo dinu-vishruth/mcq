@@ -19,6 +19,7 @@ PRAGMAs) are handled by the numbered SQL migrations in database/migrations/,
 not here.
 """
 from __future__ import annotations
+
 import sqlite3
 
 try:  # psycopg 3

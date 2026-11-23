@@ -8,7 +8,7 @@ Run:  python -m unittest tests.test_llm_retry -v
 import unittest
 
 import config
-from core.llm.base import LLMProvider, LLMError, RateLimitError
+from core.llm.base import LLMProvider, RateLimitError
 
 
 class _FlakyProvider(LLMProvider):
@@ -29,7 +29,6 @@ class _FlakyProvider(LLMProvider):
 class TestRetry(unittest.TestCase):
     def setUp(self):
         # Don't actually sleep during tests; record the waits instead.
-        import core.llm.base as base_mod
         self._orig_sleep = None
         self.waits = []
 

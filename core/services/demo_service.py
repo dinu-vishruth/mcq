@@ -45,12 +45,12 @@ def create_demo_workspace(conn) -> dict:
     )
     conn.commit()
     try:
-        ingest_document(SAMPLE_TEXT, owner=username, title=SAMPLE_TITLE, source_type="paste")
+        ingest_document(SAMPLE_TEXT, owner=username, owner_id=user_id, title=SAMPLE_TITLE, source_type="paste")
     except Exception:
         # Do not leave an unusable account behind if preparation fails.
         from core.repositories import document_repo
-        for document in document_repo.list_by_owner(username):
-            document_repo.delete(document["id"], username)
+        for document in document_repo.list_by_owner(owner_id=user_id):
+            document_repo.delete(document["id"], owner_id=user_id)
         conn.execute("DELETE FROM user_prefs WHERE user_id=?", (user_id,))
         conn.execute("DELETE FROM users WHERE id=?", (user_id,))
         conn.commit()

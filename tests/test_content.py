@@ -6,7 +6,6 @@ type through the shared retrieve->context->generate spine.
 Run:  python -m unittest tests.test_content -v
 """
 import os
-import sqlite3
 import tempfile
 import unittest
 
@@ -17,16 +16,13 @@ config.DB_PATH = os.path.join(_TMP, "content.db")
 config.EMBEDDING_BACKEND = "hashing"
 config.VECTOR_STORE = "sqlite"
 
-from core.models.migrations import run_migrations
 from core.embeddings import reset_embedder
 from core.vectorstore import reset_vector_store
 
 
 def _init_db():
-    conn = sqlite3.connect(config.DB_PATH)
-    conn.executescript("CREATE TABLE IF NOT EXISTS sessions(id INTEGER PRIMARY KEY, document_id INTEGER);")
-    run_migrations(conn)
-    conn.close()
+    from fastapi_app.database import init_db
+    init_db()
 
 
 class TestContentRegistry(unittest.TestCase):

@@ -5,7 +5,6 @@ sqlite store and stubs the LLM so no network/key is needed.
 Run:  python -m unittest tests.test_pipeline -v
 """
 import os
-import sqlite3
 import tempfile
 import unittest
 
@@ -16,17 +15,14 @@ config.DB_PATH = os.path.join(_TMP, "pipe.db")
 config.EMBEDDING_BACKEND = "hashing"
 config.VECTOR_STORE = "sqlite"
 
-from core.models.migrations import run_migrations
 from core.agents.quality_assurance import QualityAssuranceAgent
 from core.embeddings import reset_embedder
 from core.vectorstore import reset_vector_store
 
 
 def _init_db():
-    conn = sqlite3.connect(config.DB_PATH)
-    conn.executescript("CREATE TABLE IF NOT EXISTS sessions(id INTEGER PRIMARY KEY, document_id INTEGER);")
-    run_migrations(conn)
-    conn.close()
+    from fastapi_app.database import init_db
+    init_db()
 
 
 class TestQualityAssurance(unittest.TestCase):
@@ -102,10 +98,10 @@ class TestPipelineWithStubbedLLM(unittest.TestCase):
 
     def _install_stub(self, questions):
         """Patch get_llm() used by every LLM-calling agent in the pipeline."""
-        import core.agents.question as qmod
-        import core.agents.difficulty as dmod
         import core.agents.context_validation as cvmod
+        import core.agents.difficulty as dmod
         import core.agents.fact_verification as fvmod
+        import core.agents.question as qmod
 
         class StubLLM:
             def complete_json(self, messages, **kw):

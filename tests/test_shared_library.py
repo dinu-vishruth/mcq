@@ -17,9 +17,9 @@ import config
 class TestSharedLibrary(unittest.TestCase):
     def test_saved_source_survives_a_new_application_and_generates_without_upload(self):
         import psycopg
+        from fastapi.testclient import TestClient
         from psycopg import sql
         from psycopg.conninfo import make_conninfo
-        from fastapi.testclient import TestClient
 
         connection_url = os.environ["MCQ_TEST_DATABASE_URL"]
         schema = "mcq_verify_" + uuid.uuid4().hex
@@ -28,8 +28,8 @@ class TestSharedLibrary(unittest.TestCase):
         try:
             test_url = make_conninfo(connection_url, options=f"-c search_path={schema}")
             with patch.object(config, "DATABASE_URL", test_url):
-                from fastapi_app import main
                 from core.repositories import document_repo, session_repo
+                from fastapi_app import main
 
                 client = TestClient(main.create_app(), follow_redirects=False)
 
@@ -90,8 +90,9 @@ class TestSharedLibrary(unittest.TestCase):
                 # Ownership also survives a cold start; another user cannot load it.
                 from core.models.db import get_db
                 db = get_db()
-                db.execute("UPDATE documents SET owner=? WHERE id=?", ("another_user", doc_id))
-                db.commit(); db.close()
+                db.execute("UPDATE documents SET owner_user_id=NULL WHERE id=?", (doc_id,))
+                db.commit()
+                db.close()
                 denied = third.get(f"/practice?doc={doc_id}")
                 self.assertNotIn("Persistent biology", denied.text)
         finally:

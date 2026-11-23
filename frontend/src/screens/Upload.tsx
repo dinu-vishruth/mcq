@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UploadCloud, FileText, Brain, Check, Sparkles, Layers, Boxes, Database } from "lucide-react";
+import { UploadCloud, FileText, Brain, Check, Sparkles, Layers } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { AppShell } from "@/components/AppShell";
@@ -21,8 +21,8 @@ const PIPELINE = [
   { label: "Extracting Text", icon: FileText },
   { label: "Understanding Content", icon: Brain },
   { label: "Creating Chunks", icon: Layers },
-  { label: "Generating Embeddings", icon: Boxes },
-  { label: "Saving to Library", icon: Database },
+  { label: "Preparing Quiz Material", icon: FileText },
+  { label: "Opening Quiz Settings", icon: Brain },
   { label: "Ready", icon: Check },
 ];
 
@@ -104,7 +104,7 @@ export default function Upload({ data }: { data: UploadData }) {
             <Sparkles className="w-4 h-4" /> Upload &amp; generate
           </p>
           <h1 className="text-[clamp(1.8rem,3vw,2.4rem)] font-bold">Make a Quiz from New Material</h1>
-          <p className="text-text-2 mt-2">Upload your study material and we'll save it to your library so you can configure and generate a quiz at your own pace.</p>
+          <p className="text-text-2 mt-2">Upload material for this quiz, then choose your quiz settings. To keep a resource for future use, add it through Library.</p>
         </div>
 
         {error && (
@@ -200,7 +200,7 @@ function Pipeline({ stage }: { stage: number }) {
       </div>
       <AnimatePresence>
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center text-text-3 text-sm mt-6">
-          Saving your resource to the library…
+          Preparing your quiz material…
         </motion.p>
       </AnimatePresence>
     </div>

@@ -53,7 +53,7 @@ async def owned_session(session_key: SessionKey, user: CurrentUser, conn: Db) ->
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    if row["teacher"] != user.username:
+    if row["teacher_user_id"] != user.id:
         raise HTTPException(status_code=403, detail="Access Denied")
     return row
 
@@ -90,8 +90,10 @@ async def download_report(session_key: SessionKey, session_row: OwnedSession):
     """Render this session's MCQ set as a downloadable PDF."""
     from reportlab.pdfgen import canvas
 
-    os.makedirs("reports", exist_ok=True)
-    filename = f"reports/report_{session_key}.pdf"
+    from config import REPORTS_DIR
+
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    filename = os.path.join(REPORTS_DIR, f"report_{session_key}.pdf")
 
     pdf = canvas.Canvas(filename)
     y = 800
@@ -140,6 +142,7 @@ async def download_report(session_key: SessionKey, session_row: OwnedSession):
 async def delete_session(
     request: Request, session_key: SessionKey, session_row: OwnedSession, conn: Db
 ):
+    conn.execute("DELETE FROM quiz_attempts WHERE session_key=?", (session_key,))
     conn.execute("DELETE FROM sessions WHERE session_key=?", (session_key,))
     conn.execute("DELETE FROM results WHERE session_key=?", (session_key,))
     conn.commit()
@@ -174,9 +177,9 @@ async def clone_session(
     new_key = str(uuid.uuid4())[:8]
     conn.execute(
         "INSERT INTO sessions (session_key, teacher, created_at, difficulty, timer, "
-        "mcqs_json, archived) VALUES (?, ?, ?, ?, ?, ?, 0)",
+        "mcqs_json, teacher_user_id, archived) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
         (new_key, user.username, datetime.utcnow().isoformat(),
-         session_row["difficulty"], session_row["timer"], session_row["mcqs_json"]),
+         session_row["difficulty"], session_row["timer"], session_row["mcqs_json"], user.id),
     )
     conn.commit()
     flash(request, f"Session cloned successfully! New key: {new_key}", "success")

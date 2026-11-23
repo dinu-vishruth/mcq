@@ -1,6 +1,6 @@
 """
 Session data access. Backs utils.session_manager (whose public functions are
-preserved) and the Phase 4 pipeline, which needs to link a session to the
+preserved) and the RAG pipeline, which needs to link a session to the
 document it was generated from (sessions.document_id, added in Phase 2).
 """
 from __future__ import annotations
@@ -12,24 +12,18 @@ from datetime import datetime
 from core.models.db import get_db
 
 
-def create_session(teacher, difficulty, timer, mcqs, document_id=None) -> str:
+def create_session(teacher, difficulty, timer, mcqs, document_id=None, *, owner_id=None) -> str:
     key = str(uuid.uuid4())[:8]
     conn = get_db()
     try:
-        # document_id column exists only after the Phase 2 migration; fall back
-        # to the legacy insert if it isn't there yet.
-        try:
-            conn.execute(
-                "INSERT INTO sessions (session_key, teacher, created_at, difficulty, timer, mcqs_json, document_id) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (key, teacher, datetime.utcnow().isoformat(), difficulty, timer, json.dumps(mcqs), document_id),
-            )
-        except Exception:
-            conn.execute(
-                "INSERT INTO sessions (session_key, teacher, created_at, difficulty, timer, mcqs_json) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (key, teacher, datetime.utcnow().isoformat(), difficulty, timer, json.dumps(mcqs)),
-            )
+        if owner_id is None:
+            user = conn.execute("SELECT id FROM users WHERE username=?", (teacher,)).fetchone()
+            owner_id = user["id"] if user else None
+        conn.execute(
+            "INSERT INTO sessions (session_key, teacher, teacher_user_id, created_at, difficulty, timer, mcqs_json, document_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (key, teacher, owner_id, datetime.utcnow().isoformat(), difficulty, timer, json.dumps(mcqs), document_id),
+        )
         conn.commit()
     finally:
         conn.close()

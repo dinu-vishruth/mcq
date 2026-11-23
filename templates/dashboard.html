@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home — MCQ Generator</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ frontend_asset('css') }}">
+</head>
+
+<body>
+  {#
+    React mount shell. The route hands us the COMPLETE dashboard payload as
+    `bootstrap` (see fastapi_app/services/dashboard.py), so the island renders on
+    first paint with no follow-up request to /api/dashboard — that extra
+    round-trip behind a spinner was what made this page feel slow, especially on
+    a cold serverless start.
+
+    The `else` branch is the fallback for routes that render this template
+    without the payload (e.g. /student_login showing an error): individual vars
+    with safe defaults, exactly as before.
+  #}
+  <div id="root"
+       data-page="dashboard"
+       data-bootstrap='{{ (bootstrap if bootstrap is defined and bootstrap else {
+         "username": session.username or "Learner",
+         "total_quizzes": total_quizzes | default(0),
+         "avg_score": avg_score | default(0),
+         "best_score": best_score | default(0),
+         "total_time": total_time | default(0),
+         "streak": session.streak | default(1),
+         "xp": session.xp | default(0),
+         "chart_dates": chart_dates | default([]),
+         "chart_scores": chart_scores | default([]),
+         "difficulty_averages": difficulty_averages | default([0, 0, 0]),
+         "weak_topics": weak_topics | default([]),
+         "history": history | default([]),
+         "recommendations": recommendations | default([]),
+         "needs_onboarding": false,
+         "prefs": none
+       }) | tojson }}'></div>
+
+  {% if error and not (bootstrap is defined and bootstrap.error) %}
+  <div role="alert" style="padding:1rem; color:#ef4444">{{ error }}</div>
+  {% endif %}
+
+  <script type="module" src="{{ frontend_asset('js') }}"></script>
+</body>
+
+</html>

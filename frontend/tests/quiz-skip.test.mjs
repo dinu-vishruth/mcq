@@ -12,7 +12,7 @@ const bundle = await build({
   plugins: [{ name: 'presentation-boundaries', setup(build) {
     build.onResolve({ filter: /^@\/|^framer-motion$/ }, args => ({ path: args.path, namespace: 'stub' }));
     build.onLoad({ filter: /.*/, namespace: 'stub' }, ({ path }) => ({ contents:
-      path === '@/bootstrap' ? 'export const csrfToken=()=>"csrf";' : `
+      path === '@/bootstrap' ? 'export const csrfToken=()=>"csrf"; export const apiSend=async()=>({});' : `
         import React from 'react';
         const Wrapper=({children})=>React.createElement('div',null,children);
         export const AnimatePresence=Wrapper, ProgressBar=Wrapper;
@@ -33,7 +33,7 @@ async function quiz(total = 3, timer = 600) {
     submitted.time_spent = spent.value;
   } };
   await act(async () => { root = create(React.createElement(mod.exports.default, { data: {
-    username: 'learner', timer, mcqs: Array.from({ length: total }, (_, i) => ({
+    username: 'learner', timer, deadline: 1000 + timer, server_now: 1000, session_key: 'quiz-test', user_id: 1, answers: {}, confidence: {}, question_index: 0, mcqs: Array.from({ length: total }, (_, i) => ({
       question: `Question text ${i + 1}`, answer_text: 'Correct', options: [
         { label: 'A', text: 'Correct' }, { label: 'B', text: 'Other' },
       ],
@@ -85,7 +85,7 @@ test('timer still submits a skipped single-question quiz from the review screen'
     await q.click('Skip');
     await act(async () => new Promise(resolve => setTimeout(resolve, 1100)));
     assert.equal(q.submitted()['q-0'], '');
-    assert.equal(q.submitted().time_spent, '1');
+    assert.equal(q.submissionCount(), 1);
   } finally { await q.close(); }
 });
 
@@ -97,7 +97,7 @@ test('repeated clicks and timer expiry cannot submit an attempt twice', async ()
     await act(async () => { button.props.onClick(); button.props.onClick(); });
     await act(async () => new Promise(resolve => setTimeout(resolve, 1100)));
     assert.equal(q.submissionCount(), 1);
-    const submitting = q.root.root.findAllByType('button').find(n => n.children.includes('Submitting...'));
+    const submitting = q.root.root.findAllByType('button').find(n => n.children.includes('Submitting\u2026'));
     assert.equal(submitting.props.disabled, true);
   } finally { await q.close(); }
 });

@@ -7,10 +7,9 @@ Run:  python -m unittest tests.test_verification -v
 """
 import unittest
 
-import config
+from core.agents.answer_evaluation import AnswerEvaluationAgent
 from core.agents.context_validation import ContextValidationAgent
 from core.agents.fact_verification import FactVerificationAgent
-from core.agents.answer_evaluation import AnswerEvaluationAgent
 from core.agents.retriever import RetrieverAgent
 
 

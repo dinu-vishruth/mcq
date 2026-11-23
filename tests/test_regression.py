@@ -13,10 +13,10 @@ Design notes:
   {question, options:[{label,text}*4], answer_text} and the explanations list[str].
 """
 import os
-import json
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 
 # --- Redirect DB + upload dir to temp locations BEFORE importing app ---
 _TMP = tempfile.mkdtemp(prefix="mcq_test_")
@@ -25,15 +25,19 @@ _UP = os.path.join(_TMP, "uploads")
 os.makedirs(_UP, exist_ok=True)
 
 import config
+
 config.DB_PATH = _DB
 config.UPLOAD_FOLDER = _UP
 
 import app as app_module
+
 # session_manager also did `from config import DB_PATH`.
 import utils.session_manager as sm
+
 sm.DB_PATH = _DB
 
 from fastapi_app.database import init_db
+
 init_db()
 
 FIXED_MCQS = [
@@ -71,12 +75,17 @@ class Base(unittest.TestCase):
         # Stub the network-calling functions at their SOURCE modules. The
         # routers import these modules (not the names), so patching the
         # module attribute takes effect in the routes.
-        import models.mcq_generator as _mcq
         import models.explanation_engine as _exp
-        _mcq.generate_mcqs = lambda text, num_questions=5, difficulty="medium": FIXED_MCQS[:num_questions] if num_questions <= len(FIXED_MCQS) else FIXED_MCQS
-        _exp.explain_answers = lambda details, document_id=None: [
-            ("Correct" if d["is_correct"] else "Wrong: " + d["correct"]) for d in details
-        ]
+        import models.mcq_generator as _mcq
+        for target, name, replacement in (
+            (_mcq, "generate_mcqs", lambda text, num_questions=5, difficulty="medium": FIXED_MCQS[:num_questions]),
+            (_exp, "explain_answers", lambda details, document_id=None: [
+                ("Correct" if d["is_correct"] else "Wrong: " + d["correct"]) for d in details
+            ]),
+        ):
+            stub = patch.object(target, name, replacement)
+            stub.start()
+            cls.addClassCleanup(stub.stop)
 
     def setUp(self):
         # Re-pin config in case another test module (e.g. test_rag) mutated these
@@ -127,13 +136,12 @@ class TestPublicRoutes(Base):
         self.assertIn(b"at least 8 characters", r.data)
 
     def test_signup_then_login(self):
-        # Single unified "User" role: signup no longer takes a role and login
-        # always lands on the unified dashboard.
+        # A newly created account first saves its learning preferences.
         c = self.client()
         c.post("/signup", data={"username": "newuser", "password": "password123"})
         r = self._login(c, "newuser", "password123")
         self.assertEqual(r.status_code, 302)
-        self.assertIn("/dashboard", r.headers["Location"])
+        self.assertIn("/onboarding", r.headers["Location"])
 
     def test_login_bad_credentials(self):
         r = self._login(self.client(), "nobody", "wrongpass")
@@ -172,6 +180,7 @@ class TestAuthGating(Base):
         c = self.client()
         self._seed_user("stud2", "password123", "student")
         self._login(c, "stud2", "password123")
+        c.post("/api/prefs", json={"goal": "college", "style": "mixed", "daily_minutes": 30})
         r = c.get("/dashboard")
         self.assertEqual(r.status_code, 200)
         # Dashboard is a React island; assert the mount shell is served.
@@ -190,35 +199,39 @@ class TestGenerationAndQuizFlow(Base):
         from utils.session_manager import create_session_key
         return create_session_key(teacher="teach3", difficulty="medium", timer=120, mcqs=FIXED_MCQS)
 
-    def test_upload_generates_session(self):
+    def test_upload_prepares_temporary_material_and_defers_quiz_setup(self):
         c = self.client()
         self._seed_user("uploader", "password123", "teacher")
         self._login(c, "uploader", "password123")
-        # `timer` is submitted in MINUTES and stored as seconds.
         r = c.post("/upload", data={"extracted_text": "Some study material about math and geography.",
-                                    "num_questions": "2", "difficulty": "medium", "timer": "10"})
-        # There is no answer-revealing preview any more: upload hands straight
-        # off to the quiz so the questions are never shown with their answers.
+                                    "title": "Math Geography"})
+        # Upload prepares a temporary source and hands off to quiz settings.
         self.assertEqual(r.status_code, 302)
-        self.assertIn("/mcq_test", r.headers["Location"])
-        # Only the session_key lives in the (signed-cookie) session now; timer +
-        # mcqs are re-fetched from the DB. Verify the stored timer is seconds.
-        with c.session_transaction() as sess:
-            key = sess["session_key"]
-            self.assertTrue(key)
-        conn = sqlite3.connect(_DB)
-        stored_timer = conn.execute("SELECT timer FROM sessions WHERE session_key=?", (key,)).fetchone()[0]
-        conn.close()
-        self.assertEqual(stored_timer, 600)
+        self.assertIn("/knowledge?upload=", r.headers["Location"])
+        items = c.get("/api/knowledge").get_json()["items"]
+        self.assertFalse(any(it["title"] == "Math Geography" for it in items))
 
-    def test_upload_rejects_out_of_range_timer(self):
+    @staticmethod
+    def _count_sessions():
+        conn = sqlite3.connect(_DB)
+        try:
+            return conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_invalid_legacy_upload_settings_never_create_a_quiz(self):
+        """An invalid timer on an older form must not create a session."""
         c = self.client()
         self._seed_user("uploader2", "password123", "teacher")
         self._login(c, "uploader2", "password123")
+        before = self._count_sessions()
         r = c.post("/upload", data={"extracted_text": "Some study material.",
                                     "num_questions": "2", "difficulty": "medium", "timer": "999"})
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"between 1 and 180 minutes", r.data)
+        self.assertIn(b"between 1 and 180", r.data)
+        self.assertEqual(self._count_sessions(), before)
+        with c.session_transaction() as sess:
+            self.assertNotIn("session_key", sess)
 
     def test_full_student_quiz_scoring(self):
         c = self.client()
@@ -254,7 +267,9 @@ class TestGenerationAndQuizFlow(Base):
         conn.close()
         self.assertEqual(row[0], 2)
         self.assertEqual(row[1], 2)
-        self.assertEqual(row[2], 42)
+        # Elapsed time comes from the persisted attempt, never the form field.
+        self.assertGreaterEqual(row[2], 0)
+        self.assertLessEqual(row[2], 120)
 
     def test_duplicate_attempt_blocked(self):
         c = self.client()
@@ -414,8 +429,8 @@ class TestGroqFailedGeneration(unittest.TestCase):
         )
 
     def test_recovers_partial_and_parses(self):
-        from core.llm.openai_compatible import OpenAICompatibleProvider
         from core.llm.base import LLMProvider
+        from core.llm.openai_compatible import OpenAICompatibleProvider
         partial = ('{"questions": [' + self._q(1) + ', ' + self._q(2)
                    + ', {"question": "Q3?", "options": [{"label": "A", "tex')
         resp = self._Resp({"error": {"code": "json_validate_failed", "failed_generation": partial}})

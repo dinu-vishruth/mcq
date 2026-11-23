@@ -19,7 +19,7 @@ returns tokens, so it must never touch the browser.
 from __future__ import annotations
 
 import secrets
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from fastapi import APIRouter, Request
@@ -29,7 +29,7 @@ from werkzeug.security import generate_password_hash
 import config
 
 from ..deps import Db
-from ..templating import flash, render
+from ..templating import render
 
 router = APIRouter(tags=["oauth"])
 
@@ -47,14 +47,14 @@ CALLBACK_PATH = "/auth/google/callback"
 def _redirect_uri(request: Request) -> str:
     """The callback URL Google will send the user back to.
 
-    Derived from the request so preview deployments work without extra config,
-    but forced to https on Vercel -- the app sits behind a proxy that terminates
+    Derived from the request unless explicitly configured; that URL must be
+    registered with Google. Forced to https on Vercel, behind a proxy terminating
     TLS, so request.url.scheme is 'http' and Google rejects a mismatched URI.
     """
     if config.GOOGLE_REDIRECT_URI:
         return config.GOOGLE_REDIRECT_URI
     base = str(request.base_url).rstrip("/")
-    if request.headers.get("X-Forwarded-Proto") == "https":
+    if config.IS_DEPLOYED or request.headers.get("X-Forwarded-Proto") == "https":
         base = base.replace("http://", "https://", 1)
     return f"{base}{CALLBACK_PATH}"
 
@@ -68,12 +68,21 @@ async def google_login(request: Request):
             error="Google sign-in isn't configured on this server.",
         )
 
+    redirect_uri = _redirect_uri(request)
+    callback = urlsplit(redirect_uri)
+    if callback.netloc.lower() != request.url.netloc.lower():
+        # Start on the callback host so the session cookie returns with state.
+        # This also moves Vercel preview visitors to the registered production URL.
+        target = callback._replace(path="/auth/google", query="", fragment="")
+        return RedirectResponse(target.geturl(), status_code=302)
+
     state = secrets.token_urlsafe(32)
     request.session[_STATE_SESSION_KEY] = state
+    request.session[_STATE_SESSION_KEY + "_redirect_uri"] = redirect_uri
 
     query = urlencode({
         "client_id": config.GOOGLE_CLIENT_ID,
-        "redirect_uri": _redirect_uri(request),
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": GOOGLE_SCOPES,
         "state": state,
@@ -94,6 +103,7 @@ async def google_callback(
 ):
     """Handle Google's redirect back: verify state, exchange code, sign in."""
     expected_state = request.session.pop(_STATE_SESSION_KEY, None)
+    redirect_uri = request.session.pop(_STATE_SESSION_KEY + "_redirect_uri", None)
 
     def fail(message: str):
         return render(request, "login.html", error=message)
@@ -108,13 +118,15 @@ async def google_callback(
         return fail("Google sign-in failed: invalid state. Please try again.")
 
     try:
-        profile = await _fetch_google_profile(code, _redirect_uri(request))
+        profile = await _fetch_google_profile(code, redirect_uri or _redirect_uri(request))
     except httpx.HTTPError as exc:
         return fail(f"Could not reach Google to complete sign-in: {exc}")
     except ValueError as exc:
         return fail(str(exc))
 
-    if not profile.get("email_verified"):
+    if not profile.get("sub") or not profile.get("email"):
+        return fail("Google did not return a complete account profile. Please try again.")
+    if profile.get("email_verified") is not True:
         # An unverified email could belong to someone else, and we match accounts
         # by email below -- so refuse rather than risk linking the wrong user.
         return fail("Your Google account's email address isn't verified.")
@@ -187,7 +199,7 @@ def _upsert_google_user(conn, profile: dict) -> dict:
     username = _unique_username(conn, profile, email)
     cursor = conn.execute(
         "INSERT INTO users (username, email, password_hash, role, google_id, picture, "
-        "auth_provider) VALUES (?, ?, ?, 'student', ?, ?, 'google') RETURNING id",
+        "auth_provider) VALUES (?, ?, ?, 'user', ?, ?, 'google') RETURNING id",
         (username, email, generate_password_hash(secrets.token_urlsafe(32)),
          google_id, picture),
     )

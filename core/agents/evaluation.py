@@ -12,9 +12,10 @@ from __future__ import annotations
 from collections import defaultdict
 
 from core.agents.base import Agent
-from core.llm import get_llm, LLMError
+from core.llm import LLMError, get_llm
 from core.prompts import evaluation as prompts
 from core.repositories import learning_repo
+from core.services.personalization import system_prompt
 
 
 class EvaluationAgent(Agent):
@@ -52,7 +53,7 @@ class EvaluationAgent(Agent):
             return []
         try:
             data = get_llm().complete_json([
-                {"role": "system", "content": prompts.SYSTEM},
+                {"role": "system", "content": system_prompt(prompts.SYSTEM)},
                 {"role": "user", "content": prompts.recommendation_prompt(weak_topics)},
             ])
             recs = data.get("recommendations", []) if isinstance(data, dict) else []

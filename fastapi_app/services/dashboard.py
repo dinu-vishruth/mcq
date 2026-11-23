@@ -94,7 +94,7 @@ def build_dashboard(conn: sqlite3.Connection, user_id: int, username: str) -> di
 
     try:
         doc_count = conn.execute(
-            "SELECT COUNT(*) c FROM documents WHERE owner=?", (username,)
+            "SELECT COUNT(*) c FROM documents WHERE owner_user_id=?", (user_id,)
         ).fetchone()["c"]
     except sqlite3.OperationalError:
         doc_count = 0  # documents table not yet migrated

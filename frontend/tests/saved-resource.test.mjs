@@ -26,7 +26,7 @@ test('Library link selects a numeric resource and generates without an upload', 
       build.onResolve({ filter: /^@\// }, args => ({ path: args.path, namespace: 'stub' }));
       build.onLoad({ filter: /.*/, namespace: 'stub' }, ({ path }) => ({ contents: path === '@/bootstrap' ? `
         export const csrfToken=()=>"csrf";
-        export const apiGet=(...args)=>globalThis.__libraryList(...args);
+        export const apiGet=(path,...args)=>path==="/api/generation/status" ? Promise.resolve({available:true,message:"Ready"}) : globalThis.__libraryList(path,...args);
         export const apiSend=(...args)=>globalThis.__generate(...args);
       ` : `import React from 'react';
         const Wrapper=({children})=>React.createElement('div',null,children);

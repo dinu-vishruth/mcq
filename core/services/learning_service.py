@@ -33,9 +33,11 @@ def get_weak_topics(user_id, limit=5) -> list[dict]:
 
 def get_recommendations(user_id, limit=5) -> list[str]:
     weak = get_weak_topics(user_id, limit=limit)
-    if not weak or not config.LLM_API_KEY:
+    if not weak or not config.llm_key_present():
         return []
     try:
-        return EvaluationAgent().recommend(weak)
+        from core.services.personalization import learning_profile
+        with learning_profile(user_id):
+            return EvaluationAgent().recommend(weak)
     except Exception:
         return []

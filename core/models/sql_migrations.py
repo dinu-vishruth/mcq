@@ -29,6 +29,7 @@ def _applied(conn) -> set[str]:
         f"CREATE TABLE IF NOT EXISTS {_TRACKING_TABLE} ("
         "name TEXT PRIMARY KEY, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)"
     )
+    # PostgreSQL rejects fetchall() on DDL because it produces no result set.
     applied = conn.execute(f"SELECT name FROM {_TRACKING_TABLE}").fetchall()
     return {row["name"] for row in applied}
 
@@ -45,6 +46,7 @@ def run_sql_migrations(conn, backend: str) -> list[str]:
     done = _applied(conn)
 
     if not os.path.isdir(MIGRATIONS_DIR):  # pragma: no cover - repo layout guard
+        conn.commit()
         return applied_now
 
     for filename in sorted(os.listdir(MIGRATIONS_DIR)):
@@ -58,9 +60,27 @@ def run_sql_migrations(conn, backend: str) -> list[str]:
             continue
         with open(os.path.join(MIGRATIONS_DIR, filename), "r", encoding="utf-8") as fh:
             sql = fh.read()
-        conn.executescript(sql)
-        conn.execute(f"INSERT INTO {_TRACKING_TABLE} (name) VALUES (?)", (filename,))
-        conn.commit()
+        if backend == "sqlite":
+            # executescript otherwise commits before DDL, leaving a half-applied
+            # migration after a crash. Include DDL and its tracking row together.
+            conn.commit()
+            foreign_keys = conn.execute("PRAGMA foreign_keys").fetchone()[0]
+            conn.execute("PRAGMA foreign_keys=OFF")
+            try:
+                conn.executescript("BEGIN IMMEDIATE;\n" + sql)
+                if conn.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                    raise RuntimeError(f"Foreign key violation in {filename}")
+                conn.execute(f"INSERT INTO {_TRACKING_TABLE} (name) VALUES (?)", (filename,))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.execute(f"PRAGMA foreign_keys={int(foreign_keys)}")
+        else:
+            conn.executescript(sql)
+            conn.execute(f"INSERT INTO {_TRACKING_TABLE} (name) VALUES (?)", (filename,))
         applied_now.append(filename)
 
+    conn.commit()
     return applied_now

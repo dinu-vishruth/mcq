@@ -17,7 +17,10 @@ requests
 python-dotenv
 # RAG: small, Vercel-safe. Used by the sqlite vector store + retriever.
 numpy
-psycopg[binary]>=3.2,<4
+# Postgres backend for persistent production storage (DATABASE_URL). "binary"
+# ships a prebuilt client lib so no system build tools are needed. Locally the
+# app still uses SQLite: DATABASE_URL unset => sqlite3 at DB_PATH.
+psycopg[binary]
 
 # --- Optional / local-only (do NOT add to the Vercel deploy) --------------
 # These power the high-quality local embedding path. torch + sentence-
@@ -27,3 +30,5 @@ psycopg[binary]>=3.2,<4
 # locally for best retrieval quality:
 #   pip install sentence-transformers chromadb
 # FAISS (opt-in, VECTOR_STORE=faiss) needs a wheel matching your Python.
+# boto3 (opt-in, UPLOAD_BACKEND=s3): any S3-compatible upload storage.
+# pytest/ruff for tests and lint: pip install pytest ruff

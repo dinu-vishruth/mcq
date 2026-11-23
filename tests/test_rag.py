@@ -5,7 +5,6 @@ and sqlite vector store so no torch load or network is needed.
 Run:  python -m unittest tests.test_rag -v
 """
 import os
-import sqlite3
 import tempfile
 import unittest
 
@@ -18,18 +17,15 @@ config.DB_PATH = os.path.join(_TMP, "rag.db")
 config.EMBEDDING_BACKEND = "hashing"
 config.VECTOR_STORE = "sqlite"
 
-from core.models.migrations import run_migrations
-from core.rag.chunker import chunk_text
 from core.embeddings import get_embedder, reset_embedder
-from core.vectorstore import get_vector_store, reset_vector_store
+from core.rag.chunker import chunk_text
 from core.services.ingestion_service import ingest_document
+from core.vectorstore import get_vector_store, reset_vector_store
 
 
 def _init_db():
-    conn = sqlite3.connect(config.DB_PATH)
-    conn.executescript("CREATE TABLE IF NOT EXISTS sessions(id INTEGER PRIMARY KEY, document_id INTEGER);")
-    run_migrations(conn)
-    conn.close()
+    from fastapi_app.database import init_db
+    init_db()
 
 
 class TestChunker(unittest.TestCase):
