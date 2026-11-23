@@ -114,6 +114,10 @@
         </div>
 
         <p class="authx-alt">Already have an account? <a href="/" class="authx-link">Sign in</a></p>
+        <form action="/demo" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-primary btn-lg">Try Demo</button>
+        </form>
       </div>
     </section>
   </div>

@@ -41,6 +41,20 @@ async def signup_form(request: Request):
     return render(request, "signup.html")
 
 
+@router.post("/demo")
+async def start_demo(request: Request, conn: Db):
+    if request.session.get("user_id"):
+        return RedirectResponse("/dashboard", status_code=302)
+    from core.services.demo_service import create_demo_workspace
+    try:
+        user = create_demo_workspace(conn)
+    except Exception:
+        return render(request, "login.html", error="The demo could not start. Please try again.")
+    request.session.clear()
+    request.session.update(user_id=user["id"], username=user["username"], is_demo=True)
+    return RedirectResponse("/dashboard", status_code=302)
+
+
 @router.post("/signup")
 async def signup(
     request: Request,

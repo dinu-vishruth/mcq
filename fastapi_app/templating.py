@@ -77,7 +77,9 @@ def render(request: Request, template_name: str, /, **context: Any) -> HTMLRespo
     validation.
     """
     context.setdefault("request", request)
-    context["session"] = request.session
+    context["session"] = dict(request.session)
+    if request.session.get("is_demo"):
+        context["session"]["username"] = "Demo Learner"
     context["csrf_token"] = lambda: get_csrf_token(request)
     context["get_flashed_messages"] = (
         lambda with_categories=False: _get_flashed_messages(request, with_categories)
