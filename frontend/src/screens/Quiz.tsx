@@ -31,6 +31,8 @@ export default function Quiz({ data }: { data: QuizData }) {
   const [remaining, setRemaining] = useState(data.timer);
   const [xpFlash, setXpFlash] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const submittedRef = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
   const startRef = useRef(data.timer);
 
@@ -40,6 +42,7 @@ export default function Quiz({ data }: { data: QuizData }) {
 
   // Countdown timer — auto-submits at zero, preserving the legacy behavior.
   useEffect(() => {
+    if (submitting) return;
     if (remaining <= 0) {
       submit();
       return;
@@ -47,7 +50,7 @@ export default function Quiz({ data }: { data: QuizData }) {
     const t = setTimeout(() => setRemaining((r) => r - 1), 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remaining]);
+  }, [remaining, submitting]);
 
   const mmss = useMemo(() => {
     const m = Math.floor(Math.max(0, remaining) / 60);
@@ -83,7 +86,9 @@ export default function Quiz({ data }: { data: QuizData }) {
   }
 
   function submit() {
-    if (!formRef.current) return;
+    if (!formRef.current || submittedRef.current) return;
+    submittedRef.current = true;
+    setSubmitting(true);
     const spent = Math.max(0, startRef.current - remaining);
     (formRef.current.elements.namedItem("time_spent") as HTMLInputElement).value = String(spent);
     formRef.current.submit();
@@ -92,7 +97,7 @@ export default function Quiz({ data }: { data: QuizData }) {
   const lowTime = remaining <= 30;
 
   return (
-    <div className="app-glow min-h-screen flex flex-col">
+    <div className="app-glow min-h-screen flex flex-col" aria-busy={submitting}>
       {/* Top bar: brand, progress, timer */}
       <div className="relative z-10 border-b border-white/[0.06]">
         <div className="max-w-3xl mx-auto px-5 py-4 flex items-center gap-4">
@@ -129,11 +134,11 @@ export default function Quiz({ data }: { data: QuizData }) {
             </p>
             <p className="text-text-3">You can return to unanswered questions or submit now. Unanswered questions receive no marks.</p>
             <div className="flex flex-wrap gap-3">
-              <Button variant="secondary" onClick={() => {
+              <Button variant="secondary" disabled={submitting} onClick={() => {
                 setIdx(Math.max(0, data.mcqs.findIndex((_, i) => !answers[i])));
                 setReviewing(false);
               }}>Review unanswered</Button>
-              <Button onClick={submit}>Submit Answers</Button>
+              <Button disabled={submitting} onClick={submit}>{submitting ? "Submitting..." : "Submit Answers"}</Button>
             </div>
           </div>
         ) : (
@@ -158,6 +163,7 @@ export default function Quiz({ data }: { data: QuizData }) {
                 return (
                   <button
                     key={i}
+                    disabled={submitting}
                     onClick={() => choose(opt.text)}
                     className={`w-full flex items-center gap-4 p-4 rounded-md border text-left transition-all duration-200 ${
                       on
@@ -184,6 +190,7 @@ export default function Quiz({ data }: { data: QuizData }) {
                 {CONFIDENCE.map((c) => (
                   <button
                     key={c.id}
+                    disabled={submitting}
                     onClick={() => setConfidence((cf) => ({ ...cf, [idx]: c.id }))}
                     className={`flex-1 py-2.5 rounded-md border text-sm font-medium transition-all ${
                       confidence[idx] === c.id ? c.tone : "border-white/[0.06] text-text-3 hover:text-text-2"
@@ -201,14 +208,14 @@ export default function Quiz({ data }: { data: QuizData }) {
         <div className="flex items-center justify-between mt-10 pt-6 border-t border-white/[0.06]">
           <button
             onClick={() => idx > 0 && setIdx(idx - 1)}
-            disabled={idx === 0}
+            disabled={submitting || idx === 0}
             className="text-text-3 text-sm hover:text-text-2 disabled:opacity-40 transition-colors"
           >
             Previous
           </button>
 
           <div className="relative flex items-center gap-3">
-            <Button variant="ghost" onClick={skip}>Skip</Button>
+            <Button variant="ghost" disabled={submitting} onClick={skip}>Skip</Button>
             <AnimatePresence>
               {xpFlash && (
                 <motion.span
@@ -223,12 +230,12 @@ export default function Quiz({ data }: { data: QuizData }) {
               )}
             </AnimatePresence>
             {idx < total - 1 ? (
-              <Button disabled={!selected} rightIcon={<ArrowRight className="w-4 h-4" />} onClick={next}>
+              <Button disabled={submitting || !selected} rightIcon={<ArrowRight className="w-4 h-4" />} onClick={next}>
                 Next
               </Button>
             ) : (
-              <Button leftIcon={<Check className="w-4 h-4" />} onClick={submit}>
-                Submit Answers
+              <Button disabled={submitting} leftIcon={<Check className="w-4 h-4" />} onClick={submit}>
+                {submitting ? "Submitting..." : "Submit Answers"}
               </Button>
             )}
           </div>

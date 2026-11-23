@@ -25,9 +25,10 @@ const mod = { exports: {} };
 new Function('require', 'module', 'exports', bundle.outputFiles[0].text)(require, mod, mod.exports);
 
 async function quiz(total = 3, timer = 600) {
-  let root, submitted;
+  let root, submitted, submissionCount = 0;
   const spent = { value: '0' };
   const form = { elements: { namedItem: () => spent }, submit() {
+    submissionCount++;
     submitted = Object.fromEntries(root.root.findAllByType('input').map(n => [n.props.name, n.props.value ?? n.props.defaultValue]));
     submitted.time_spent = spent.value;
   } };
@@ -44,7 +45,8 @@ async function quiz(total = 3, timer = 600) {
     assert.ok(!button.props.disabled, `button ${label} enabled`);
     await act(async () => button.props.onClick());
   }
-  return { root, click, submitted: () => submitted, close: () => act(async () => root.unmount()) };
+  return { root, click, submitted: () => submitted, submissionCount: () => submissionCount,
+    close: () => act(async () => root.unmount()) };
 }
 
 test('skip advances, clears a selected answer, and preserves answers to other questions', async () => {
@@ -84,5 +86,18 @@ test('timer still submits a skipped single-question quiz from the review screen'
     await act(async () => new Promise(resolve => setTimeout(resolve, 1100)));
     assert.equal(q.submitted()['q-0'], '');
     assert.equal(q.submitted().time_spent, '1');
+  } finally { await q.close(); }
+});
+
+test('repeated clicks and timer expiry cannot submit an attempt twice', async () => {
+  const q = await quiz(1, 1);
+  try {
+    await q.click('Skip');
+    const button = q.root.root.findAllByType('button').find(n => n.children.includes('Submit Answers'));
+    await act(async () => { button.props.onClick(); button.props.onClick(); });
+    await act(async () => new Promise(resolve => setTimeout(resolve, 1100)));
+    assert.equal(q.submissionCount(), 1);
+    const submitting = q.root.root.findAllByType('button').find(n => n.children.includes('Submitting...'));
+    assert.equal(submitting.props.disabled, true);
   } finally { await q.close(); }
 });

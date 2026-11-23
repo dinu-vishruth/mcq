@@ -240,7 +240,7 @@ class TestGenerationAndQuizFlow(Base):
         for i, q in enumerate(FIXED_MCQS):
             form[f"q-{i}"] = q["answer_text"]  # all correct
 
-        r = c.post("/submit", data=form)
+        r = c.post("/submit", data=form, follow_redirects=True)
         self.assertEqual(r.status_code, 200)
         # Result is now a React island; score is carried in the bootstrap JSON
         # payload rather than server-rendered HTML.
@@ -265,9 +265,9 @@ class TestGenerationAndQuizFlow(Base):
         c.get("/mcq_test")
         form = {f"q-{i}": q["answer_text"] for i, q in enumerate(FIXED_MCQS)}
         c.post("/submit", data=form)
-        # Second join attempt must be blocked
+        # A completed quiz reopens the saved result instead of another attempt.
         r = c.post("/student_login", data={"session_key": key})
-        self.assertIn(b"already taken", r.data)
+        self.assertEqual(r.headers["Location"], f"/results/{key}")
 
 
 class TestTeacherSessionManagement(Base):

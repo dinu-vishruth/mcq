@@ -17,7 +17,7 @@ import sqlite3
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, Request, HTTPException
 from fastapi.responses import RedirectResponse
 
 import models.explanation_engine as explanation_engine
@@ -202,7 +202,7 @@ async def student_login(
     if not validate_session_key(key):
         return reject("Invalid session key")
     if _already_attempted(conn, key, user.id):
-        return reject("You have already taken this test.")
+        return RedirectResponse(f"/results/{key}", status_code=302)
     if conn.execute(
         "SELECT 1 FROM sessions WHERE session_key=?", (key,)
     ).fetchone() is None:
@@ -223,7 +223,7 @@ async def mcq_test(request: Request, user: CurrentUser, conn: Db):
     if not row:
         return RedirectResponse("/student_login", status_code=302)
     if _already_attempted(conn, key, user.id):
-        return render(request, "student_dashboard.html", error="You have already taken this test.")
+        return RedirectResponse(f"/results/{key}", status_code=302)
 
     # Shuffle option ORDER only. Question order and answer_text are untouched,
     # which is what lets /submit rebuild the quiz from the DB and still score it.
@@ -245,6 +245,26 @@ async def mcq_test(request: Request, user: CurrentUser, conn: Db):
     )
 
 
+@router.get("/results/{session_key}")
+async def quiz_result(request: Request, session_key: str, user: CurrentUser, conn: Db):
+    row = conn.execute(
+        "SELECT score, total, detail_json FROM results "
+        "WHERE session_key=? AND user_id=? ORDER BY id LIMIT 1", (session_key, user.id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, "Quiz result not found")
+    details = json.loads(row["detail_json"])
+    explanations = [
+        detail.get("explanation") or (
+            f"Correct. The answer is {detail['correct']}." if detail["is_correct"] else
+            f"{'Not answered' if not detail.get('selected') else 'Incorrect'}. "
+            f"The correct answer is {detail['correct']}."
+        ) for detail in details
+    ]
+    return render(request, "result.html", score=row["score"], total=row["total"],
+                  details=details, explanations=explanations)
+
+
 @router.post("/submit")
 async def submit(request: Request, user: CurrentUser, conn: Db):
     key = request.session.get("session_key")
@@ -262,10 +282,18 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
         for q in json.loads(stored["mcqs_json"])
     ]
 
-    if _already_attempted(conn, key, user.id):
-        return render(request, "student_dashboard.html", error="You have already taken this test.")
-
     form = await request.form()
+    # Serialize submissions for this learner/quiz, including across Vercel
+    # instances. Existing duplicate rows are retained; the first result wins.
+    from core.models.db import is_postgres
+    if is_postgres():
+        conn.execute("SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))", (str(user.id), key))
+    else:
+        conn.execute("BEGIN IMMEDIATE")
+    if _already_attempted(conn, key, user.id):
+        conn.commit()
+        return RedirectResponse(f"/results/{key}", status_code=303)
+
     student_name = (form.get("student_name") or "").strip() or user.username or "Student"
     try:
         time_spent = int(form.get("time_spent") or 0)
@@ -286,7 +314,15 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
         })
 
     # Module-level call so tests can patch the source.
-    explanations = explanation_engine.explain_answers(details)
+    try:
+        explanations = explanation_engine.explain_answers(details)
+    except Exception:
+        explanations = []
+    for index, detail in enumerate(details):
+        detail["explanation"] = (
+            explanations[index] if index < len(explanations) else
+            f"The correct answer is {detail['correct']}."
+        )
 
     conn.execute(
         "INSERT INTO results (session_key, student_name, user_id, score, total, "
@@ -318,7 +354,4 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     except Exception as exc:
         print(f"[WARNING] XP/streak update skipped: {exc}")
 
-    return render(
-        request, "result.html",
-        score=score, total=len(questions), details=details, explanations=explanations,
-    )
+    return RedirectResponse(f"/results/{key}", status_code=303)
