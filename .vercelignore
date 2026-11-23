@@ -34,6 +34,9 @@ __pycache__/
 
 # Dev-only
 tests/
+# This file only configures pytest/ruff. Vercel otherwise prefers it over
+# requirements.txt and installs no application dependencies.
+pyproject.toml
 .env
 .env*
 .git/
