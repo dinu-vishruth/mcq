@@ -17,7 +17,9 @@
        data-page="practice"
        data-bootstrap='{{ {
          "username": session.username or "there",
-         "document_id": document_id | default(none)
+         "document_id": document_id | default(none),
+         "selected_document": selected_document | default(none),
+         "error": error | default("")
        } | tojson }}'></div>
   <script type="module" src="{{ frontend_asset('js') }}"></script>
 </body>

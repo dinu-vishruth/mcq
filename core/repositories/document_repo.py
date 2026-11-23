@@ -45,11 +45,12 @@ def create(dh, owner, title, source_type, char_count, meta=None) -> int:
     try:
         cur = conn.execute(
             "INSERT INTO documents (doc_hash, owner, title, source_type, char_count, status, meta_json) "
-            "VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+            "VALUES (?, ?, ?, ?, ?, 'pending', ?) RETURNING id",
             (dh, owner, title, source_type, char_count, json.dumps(meta or {})),
         )
+        document_id = cur.fetchone()["id"]
         conn.commit()
-        return cur.lastrowid
+        return document_id
     finally:
         conn.close()
 

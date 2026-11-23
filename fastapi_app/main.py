@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from config import SECRET_KEY, UPLOAD_FOLDER
+from config import SECRET_KEY, UPLOAD_FOLDER, DATABASE_URL
 
 from .database import init_db
 from .deps import RedirectException
@@ -83,7 +83,9 @@ def create_app() -> FastAPI:
         max_age=SESSION_MAX_AGE,
         same_site="lax",
         https_only=IS_VERCEL,
-        session_cookie="session",
+        # SQLite instance-local user IDs must never authenticate a different
+        # account after moving to the shared database. Require a fresh login.
+        session_cookie="mcq_session" if DATABASE_URL else "session",
     )
     if IS_VERCEL:
         app.add_middleware(HTTPSRedirectOnVercelMiddleware)

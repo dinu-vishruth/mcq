@@ -17,6 +17,7 @@ requests
 python-dotenv
 # RAG: small, Vercel-safe. Used by the sqlite vector store + retriever.
 numpy
+psycopg[binary]>=3.2,<4
 
 # --- Optional / local-only (do NOT add to the Vercel deploy) --------------
 # These power the high-quality local embedding path. torch + sentence-

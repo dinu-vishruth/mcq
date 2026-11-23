@@ -12,7 +12,6 @@ where AI_PIPELINE (legacy vs rag) is honoured, since generate_mcqs dispatches.
 from __future__ import annotations
 
 import os
-import threading
 import uuid
 from datetime import datetime
 from typing import Annotated
@@ -126,21 +125,12 @@ async def ingest_resource(
     except ExtractError as exc:
         return render(request, "add_resource.html", error=str(exc))
 
-    # Store-only flow: keep the saved resource in the library and do not start a
-    # quiz generation session as a side effect. The actual indexing work is moved
-    # to a daemon thread so the redirect completes immediately and the user isn't
-    # forced to wait for chunking + embedding before returning to the library.
+    # A serverless invocation may stop as soon as its response is sent. Commit
+    # text, chunks and vectors before reporting a successful Library save.
     try:
         from core.services.ingestion_service import ingest_document
 
-        def _run_ingest():
-            try:
-                ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
-            except Exception as exc:
-                print(f"[ingest_resource] background indexing failed: {exc}")
-
-        thread = threading.Thread(target=_run_ingest, daemon=True)
-        thread.start()
+        ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
     except Exception as exc:
         return render(
             request, "add_resource.html",

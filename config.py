@@ -83,6 +83,7 @@ GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
 GROK_API_KEY = env_str("GROK_API_KEY", "GROQ_API_KEY", "XAI_API_KEY")
 GROK_MODEL = env_str("GROK_MODEL", "GROQ_MODEL", default="grok-2-1212")
 DB_PATH = "/tmp/mcq.db" if os.environ.get("VERCEL") else "database/mcq.db"
+DATABASE_URL = env_str("DATABASE_URL", "POSTGRES_URL", default="")
 UPLOAD_FOLDER = "/tmp/uploads" if os.environ.get("VERCEL") else "uploads"
 ALLOWED_EXT = {"pdf", "docx", "txt", "pptx"}
 

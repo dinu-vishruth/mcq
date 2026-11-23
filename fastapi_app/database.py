@@ -82,6 +82,19 @@ def init_db() -> None:
     database while queries ran against another -- surfacing as
     "no such table: login_attempts".
     """
+    from core.models.db import is_postgres, get_db
+    if is_postgres():
+        conn = get_db()
+        try:
+            # Cold starts may run concurrently. Serialize initial schema creation.
+            conn.execute("SELECT pg_advisory_xact_lock(7842301)")
+            from core.models.sql_migrations import run_sql_migrations
+            run_sql_migrations(conn, "postgres")
+            conn.commit()
+        finally:
+            conn.close()
+        return
+
     db_path = config.DB_PATH
     db_dir = os.path.dirname(db_path)
     if db_dir and not os.path.exists(db_dir):

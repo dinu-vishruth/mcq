@@ -147,9 +147,22 @@ async def add_resource(request: Request, user: CurrentUser):
 
 
 @router.get("/practice")
-async def practice(request: Request, user: CurrentUser, doc: str | None = None):
+async def practice(request: Request, user: CurrentUser, doc: int | None = None):
     """Practice configuration. Optional ?doc=<id> preselects a source."""
-    return render(request, "practice.html", document_id=doc)
+    from core.repositories import document_repo
+    selected = None
+    error = ""
+    if doc is not None:
+        row = document_repo.get(doc)
+        if row is None or row["owner"] != user.username:
+            error = "This resource could not be loaded from your Library. Please return to the Library and try again."
+        else:
+            selected = {
+                "id": row["id"], "title": row["title"],
+                "indexed": row["status"] == "ready", "status": row["status"],
+                "topic_count": row["chunk_count"] or 0,
+            }
+    return render(request, "practice.html", document_id=doc, selected_document=selected, error=error)
 
 
 @router.get("/weak-topics")
