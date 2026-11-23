@@ -30,6 +30,7 @@ export default function Quiz({ data }: { data: QuizData }) {
   const [confidence, setConfidence] = useState<Record<number, Confidence>>({});
   const [remaining, setRemaining] = useState(data.timer);
   const [xpFlash, setXpFlash] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const startRef = useRef(data.timer);
 
@@ -62,6 +63,23 @@ export default function Quiz({ data }: { data: QuizData }) {
 
   function next() {
     if (idx < total - 1) setIdx(idx + 1);
+  }
+
+  function skip() {
+    // A skipped question must not submit a previously selected answer.
+    setAnswers((previous) => {
+      const updated = { ...previous };
+      delete updated[idx];
+      return updated;
+    });
+    setConfidence((previous) => {
+      const updated = { ...previous };
+      delete updated[idx];
+      return updated;
+    });
+    setXpFlash(false);
+    if (idx < total - 1) setIdx(idx + 1);
+    else setReviewing(true);
   }
 
   function submit() {
@@ -103,6 +121,23 @@ export default function Quiz({ data }: { data: QuizData }) {
 
       {/* Question */}
       <div className="relative z-10 flex-1 max-w-3xl w-full mx-auto px-5 py-10 flex flex-col">
+        {reviewing ? (
+          <div className="flex-1 flex flex-col justify-center gap-5">
+            <h1 className="font-display text-2xl font-semibold">Review your quiz</h1>
+            <p className="text-text-2" role="status">
+              {answeredCount} answered · {total - answeredCount} unanswered
+            </p>
+            <p className="text-text-3">You can return to unanswered questions or submit now. Unanswered questions receive no marks.</p>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="secondary" onClick={() => {
+                setIdx(Math.max(0, data.mcqs.findIndex((_, i) => !answers[i])));
+                setReviewing(false);
+              }}>Review unanswered</Button>
+              <Button onClick={submit}>Submit Answers</Button>
+            </div>
+          </div>
+        ) : (
+          <>
         <AnimatePresence mode="wait">
           <motion.div
             key={idx}
@@ -172,7 +207,8 @@ export default function Quiz({ data }: { data: QuizData }) {
             Previous
           </button>
 
-          <div className="relative">
+          <div className="relative flex items-center gap-3">
+            <Button variant="ghost" onClick={skip}>Skip</Button>
             <AnimatePresence>
               {xpFlash && (
                 <motion.span
@@ -191,12 +227,14 @@ export default function Quiz({ data }: { data: QuizData }) {
                 Next
               </Button>
             ) : (
-              <Button disabled={answeredCount === 0} leftIcon={<Check className="w-4 h-4" />} onClick={submit}>
+              <Button leftIcon={<Check className="w-4 h-4" />} onClick={submit}>
                 Submit Answers
               </Button>
             )}
           </div>
         </div>
+          </>
+        )}
       </div>
     </div>
   );
