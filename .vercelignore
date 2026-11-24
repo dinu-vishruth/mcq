@@ -41,3 +41,17 @@ tests/
 # Internal docs
 explanation.txt
 deployment.txt
+
+# Local documentation, reports, and agent workspaces
+project_explanation*
+audit*
+AUDIT*
+docs/
+evals/results/
+.agents/
+.claude/
+.development/
+.production-fixes/
+.quiz-fix/
+.rederive/
+skills-lock.json

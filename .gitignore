@@ -50,3 +50,18 @@ PROJECT_REVIEW.md
 
 # Personal agent configuration
 .qoder/
+
+# Local explanations, audits, generated reports, and agent workspaces
+/project_explanation*
+/audit*
+/AUDIT*
+/docs/learning-flows.md
+/docs/observability.md
+/evals/results/
+/.agents/
+/.claude/
+/.development/
+/.production-fixes/
+/.quiz-fix/
+/.rederive/
+/skills-lock.json
