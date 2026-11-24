@@ -83,7 +83,7 @@ def test_invalid_state_never_exchanges_code(browser, monkeypatch, provider):
     monkeypatch.setattr(module, f"_fetch_{provider}_profile", fetch)
     client.get(f"/auth/{provider}")
     response = client.get(f"/auth/{provider}/callback?code=test&state=wrong")
-    assert "invalid state" in response.text
+    assert ("Start Google sign-in again" if provider == "google" else "invalid state") in response.text
     fetch.assert_not_awaited()
     assert connection.execute("SELECT count(*) FROM users").fetchone()[0] == 0
 
@@ -104,6 +104,52 @@ def test_signup_buttons_start_both_providers(browser):
         html = client.get(path).text
         assert 'href="/auth/google"' in html
         assert 'href="/auth/github"' in html
+
+
+@pytest.mark.parametrize(("status", "payload", "reason", "message"), [
+    (401, {"error": "invalid_client", "error_description": "private provider details"},
+     "invalid_client", "Google sign-in is temporarily unavailable"),
+    (400, {"error": "invalid_grant"}, "invalid_grant", "Start Google sign-in again"),
+    (503, "private provider details", "unknown", "Google sign-in is temporarily unavailable"),
+    (200, ["unexpected JSON"], "invalid_response", "Google sign-in is temporarily unavailable"),
+])
+def test_google_token_failures_are_diagnosable_without_disclosing_details(
+        browser, monkeypatch, caplog, status, payload, reason, message):
+    client, connection = browser
+
+    def respond(request):
+        assert request.method == "POST"
+        assert request.url == google_auth.GOOGLE_TOKEN_ENDPOINT
+        form = parse_qs(request.content.decode())
+        assert form["redirect_uri"] == ["https://examly.example/auth/google/callback"]
+        assert form["grant_type"] == ["authorization_code"]
+        if isinstance(payload, str):
+            return httpx.Response(status, text=payload)
+        return httpx.Response(status, json=payload)
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(google_auth.httpx, "AsyncClient",
+                        lambda **kw: real_client(transport=httpx.MockTransport(respond), **kw))
+    start = client.get("/auth/google")
+    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    response = client.get(google_auth.CALLBACK_PATH, params={"code": "test-code", "state": state})
+    assert message in response.text
+    assert "private provider details" not in response.text
+    assert "test-secret" not in response.text
+    events = [record.fields for record in caplog.records if record.getMessage() == "oauth.google.failed"]
+    assert events[-1] == {"stage": "token", "reason": reason, "provider_status": status}
+    assert connection.execute("SELECT count(*) FROM users").fetchone()[0] == 0
+
+
+def test_google_denied_consent_shows_feedback_without_exchanging_code(browser, monkeypatch):
+    client, _ = browser
+    fetch = AsyncMock()
+    monkeypatch.setattr(google_auth, "_fetch_google_profile", fetch)
+    start = client.get("/auth/google")
+    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    response = client.get(google_auth.CALLBACK_PATH, params={"error": "access_denied", "state": state})
+    assert "Google did not grant access" in response.text
+    fetch.assert_not_awaited()
 
 
 @pytest.mark.parametrize("verified", [True, False])

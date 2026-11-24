@@ -18,6 +18,7 @@ returns tokens, so it must never touch the browser.
 """
 from __future__ import annotations
 
+import logging
 import secrets
 from urllib.parse import urlencode, urlsplit
 
@@ -27,6 +28,7 @@ from fastapi.responses import RedirectResponse
 from werkzeug.security import generate_password_hash
 
 import config
+from core.observability import log_event
 
 from ..deps import Db
 from ..templating import render
@@ -42,6 +44,39 @@ GOOGLE_SCOPES = "openid email profile"
 
 _STATE_SESSION_KEY = "_google_oauth_state"
 CALLBACK_PATH = "/auth/google/callback"
+
+_GOOGLE_ERROR_CODES = frozenset({
+    "access_denied", "admin_policy_enforced", "deleted_client", "invalid_client",
+    "invalid_grant", "invalid_request", "org_internal", "redirect_uri_mismatch",
+    "server_error", "temporarily_unavailable", "unauthorized_client",
+})
+_UNAVAILABLE = "Google sign-in is temporarily unavailable. Try another sign-in method or try again later."
+_RESTART = "This Google sign-in attempt could not be completed. Start Google sign-in again."
+
+
+def _google_error_code(value) -> str:
+    return value if isinstance(value, str) and value in _GOOGLE_ERROR_CODES else "unknown"
+
+
+class GoogleExchangeError(Exception):
+    def __init__(self, stage: str, reason: str, status: int):
+        self.stage = stage
+        self.reason = reason
+        self.status = status
+        super().__init__(reason)
+
+
+def _google_json(response: httpx.Response, stage: str) -> dict:
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if response.status_code != 200:
+        reason = _google_error_code(payload.get("error")) if isinstance(payload, dict) else "unknown"
+        raise GoogleExchangeError(stage, reason, response.status_code)
+    if not isinstance(payload, dict):
+        raise GoogleExchangeError(stage, "invalid_response", response.status_code)
+    return payload
 
 
 def _redirect_uri(request: Request) -> str:
@@ -108,21 +143,26 @@ async def google_callback(
     def fail(message: str):
         return render(request, "login.html", error=message)
 
+    if (not state or not state.isascii() or not expected_state
+            or not secrets.compare_digest(state, expected_state) or not redirect_uri):
+        log_event("oauth.google.failed", level=logging.WARNING, stage="callback", reason="invalid_state")
+        return fail(_RESTART)
     if error:
-        # The user pressed "Cancel" on the consent screen -- not an error worth
-        # shouting about, just send them back to the login page.
-        return RedirectResponse("/", status_code=302)
+        log_event("oauth.google.failed", level=logging.WARNING, stage="authorize", reason=_google_error_code(error))
+        return fail("Google did not grant access. Try again or use another sign-in method.")
     if not code:
-        return fail("Google sign-in failed: no authorization code was returned.")
-    if not state or not expected_state or not secrets.compare_digest(state, expected_state):
-        return fail("Google sign-in failed: invalid state. Please try again.")
+        log_event("oauth.google.failed", level=logging.WARNING, stage="callback", reason="missing_code")
+        return fail(_RESTART)
 
     try:
-        profile = await _fetch_google_profile(code, redirect_uri or _redirect_uri(request))
-    except httpx.HTTPError as exc:
-        return fail(f"Could not reach Google to complete sign-in: {exc}")
-    except ValueError as exc:
-        return fail(str(exc))
+        profile = await _fetch_google_profile(code, redirect_uri)
+    except GoogleExchangeError as exc:
+        log_event("oauth.google.failed", level=logging.WARNING, stage=exc.stage,
+                  reason=exc.reason, provider_status=exc.status)
+        return fail(_RESTART if exc.stage == "token" and exc.reason == "invalid_grant" else _UNAVAILABLE)
+    except httpx.HTTPError:
+        log_event("oauth.google.failed", level=logging.WARNING, stage="exchange", reason="transport_error")
+        return fail(_UNAVAILABLE)
 
     if not profile.get("sub") or not profile.get("email"):
         return fail("Google did not return a complete account profile. Please try again.")
@@ -150,20 +190,15 @@ async def _fetch_google_profile(code: str, redirect_uri: str) -> dict:
                 "grant_type": "authorization_code",
             },
         )
-        if token_response.status_code != 200:
-            raise ValueError("Google rejected the sign-in attempt. Please try again.")
-
-        access_token = token_response.json().get("access_token")
-        if not access_token:
-            raise ValueError("Google did not return an access token.")
+        access_token = _google_json(token_response, "token").get("access_token")
+        if not isinstance(access_token, str) or not access_token or not access_token.isascii():
+            raise GoogleExchangeError("token", "invalid_response", token_response.status_code)
 
         profile_response = await client.get(
             GOOGLE_USERINFO_ENDPOINT,
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        if profile_response.status_code != 200:
-            raise ValueError("Could not read your Google profile.")
-        return profile_response.json()
+        return _google_json(profile_response, "userinfo")
 
 
 def _upsert_google_user(conn, profile: dict) -> dict:
