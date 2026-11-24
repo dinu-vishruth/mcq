@@ -14,6 +14,20 @@ from tests.test_features import _DB, FIXED_MCQS, Base
 
 
 class TestBudgets(unittest.TestCase):
+    def test_postgres_pooler_receives_timeout_as_transaction_sql_not_startup_options(self):
+        from core.models import pg_adapter
+        connection = Mock()
+        with budgets.budget(10), patch.object(pg_adapter, 'psycopg') as driver:
+            driver.connect.return_value = connection
+            adapter = pg_adapter.open_postgres('postgresql://isolated-mock/no-network')
+            self.assertNotIn('options', driver.connect.call_args.kwargs)
+            adapter.execute('SELECT 1')
+        calls = connection.cursor.return_value.execute.call_args_list
+        self.assertIn('set_config', calls[0].args[0])
+        self.assertIn('true', calls[0].args[0])
+        self.assertLessEqual(int(calls[0].args[1][0]), 10000)
+        self.assertEqual(calls[1].args[0], 'SELECT 1')
+
     def test_nested_fallback_cannot_reset_deadline(self):
         now = [0.0]
         with patch('time.monotonic', side_effect=lambda: now[0]), budgets.budget(10):

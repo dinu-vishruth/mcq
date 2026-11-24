@@ -141,7 +141,7 @@ class LLMProvider(abc.ABC):
 
     @staticmethod
     def _parse_retry_after(resp) -> float | None:
-        """Best-effort parse of the Retry-After header (delta-seconds form)."""
+        """Parse numeric-seconds and HTTP-date Retry-After headers."""
         try:
             val = resp.headers.get("Retry-After") or resp.headers.get("retry-after")
             if val is None:

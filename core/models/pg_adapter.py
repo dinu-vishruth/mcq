@@ -76,8 +76,7 @@ def open_postgres(database_url: str) -> "_PgConnection":
     seconds = remaining()
     cap = 30 if seconds is None else max(0.05, min(30, seconds))
     conn = psycopg.connect(database_url, row_factory=dict_row, autocommit=False,
-                           connect_timeout=max(2, math.ceil(cap)),
-                           options=f"-c statement_timeout={max(1, int(cap * 1000))}")
+                           connect_timeout=max(2, math.ceil(cap)))
     return _PgConnection(conn)
 
 
@@ -115,19 +114,31 @@ class _PgConnection:
     def __init__(self, conn) -> None:
         self._conn = conn
 
+    def _bound_statement(self, cur):
+        # Transaction-local SQL works with managed transaction poolers. Startup
+        # options are rejected by Neon, and session SET can leak across clients.
+        from core.services.generation_budget import remaining
+        seconds = remaining()
+        if seconds is not None:
+            cur.execute("SELECT set_config('statement_timeout', %s, true)",
+                        (str(max(1, int(min(30, seconds) * 1000))),))
+
     def execute(self, sql: str, params: tuple = ()):
         self._cur = self._conn.cursor()
+        self._bound_statement(self._cur)
         self._cur.execute(_translate(sql), params)
         return _Cursor(self._cur)
 
     def executescript(self, sql: str) -> None:
         """Run a multi-statement script (DDL) on one cursor."""
         with self._conn.cursor() as cur:
+            self._bound_statement(cur)
             cur.execute(sql)
         self.commit()
 
     def executemany(self, sql: str, seq: list[tuple]) -> None:
         with self._conn.cursor() as cur:
+            self._bound_statement(cur)
             cur.executemany(_translate(sql), seq)
 
     def commit(self) -> None:

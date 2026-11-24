@@ -1,8 +1,4 @@
-"""Generation strategies share one fail-closed MCQ acceptance policy.
-
-The existing soft inter-round time limit is retained; absolute deadlines and
-broader concurrency/admission changes belong to the next milestone.
-"""
+"""Generation strategies share fail-closed quality and request-local time budgets."""
 from __future__ import annotations
 
 import time

@@ -272,10 +272,9 @@ def mcq_token_budget(num_questions: int) -> int:
     return min(LLM_MAX_OUTPUT_TOKENS, max(1500, num_questions * LLM_TOKENS_PER_QUESTION + 400))
 
 # Wall-clock budget for the whole RAG MCQ pipeline. On serverless this has to
-# stay under the function limit (vercel.json maxDuration=60) so generation is
-# never killed mid-flight; the pipeline stops retrying once this budget (minus
-# one LLM_TIMEOUT of headroom) is exhausted and returns whatever it has
-# collected. A persistent host has no such cap, so larger quiz sets are allowed
+# stay under the function limit (vercel.json maxDuration=60). Generation,
+# verification and recovery inherit one monotonic deadline, reserve time for
+# persistence, and publish only questions verified before budget exhaustion. A persistent host has no such cap, so larger quiz sets are allowed
 # the time they actually need.
 PIPELINE_DEADLINE_SECONDS = int(os.getenv("PIPELINE_DEADLINE_SECONDS", "55" if IS_SERVERLESS else "300"))
 
@@ -335,7 +334,7 @@ FACT_VERIFICATION_MIN_CONFIDENCE = float(os.getenv("FACT_VERIFICATION_MIN_CONFID
 # provider's Retry-After header when present.
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))
 LLM_RETRY_BACKOFF = float(os.getenv("LLM_RETRY_BACKOFF", "1.5"))  # base seconds, doubled each retry
-LLM_RETRY_MAX_WAIT = float(os.getenv("LLM_RETRY_MAX_WAIT", "8"))  # cap per individual wait
+LLM_RETRY_MAX_WAIT = float(os.getenv("LLM_RETRY_MAX_WAIT", "8"))  # cap exponential waits; never shorten Retry-After
 
 # Answer Evaluation: below this confidence the grader is asked to re-evaluate
 # once (per the brief's failure-handling rule).
