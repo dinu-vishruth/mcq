@@ -126,6 +126,9 @@ def run_generation_job(job_id: str) -> None:
         job_repo.set_done(job_id, {
             "session_key": session_key,
             "count": len(mcqs),
+            "requested_count": num_questions,
+            "partial": len(mcqs) < num_questions,
+            "quality_policy": "verified_only",
             "mcqs": mcqs,
         })
         log_event("job.completed", job_id=job_id, document_id=job["document_id"],

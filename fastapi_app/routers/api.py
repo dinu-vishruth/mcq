@@ -340,7 +340,9 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
         except Exception as exc:
             raise HTTPException(status_code=502, detail=str(exc))
         quiz_upload_repo.delete(payload.upload_id, user.id)
-        return {"ok": True, "session_key": session_key, "count": len(mcqs)}
+        return {"ok": True, "session_key": session_key, "count": len(mcqs),
+                "requested_count": payload.num_questions, "partial": len(mcqs) < payload.num_questions,
+                "quality_policy": "verified_only"}
 
     if generation_backend() == "rq":
         job_id = create_job(
@@ -359,7 +361,10 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
         job = job_repo.get(job_id) or {}
         result = job_repo.public_view(job).get("result") or {}
         return {"ok": True, "session_key": result.get("session_key"),
-                "count": result.get("count", 0), "job_id": job_id}
+                "count": result.get("count", 0), "job_id": job_id,
+                "requested_count": payload.num_questions,
+                "partial": result.get("count", 0) < payload.num_questions,
+                "quality_policy": "verified_only"}
 
     try:
         from core.services.mcq_pipeline import generate_from_document
@@ -382,4 +387,6 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
         teacher=user.username, difficulty=payload.difficulty, timer=payload.timer, mcqs=mcqs,
         document_id=payload.document_id,
     )
-    return {"ok": True, "session_key": session_key, "count": len(mcqs)}
+    return {"ok": True, "session_key": session_key, "count": len(mcqs),
+            "requested_count": payload.num_questions, "partial": len(mcqs) < payload.num_questions,
+            "quality_policy": "verified_only"}

@@ -48,6 +48,7 @@ deployment.txt
 project_explanation*
 audit*
 AUDIT*
+AI_RELIABILITY_AUDIT.md
 docs/
 evals/results/
 .agents/

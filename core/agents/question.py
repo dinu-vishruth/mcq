@@ -24,8 +24,8 @@ class InsufficientContextError(LLMError):
 class QuestionAgent(Agent):
     name = "question"
 
-    def run(self, context: str, num_questions: int, difficulty: str) -> list[dict]:
-        prompt = mcq_prompts.rag_prompt(context, num_questions, difficulty)
+    def run(self, context: str, num_questions: int, difficulty: str, *, topic=None, excluded=()) -> list[dict]:
+        prompt = mcq_prompts.rag_prompt(context, num_questions, difficulty, topic=topic, excluded=excluded)
         messages = [
             {"role": "system", "content": system_prompt(mcq_prompts.SYSTEM)},
             {"role": "user", "content": prompt},
@@ -46,5 +46,7 @@ class QuestionAgent(Agent):
             mcqs = data
         else:
             raise LLMError("JSON structure is missing 'questions' array key.")
+        if not isinstance(mcqs, list):
+            raise LLMError("The AI service did not return a questions array.")
         self._log(f"generated {len(mcqs)} raw questions ({difficulty})")
         return mcqs

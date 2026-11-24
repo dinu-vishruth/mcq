@@ -56,6 +56,8 @@ class TestContextValidation(unittest.TestCase):
     def setUp(self):
         import core.agents.context_validation as mod
         self.mod = mod
+        original = mod.get_llm
+        self.addCleanup(lambda: setattr(mod, "get_llm", original))
 
     def test_empty_context_is_insufficient(self):
         v = ContextValidationAgent().run("", 5, "medium")
@@ -66,24 +68,26 @@ class TestContextValidation(unittest.TestCase):
         v = ContextValidationAgent().run("Table of contents...", 5, "medium")
         self.assertFalse(v["sufficient"])
 
-    def test_low_confidence_insufficient_fails_open(self):
-        # Not confident enough to block -> treated as sufficient.
+    def test_low_confidence_insufficient_does_not_approve(self):
+        # An uncertain insufficiency verdict never approves publication.
         self.mod.get_llm = lambda: _Stub({"sufficient": False, "confidence": 0.2, "reason": "unsure"})
         v = ContextValidationAgent().run("Some real content about photosynthesis.", 5, "medium")
-        self.assertTrue(v["sufficient"])
+        self.assertFalse(v["sufficient"])
 
-    def test_llm_error_fails_open(self):
+    def test_llm_error_is_unverified(self):
         def boom():
             raise RuntimeError("no key")
         self.mod.get_llm = boom
         v = ContextValidationAgent().run("content", 5, "medium")
-        self.assertTrue(v["sufficient"])
+        self.assertFalse(v["sufficient"])
 
 
 class TestFactVerification(unittest.TestCase):
     def setUp(self):
         import core.agents.fact_verification as mod
         self.mod = mod
+        original = mod.get_llm
+        self.addCleanup(lambda: setattr(mod, "get_llm", original))
 
     def test_rejects_failed_question(self):
         self.mod.get_llm = lambda: _Stub({"results": [
@@ -103,30 +107,34 @@ class TestFactVerification(unittest.TestCase):
         self.assertEqual(len(verified), 0)
         self.assertEqual(len(rejected), 1)
 
-    def test_ungraded_question_kept_fail_open(self):
-        # Model returns no verdict for index 0 -> keep it rather than drop it.
+    def test_ungraded_question_is_excluded(self):
+        # Model returns no verdict for index 0 -> exclude it as unverified.
         self.mod.get_llm = lambda: _Stub({"results": []})
         verified, rejected = FactVerificationAgent().run([_mcq()], "ctx")
-        self.assertEqual(len(verified), 1)
+        self.assertEqual(len(verified), 0)
+        self.assertEqual(rejected[0]["status"], "unverified")
 
-    def test_llm_error_accepts_all(self):
+    def test_llm_error_excludes_all(self):
         def boom():
             raise RuntimeError("down")
         self.mod.get_llm = boom
         verified, rejected = FactVerificationAgent().run([_mcq(), _mcq("Q2?")], "ctx")
-        self.assertEqual(len(verified), 2)
-        self.assertEqual(len(rejected), 0)
+        self.assertEqual(len(verified), 0)
+        self.assertEqual(len(rejected), 2)
 
-    def test_no_context_skips(self):
+    def test_no_context_is_unverified(self):
         verified, rejected = FactVerificationAgent().run([_mcq()], "")
-        self.assertEqual(len(verified), 1)
-        self.assertEqual(len(rejected), 0)
+        self.assertEqual(len(verified), 0)
+        self.assertEqual(rejected[0]["status"], "unverified")
+        self.assertEqual(len(rejected), 1)
 
 
 class TestAnswerEvaluation(unittest.TestCase):
     def setUp(self):
         import core.agents.answer_evaluation as mod
         self.mod = mod
+        original = mod.get_llm
+        self.addCleanup(lambda: setattr(mod, "get_llm", original))
 
     def _payload(self, **over):
         p = {"is_correct": True, "score": 90, "confidence": 0.95, "concept_match": True,

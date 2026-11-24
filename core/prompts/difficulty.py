@@ -9,7 +9,10 @@ SYSTEM = "You are an assessment-difficulty grader that only outputs valid JSON o
 
 def grade_prompt(questions: list[dict], requested: str) -> str:
     """questions: [{"index": int, "question": str}]. Grade each vs requested level."""
-    lines = "\n".join(f'{q["index"]}. {q["question"]}' for q in questions)
+    lines = "\n".join(
+        f'{q["index"]}. {q["question"]}\nOptions: {q.get("options", [])}\n'
+        f'Answer: {q.get("answer_text", "")}' for q in questions
+    )
     return f"""Grade the cognitive difficulty of each question below as easy, medium, or hard,
 using Bloom's Taxonomy (easy=Remember/Understand, medium=Apply/Analyze,
 hard=Analyze/Evaluate/Create). The requested level for this set is: {requested.upper()}.

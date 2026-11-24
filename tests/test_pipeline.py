@@ -59,12 +59,11 @@ class TestQualityAssurance(unittest.TestCase):
         valid, rejected = self.qa.run([q])
         self.assertEqual(len(valid), 0)
 
-    def test_repairs_label_answer(self):
+    def test_rejects_label_instead_of_answer_text(self):
         q = self._good()
         q["answer_text"] = "B"  # label instead of text
         valid, _ = self.qa.run([q])
-        self.assertEqual(len(valid), 1)
-        self.assertEqual(valid[0]["answer_text"], "4")
+        self.assertEqual(valid, [])
 
     def test_rejects_answer_not_in_options(self):
         q = self._good()
@@ -72,12 +71,12 @@ class TestQualityAssurance(unittest.TestCase):
         valid, rejected = self.qa.run([q])
         self.assertEqual(len(valid), 0)
 
-    def test_normalises_labels(self):
+    def test_rejects_invalid_labels(self):
         q = self._good()
         for o in q["options"]:
             o["label"] = "X"
         valid, _ = self.qa.run([q])
-        self.assertEqual([o["label"] for o in valid[0]["options"]], ["A", "B", "C", "D"])
+        self.assertEqual(valid, [])
 
     def test_preserves_extra_metadata(self):
         q = self._good()
@@ -127,17 +126,19 @@ class TestPipelineWithStubbedLLM(unittest.TestCase):
                 return {"questions": questions}
 
         stub = StubLLM()
-        qmod.get_llm = lambda: stub
-        dmod.get_llm = lambda: stub
-        cvmod.get_llm = lambda: stub
-        fvmod.get_llm = lambda: stub
+        from unittest.mock import patch
+        for mod in [qmod, dmod, cvmod, fvmod]:
+            replacement = patch.object(mod, "get_llm", return_value=stub)
+            replacement.start()
+            self.addCleanup(replacement.stop)
 
     def test_pipeline_returns_legacy_shape(self):
         questions = [{
             "question": f"Question {i} about ATP?",
             "options": [{"label": "A", "text": f"a{i}"}, {"label": "B", "text": f"b{i}"},
                         {"label": "C", "text": f"c{i}"}, {"label": "D", "text": f"d{i}"}],
-            "answer_text": f"a{i}", "bloom": "Apply", "source_hint": "mitochondria"
+            "answer_text": f"a{i}", "bloom": "Apply", "source_hint": "mitochondria",
+            "explanation": "The source describes mitochondria and energy production."
         } for i in range(3)]
         self._install_stub(questions)
 
@@ -153,58 +154,27 @@ class TestPipelineWithStubbedLLM(unittest.TestCase):
             self.assertIn(q["answer_text"], [o["text"] for o in q["options"]])
             self.assertEqual([o["label"] for o in q["options"]], ["A", "B", "C", "D"])
 
-    def test_generate_from_document_legacy_is_single_shot(self):
-        """In legacy mode, making a quiz from a saved resource must NOT run the
-        multi-call RAG verification loop (which made the page hang). It should do
-        one single-shot generation, so the ContextValidation/FactVerification
-        agents are never called."""
+    def test_generate_from_document_legacy_uses_shared_verification(self):
+        from unittest.mock import patch
+
         questions = [{
             "question": f"Saved Q{i}?",
-            "options": [{"label": "A", "text": f"a{i}"}, {"label": "B", "text": f"b{i}"},
-                        {"label": "C", "text": f"c{i}"}, {"label": "D", "text": f"d{i}"}],
-            "answer_text": f"a{i}",
+            "options": [{"label": key, "text": f"{key}{i}"} for key in "ABCD"],
+            "answer_text": f"A{i}", "source_hint": "Normalization",
+            "explanation": "Normalization reduces redundancy.",
         } for i in range(3)]
         self._install_stub(questions)
-
-        # Trip-wire: the legacy path must not touch these agents at all.
-        import core.agents.context_validation as cvmod
-        import core.agents.fact_verification as fvmod
-        def _boom():
-            raise AssertionError("verification agent called in legacy single-shot path")
-        cvmod.get_llm = _boom
-        fvmod.get_llm = _boom
-
-        # The legacy single-shot path delegates to models.mcq_generator.generate_mcqs.
-        # Stub it directly (other suites also monkeypatch this module attr, so we
-        # set + restore our own to stay isolated) and record it was called.
-        import models.mcq_generator as legacy_mod
-        calls = {"n": 0}
-        def _fake_generate(text, num_questions=5, difficulty="medium"):
-            calls["n"] += 1
-            return questions[:num_questions]
-        prev_gen = legacy_mod.generate_mcqs
-        legacy_mod.generate_mcqs = _fake_generate
-
-        prev_mode = config.AI_PIPELINE
-        config.AI_PIPELINE = "legacy"
-        try:
-            # Ingest a document to get a real document_id to generate from.
-            from core.services.ingestion_service import ingest_document
-            ing = ingest_document(
-                ("Normalization reduces redundancy. Primary keys identify rows. "
-                 "Indexes speed reads but slow writes. ") * 15,
-                owner="t2", title="DBMS", source_type="paste")
-            from core.services.mcq_pipeline import generate_from_document
-            mcqs = generate_from_document(ing["document_id"], num_questions=3, difficulty="medium")
-        finally:
-            config.AI_PIPELINE = prev_mode
-            legacy_mod.generate_mcqs = prev_gen
-
-        self.assertEqual(calls["n"], 1)          # exactly one single-shot call
-        self.assertEqual(len(mcqs), 3)
-        for q in mcqs:
-            self.assertEqual(len(q["options"]), 4)
-            self.assertIn(q["answer_text"], [o["text"] for o in q["options"]])
+        from core.services.ingestion_service import ingest_document
+        source = ingest_document(
+            "Normalization reduces redundancy. Primary keys identify rows. " * 15,
+            owner="t2", title="DBMS", source_type="paste")
+        from core.services.mcq_pipeline import generate_from_document
+        with patch.object(config, "AI_PIPELINE", "legacy"), patch(
+                "models.mcq_generator.generate_legacy_candidates", return_value=questions) as generate:
+            result = generate_from_document(source["document_id"], 3, "medium")
+        self.assertEqual(generate.call_count, 1)
+        self.assertEqual(len(result), 3)
+        self.assertTrue(all(q["verification_status"] == "verified" for q in result))
 
 
 if __name__ == "__main__":

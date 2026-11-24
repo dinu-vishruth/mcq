@@ -1,17 +1,11 @@
 # models/mcq_generator.py
-"""
-MCQ generation entry point.
+"""Public MCQ API; every strategy publishes through shared quality guardrails.
 
-This module keeps its historical public API — `generate_mcqs(text, num_questions,
-difficulty)` and `MCQGenerationError` — so app.py and test_mcq.py are unchanged.
-Internally it now delegates to the provider-agnostic LLM layer (core.llm) and the
-versioned prompt in core.prompts.mcq, which also fixes the old api.xai.com typo.
-
-When config.AI_PIPELINE == "rag" it routes to the retrieval pipeline instead
-(wired in Phase 4). Until then the behaviour is byte-for-byte the legacy path.
+Legacy candidate generation is explicit and nonrecursive. Raw candidate batches
+are never acceptable quiz results until the common acceptance gate passes them.
 """
 import config
-from core.llm import LLMError, get_llm
+from core.llm import get_llm
 from core.prompts import mcq as mcq_prompts
 from core.services.personalization import system_prompt
 from utils.text_cleaner import clean_text
@@ -23,20 +17,13 @@ class MCQGenerationError(Exception):
 
 
 def _structurally_valid(mcqs):
-    """Filter to well-formed MCQs. Same rules as the original implementation."""
-    valid = []
-    for q in mcqs:
-        if not isinstance(q, dict):
-            continue
-        if "question" in q and "options" in q and "answer_text" in q:
-            if isinstance(q["options"], list) and len(q["options"]) == 4:
-                if all(isinstance(o, dict) and "label" in o and "text" in o for o in q["options"]):
-                    valid.append(q)
-    return valid
+    """Compatibility helper; generation also requires shared semantic acceptance."""
+    from core.agents.quality_assurance import QualityAssuranceAgent
+    return QualityAssuranceAgent().run(mcqs)[0]
 
 
 def _validate(mcqs, num_questions):
-    """Structural validation, identical rules to the original implementation."""
+    """Shared structural validation for compatibility callers."""
     valid = _structurally_valid(mcqs)
     if not valid:
         raise MCQGenerationError("No valid questions could be structured from the AI response. Please retry.")
@@ -75,52 +62,18 @@ def generate_mcqs(text, num_questions=5, difficulty="medium"):
         else:
             return generate_mcqs_rag(text, num_questions=num_questions, difficulty=difficulty)
 
-    # Legacy single-shot path — same 150k truncation, same prompt wording.
-    max_chars = 150000
-    if len(text) > max_chars:
-        text = text[:max_chars]
+    from core.services.mcq_pipeline import _legacy_from_context
+    return _legacy_from_context(text[:150000], num_questions, difficulty)
 
-    llm = get_llm()
-    collected: list[dict] = []
-    seen: set[str] = set()
-    # Ask for the shortfall repeatedly: a single call can under-deliver (models
-    # routinely return fewer items than asked on large batches, and long outputs
-    # can be truncated), which is why an explicit "25" used to yield a handful.
-    # Scale the attempt budget with the request so large sets can fill, and stop
-    # early once a round adds nothing new (a stalled model won't improve).
-    max_attempts = 3 if num_questions <= 10 else 6
-    for attempt in range(max_attempts):
-        need = num_questions - len(collected)
-        if need <= 0:
-            break
 
-        prompt = mcq_prompts.legacy_prompt(text, need, difficulty)
-        messages = [
-            {"role": "system", "content": system_prompt(mcq_prompts.SYSTEM)},
-            {"role": "user", "content": prompt},
-        ]
-        try:
-            data = llm.complete_json(messages, max_tokens=config.mcq_token_budget(need))
-        except LLMError as e:
-            if not collected:
-                raise MCQGenerationError(str(e))
-            break  # Keep what we already have rather than failing outright.
-        except Exception as e:
-            if not collected:
-                raise MCQGenerationError(f"Unexpected error: {e}")
-            break
-
-        before = len(collected)
-        for q in _structurally_valid(_extract_questions(data)):
-            key = (q.get("question") or "").strip().lower()
-            if key and key not in seen:
-                seen.add(key)
-                collected.append(q)
-
-        if len(collected) == before:
-            break  # No new unique questions this round; another call won't help.
-
-    if not collected:
-        raise MCQGenerationError("No valid questions could be structured from the AI response. Please retry.")
-
-    return collected[:num_questions]
+def generate_legacy_candidates(text, num_questions=5, difficulty="medium", *, topic=None, excluded=()):
+    """One raw candidate batch, never directly published and never re-enters RAG."""
+    prompt = mcq_prompts.legacy_prompt(text, num_questions, difficulty, topic=topic, excluded=excluded)
+    data = get_llm().complete_json([
+        {"role": "system", "content": system_prompt(mcq_prompts.SYSTEM)},
+        {"role": "user", "content": prompt},
+    ], max_tokens=config.mcq_token_budget(num_questions))
+    questions = _extract_questions(data)
+    if not isinstance(questions, list):
+        raise MCQGenerationError("The AI service did not return a questions array.")
+    return questions

@@ -69,6 +69,9 @@ class TestOneOffQuiz(Base):
              patch("core.services.mcq_pipeline.generate_from_text", return_value=FIXED_MCQS) as generate:
             response = client.post("/api/practice/generate", json={"upload_id": upload_id})
         self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["requested_count"], 5)
+        self.assertTrue(response.json()["partial"])
+        self.assertEqual(response.json()["quality_policy"], "verified_only")
         generate.assert_called_once()
         self.assertEqual(client.get("/api/knowledge").json()["items"], [])
         self.assertEqual(client.get(f"/api/quiz-uploads/{upload_id}").status_code, 404)

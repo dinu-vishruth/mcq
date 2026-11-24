@@ -1,70 +1,45 @@
-"""
-Quality Assurance Agent: deterministic structural validation of generated MCQs.
-
-Enforces the exact contract the whole app depends on:
-  - question is a non-empty string
-  - exactly 4 options, each {"label","text"} with non-empty text
-  - labels normalised to A/B/C/D
-  - answer_text matches exactly one option's text (repairs A/B/C/D answers)
-  - no duplicate option texts within a question
-
-Returns (valid_mcqs, rejected) where rejected carries a reason so the pipeline
-can decide whether to regenerate. This runs with no LLM call -- it's pure logic.
-"""
+"""Shared deterministic validation for fresh candidates and saved MCQ contracts."""
 from __future__ import annotations
 
-from core.agents.base import Agent
+from pydantic import ValidationError
 
-_LABELS = ["A", "B", "C", "D"]
+from core.agents.base import Agent
+from core.models.mcq_contract import MCQ, GroundedMCQ, normalized_text, question_key
 
 
 class QualityAssuranceAgent(Agent):
     name = "quality_assurance"
 
-    def run(self, mcqs: list[dict]) -> tuple[list[dict], list[dict]]:
+    def run(self, mcqs, *, context: str | None = None, require_grounding: bool = False,
+            excluded=()) -> tuple[list[dict], list[dict]]:
+        if not isinstance(mcqs, list):
+            return [], [{"question": "?", "reason": "questions must be an array", "status": "rejected"}]
         valid, rejected = [], []
-        for q in mcqs:
-            cleaned, reason = self._validate_one(q)
+        seen = {question_key(q["question"]) for q in excluded}
+        for raw in mcqs:
+            cleaned, reason = self._validate_one(raw, context=context,
+                                                 require_grounding=require_grounding)
             if cleaned is not None:
-                valid.append(cleaned)
-            else:
-                rejected.append({"question": q.get("question", "?"), "reason": reason})
-        self._log(f"QA: {len(valid)} valid, {len(rejected)} rejected")
+                key = question_key(cleaned["question"])
+                if key in seen:
+                    reason = "duplicate question"
+                else:
+                    seen.add(key)
+                    valid.append(cleaned)
+                    continue
+            rejected.append({"question": raw.get("question", "?") if isinstance(raw, dict) else "?",
+                             "reason": reason, "status": "rejected"})
         return valid, rejected
 
-    def _validate_one(self, q: dict):
-        question = (q.get("question") or "").strip()
-        if not question:
-            return None, "empty question"
-
-        options = q.get("options")
-        if not isinstance(options, list) or len(options) != 4:
-            return None, "must have exactly 4 options"
-
-        texts, norm_opts = [], []
-        for i, o in enumerate(options):
-            if not isinstance(o, dict):
-                return None, "option is not an object"
-            text = (o.get("text") or "").strip()
-            if not text:
-                return None, "empty option text"
-            norm_opts.append({"label": _LABELS[i], "text": text})
-            texts.append(text)
-
-        if len(set(texts)) != 4:
-            return None, "duplicate option texts"
-
-        answer = (q.get("answer_text") or "").strip()
-        if answer not in texts:
-            # Repair: model sometimes returns a label ("B") instead of the text.
-            if answer in _LABELS:
-                answer = norm_opts[_LABELS.index(answer)]["text"]
-            else:
-                return None, "answer_text does not match any option"
-
-        cleaned = {"question": question, "options": norm_opts, "answer_text": answer}
-        # Carry optional metadata forward without letting it break the contract.
-        for extra in ("bloom", "source_hint", "explanation"):
-            if extra in q:
-                cleaned[extra] = q[extra]
-        return cleaned, None
+    def _validate_one(self, raw, *, context=None, require_grounding=False):
+        try:
+            schema = GroundedMCQ if require_grounding else MCQ
+            model = schema.model_validate(raw)
+            if require_grounding:
+                source = normalized_text(context or "")
+                quote = normalized_text(model.source_hint)
+                if not source or quote not in source:
+                    return None, "source_hint must quote the supplied source context"
+            return model.model_dump(exclude_none=True), None
+        except ValidationError:
+            return None, "invalid MCQ: nonempty strings, 4 options, distinct texts and one matching answer required"
