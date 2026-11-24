@@ -184,16 +184,12 @@ async def progress(request: Request, user: CurrentUser, conn: Db):
         if stored
         else None
     )
-    # XP heuristic when prefs.xp isn't populated: 10 XP per correct answer.
-    xp = stored.get("xp") or total_correct * 10
-    streak = stored.get("streak") or 0
-
     return render(
         request, "progress.html",
         total_quizzes=total_quizzes, accuracy=accuracy, total_time=total_time,
         total_correct=total_correct, total_answered=total_answered,
         heatmap=heatmap, weekly=weekly_series, weak_topics=weak_topics,
-        prefs=prefs, xp=xp, streak=streak,
+        prefs=prefs,
     )
 
 
@@ -229,10 +225,11 @@ async def weak_topics_page(request: Request, user: CurrentUser):
     return render(request, "weak_topics.html")
 
 
-@router.get("/achievements")
-async def achievements(request: Request, user: CurrentUser):
-    """Streak, XP, badges, milestones (data from /api/achievements)."""
-    return render(request, "achievements.html")
+@router.get("/review")
+@router.get("/achievements", include_in_schema=False)
+async def review_page(request: Request, user: CurrentUser):
+    """Review saved mistakes and uncertain answers."""
+    return render(request, "review.html")
 
 
 # --- Quiz flow -------------------------------------------------------------- #
@@ -403,19 +400,8 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     except Exception as exc:
         print(f"[WARNING] Learning analysis skipped: {exc}")
 
-    # Gamification: 10 XP per correct answer + 5 completion bonus, and advance
-    # the daily streak. Best-effort -- never affects scoring.
-    xp_awarded = 0
-    try:
-        from core.repositories import prefs_repo
-        prefs_repo.record_activity(user.id, xp_gain=score * 10 + 5)
-        xp_awarded = score * 10 + 5
-    except Exception as exc:
-        print(f"[WARNING] XP/streak update skipped: {exc}")
-
     return render(
         request, "result.html",
         score=score, total=len(questions), details=details, explanations=explanations,
-        xp_awarded=xp_awarded,
         notice=("Time expired. Only answers saved before the deadline were scored." if late else None),
     )

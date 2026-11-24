@@ -15,7 +15,7 @@
     React mount shell for Settings. The /profile route (core/routes/auth.py) is
     UNCHANGED — it still renders this with `user` and (on POST) `error`, and its
     form still posts to /profile. flash() messages are surfaced via the payload.
-    Learning prefs/xp/streak read from the additive user_prefs table.
+    Learning preferences read from the additive user_prefs table.
   #}
   {% set _flash = get_flashed_messages() %}
   <div id="root"

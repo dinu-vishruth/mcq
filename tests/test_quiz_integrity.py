@@ -118,7 +118,7 @@ class TestQuizIntegrity(Base):
             self.client.post('/submit', data=self.answers())
         self.assertEqual((self.result()['score'], self.result()['time_spent']), (2, 60))
 
-    def test_explanation_failure_still_saves_result_and_awards_xp_once(self):
+    def test_explanation_failure_still_saves_result_once(self):
         with self.clock(1040), patch('models.explanation_engine.explain_answers', side_effect=RuntimeError):
             response = self.client.post('/submit', data=self.answers())
             repeated = self.client.post('/submit', data=self.answers())
@@ -130,7 +130,7 @@ class TestQuizIntegrity(Base):
             self.assertEqual(conn.execute('SELECT count(*) FROM results WHERE session_key=?',
                                           (self.key,)).fetchone()[0], 1)
         with self.clock(1040):
-            self.assertEqual(bootstrap(self.client.get('/dashboard'))['xp'], 25)
+            self.assertEqual(bootstrap(self.client.get('/dashboard'))['total_correct'], 2)
 
     def test_error_page_keeps_real_dashboard_statistics(self):
         with self.clock(1040):
@@ -138,10 +138,10 @@ class TestQuizIntegrity(Base):
             response = self.client.post('/student_login', data={'session_key': 'invalid!'})
         data = bootstrap(response)
         self.assertEqual(data['total_quizzes'], 1)
-        self.assertEqual(data['xp'], 25)
+        self.assertEqual(data['total_correct'], 2)
         self.assertEqual(data['error'], 'Invalid session key format')
 
-    def test_concurrent_submissions_record_one_result_and_one_xp_award(self):
+    def test_concurrent_submissions_record_one_result(self):
         from fastapi_app.routers import student
 
         other = self._client_factory()
@@ -166,4 +166,4 @@ class TestQuizIntegrity(Base):
         with sqlite3.connect(_DB) as conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM results WHERE session_key=?',
                                           (self.key,)).fetchone()[0], 1)
-        self.assertEqual(bootstrap(self.client.get('/dashboard'))['xp'], 25)
+        self.assertEqual(bootstrap(self.client.get('/dashboard'))['total_correct'], 2)

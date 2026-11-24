@@ -17,7 +17,6 @@ export interface ResultData {
   total: number;
   details: Detail[];
   explanations: string[];
-  xp_awarded?: number;
   notice?: string | null;
 }
 
@@ -65,34 +64,16 @@ function ScoreRing({ pct }: { pct: number }) {
   );
 }
 
-function Confetti() {
-  const colors = ["#3b82f6", "#60a5fa", "#10b981", "#a78bfa", "#f59e0b"];
-  const pieces = Array.from({ length: 80 }, (_, i) => i);
-  return (
-    <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
-      {pieces.map((i) => (
-        <motion.span
-          key={i}
-          className="absolute w-2 h-3 rounded-sm"
-          style={{ left: `${(i * 1.25) % 100}vw`, background: colors[i % colors.length] }}
-          initial={{ y: -20, opacity: 1, rotate: 0 }}
-          animate={{ y: "105vh", opacity: [1, 1, 0], rotate: 360 }}
-          transition={{ duration: 2.6 + (i % 5) * 0.3, delay: (i % 8) * 0.05, ease: "easeIn" }}
-        />
-      ))}
-    </div>
-  );
-}
-
 export default function Result({ data }: { data: ResultData }) {
   const { score, total, details, explanations } = data;
   const pct = total > 0 ? (score / total) * 100 : 0;
   const wrong = total - score;
-  const headline = pct >= 70 ? "Outstanding work" : pct >= 40 ? "Good effort" : "Keep practicing";
+  const headline = "Your learning summary";
+  const misconceptions = details.filter(d => !d.is_correct && d.confidence === "know").length;
+  const uncertain = details.filter(d => d.is_correct && ["maybe", "no_idea"].includes(d.confidence || "")).length;
 
   return (
     <div className="app-glow min-h-screen">
-      {pct >= 80 && <Confetti />}
       <div className="relative z-10 max-w-3xl mx-auto px-5 py-10">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
@@ -112,7 +93,6 @@ export default function Result({ data }: { data: ResultData }) {
           <p className="text-accent-2 text-sm font-medium mb-4">{headline}</p>
           <ScoreRing pct={pct} />
           <div className="text-text-3 text-sm mt-2">{score} / {total} correct</div>
-          {!!data.xp_awarded && <p className="mt-2 text-success">+{data.xp_awarded} XP earned</p>}
         </Card>
 
         {/* Summary stats */}
@@ -151,13 +131,12 @@ export default function Result({ data }: { data: ResultData }) {
           <div className="flex items-start gap-3">
             <span className="grid place-items-center w-9 h-9 rounded-sm bg-violet/10 text-violet shrink-0"><Sparkles className="w-4 h-4" /></span>
             <div>
-              <h2 className="text-base mb-1">AI Insight</h2>
+              <h2 className="text-base mb-1">What to revisit</h2>
               <p className="text-text-2 text-sm">
-                {pct >= 70
-                  ? `Strong recall across the set. Focus your next session on the ${wrong} missed concept${wrong !== 1 ? "s" : ""} to reach mastery.`
-                  : pct >= 40
-                  ? "You're getting the core ideas. The explanations below target exactly where understanding slipped."
-                  : "This topic needs another pass. Read each explanation, then generate a fresh quiz to reinforce what you learn."}
+                {wrong ? `${wrong} questions need another look. Read the explanations and revisit the source material before another attempt.` : "You answered this set correctly. Check your recall with different questions later."}
+                {misconceptions > 0 && ` ${misconceptions} incorrect answers were marked confident; check for a possible misconception.`}
+                {uncertain > 0 && ` ${uncertain} correct answers were marked unsure or guessing; revisit these to build confidence.`}
+
               </p>
             </div>
           </div>
@@ -183,7 +162,12 @@ export default function Result({ data }: { data: ResultData }) {
                 </div>
                 <p className="text-[1.02rem] mb-3">{d.question}</p>
                 <p className="text-sm text-text-2"><strong className="text-text">Your answer:</strong> {d.selected || "Not answered"}</p>
-                {d.confidence && <p className="mt-1 text-sm text-text-3">Confidence: {{ know: "I Know", maybe: "Maybe", no_idea: "No Idea" }[d.confidence]}</p>}
+                {d.confidence && <p className="mt-1 text-sm text-text-3">Confidence: {{ know: "Confident", maybe: "Unsure", no_idea: "Guessing" }[d.confidence]}</p>}
+                {d.confidence && <p className="mt-2 text-sm text-accent-2">{!d.is_correct && d.confidence === "know"
+                  ? "Possible misconception: compare your reasoning with the correct answer."
+                  : d.is_correct && d.confidence !== "know" ? "Correct with uncertainty: try this idea again later."
+                  : d.is_correct ? "Correct on this attempt. Check recall again with a different question."
+                  : "Revisit the explanation before another attempt."}</p>}
                 {!d.is_correct && (
                   <p className="text-sm text-text-2 mt-1"><strong className="text-text">Correct answer:</strong> <span className="text-success">{d.correct}</span></p>
                 )}
@@ -202,8 +186,8 @@ export default function Result({ data }: { data: ResultData }) {
           <Button leftIcon={<Sparkles className="w-4 h-4" />} onClick={() => (window.location.href = "/upload")}>
             Generate New Quiz
           </Button>
-          <Button variant="secondary" leftIcon={<Home className="w-4 h-4" />} onClick={() => (window.location.href = "/")}>
-            Back to Home
+          <Button variant="secondary" leftIcon={<Home className="w-4 h-4" />} onClick={() => (window.location.href = "/review")}>
+            Review saved mistakes
           </Button>
         </div>
       </div>

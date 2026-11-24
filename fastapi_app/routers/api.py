@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
 from ..deps import CurrentApiUser, Db
-from ..services.dashboard import build_dashboard, level_for_xp, load_prefs
+from ..services.dashboard import build_dashboard, load_prefs
 
 router = APIRouter(prefix="/api", tags=["api"])
 
@@ -226,43 +226,28 @@ async def weak_topics_review(user: CurrentApiUser, payload: ReviewIn):
 
 
 # --------------------------------------------------------------------------- #
-# Achievements
+# Review evidence
 # --------------------------------------------------------------------------- #
 
-@router.get("/achievements")
-async def achievements_data(user: CurrentApiUser, conn: Db):
-    agg = conn.execute(
-        "SELECT COUNT(*) quizzes, COALESCE(SUM(score),0) correct, "
-        "COALESCE(SUM(total),0) answered, "
-        "COALESCE(MAX(CASE WHEN total>0 THEN score*100/total ELSE 0 END),0) best "
-        "FROM results WHERE user_id=?",
-        (user.id,),
-    ).fetchone()
-    prefs = load_prefs(conn, user.id) or {}
+@router.get("/review")
+@router.get("/achievements", include_in_schema=False)
+async def review_data(user: CurrentApiUser, conn: Db):
+    from ..services.review import build_review
+    data = build_review(conn, user.id, user.username)
+    return {key: value for key, value in data.items() if key != "questions"}
 
-    xp = prefs.get("xp") or (agg["correct"] * 10)
-    streak = prefs.get("streak") or 0
-    quizzes = agg["quizzes"] or 0
-    best = round(agg["best"] or 0)
 
-    badges = [
-        {"key": "first_steps", "label": "First Steps", "desc": "Complete 1 quiz", "earned": quizzes >= 1, "icon": "footprints"},
-        {"key": "on_fire", "label": "On Fire", "desc": "3-day streak", "earned": streak >= 3, "icon": "flame"},
-        {"key": "dedicated", "label": "Dedicated", "desc": "7-day streak", "earned": streak >= 7, "icon": "calendar"},
-        {"key": "sharpshooter", "label": "Sharpshooter", "desc": "Score 90%+", "earned": best >= 90, "icon": "target"},
-        {"key": "xp_hunter", "label": "XP Hunter", "desc": "Earn 500 XP", "earned": xp >= 500, "icon": "zap"},
-        {"key": "century", "label": "Centurion", "desc": "Complete 10 quizzes", "earned": quizzes >= 10, "icon": "trophy"},
-    ]
-    milestones = [
-        {"label": "Quizzes completed", "value": quizzes, "next": 10 if quizzes < 10 else 25},
-        {"label": "Current streak", "value": streak, "next": 7 if streak < 7 else 30},
-        {"label": "Total XP", "value": xp, "next": ((xp // 500) + 1) * 500},
-    ]
-    return {
-        "xp": xp, "level": level_for_xp(xp), "streak": streak, "quizzes": quizzes,
-        "badges": badges, "milestones": milestones,
-        "earned_count": sum(1 for b in badges if b["earned"]), "total_badges": len(badges),
-    }
+@router.post("/review/start")
+async def start_review(user: CurrentApiUser, conn: Db):
+    from utils.session_manager import create_session_key
+
+    from ..services.review import build_review
+    questions = build_review(conn, user.id, user.username)["questions"]
+    if not questions:
+        raise HTTPException(404, "No saved questions are available to review yet.")
+    key = create_session_key(teacher=user.username, difficulty="review",
+                             timer=max(60, len(questions) * 60), mcqs=questions)
+    return {"session_key": key, "count": len(questions)}
 
 
 # --------------------------------------------------------------------------- #

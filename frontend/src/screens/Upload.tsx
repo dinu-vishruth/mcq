@@ -12,8 +12,6 @@ import {
 export interface UploadData {
   error?: string;
   username: string;
-  streak: number;
-  xp: number;
 }
 
 const PIPELINE = [
@@ -97,7 +95,7 @@ export default function Upload({ data }: { data: UploadData }) {
   }
 
   return (
-    <AppShell active="knowledge" username={data.username} streak={data.streak} xp={data.xp}>
+    <AppShell active="knowledge" username={data.username}>
       <div className="max-w-2xl mx-auto px-5 py-10">
         <div className="text-center mb-8">
           <p className="text-accent-2 text-sm font-medium mb-2 flex items-center justify-center gap-1.5">

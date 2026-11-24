@@ -20,8 +20,6 @@ export interface DashboardData {
   avg_score: number;
   best_score: number;
   total_time: number;
-  streak: number;
-  xp: number;
   chart_dates: string[];
   chart_scores: number[];
   difficulty_averages: [number, number, number];
@@ -65,14 +63,20 @@ export interface RecentSession {
   pct: number;
 }
 
+export interface LearningSummary {
+  to_revisit: number;
+  uncertain: number;
+  corrected: number;
+  misconceptions: number;
+  reviewable: number;
+}
+
 export interface DashboardApi {
+  learning: LearningSummary;
   username: string;
   total_quizzes: number;
   avg_score: number;
   total_time: number;
-  streak: number;
-  xp: number;
-  level: number;
   knowledge_count: number;
   goal: string;
   daily_minutes: number;

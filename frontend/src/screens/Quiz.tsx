@@ -23,9 +23,9 @@ export interface QuizData {
 type Confidence = "know" | "maybe" | "no_idea";
 
 const CONFIDENCE: { id: Confidence; label: string; tone: string }[] = [
-  { id: "know", label: "I Know", tone: "text-success border-success/30 bg-success/10" },
-  { id: "maybe", label: "Maybe", tone: "text-warning border-warning/30 bg-warning/10" },
-  { id: "no_idea", label: "No Idea", tone: "text-text-3 border-white/10 bg-white/5" },
+  { id: "know", label: "Confident", tone: "text-success border-success/30 bg-success/10" },
+  { id: "maybe", label: "Unsure", tone: "text-warning border-warning/30 bg-warning/10" },
+  { id: "no_idea", label: "Guessing", tone: "text-text-3 border-white/10 bg-white/5" },
 ];
 
 const OPT_KEYS = ["A", "B", "C", "D"];
@@ -149,7 +149,7 @@ export default function Quiz({ data }: { data: QuizData }) {
       {/* Question */}
       <div className="relative z-10 flex-1 max-w-3xl w-full mx-auto px-5 py-10 flex flex-col">
         {saveError && <p role="alert" className="mb-4 text-warning">Progress could not sync. Keep this tab open and submit your answers when finished.</p>}
-        <p className="mb-4 text-xs text-text-3">Earn 10 XP per correct answer and 5 XP for completing the quiz.</p>
+        <p className="mb-4 text-xs text-text-3">Use this set to find what to revisit. Confidence is optional and never changes your score.</p>
         <AnimatePresence mode="wait">
           <motion.div
             key={idx}
@@ -192,13 +192,19 @@ export default function Quiz({ data }: { data: QuizData }) {
 
             {/* Confidence selector */}
             <div className="mt-8">
-              <div className="text-text-3 text-xs uppercase tracking-wider mb-2">How confident are you?</div>
+              <div className="text-text-3 text-xs uppercase tracking-wider mb-2">How confident are you? (optional)</div>
               <div className="flex gap-2">
                 {CONFIDENCE.map((c) => (
                   <button
                     key={c.id}
                     disabled={submitting || remaining <= 0}
-                    onClick={() => setConfidence((cf) => ({ ...cf, [idx]: c.id }))}
+                    aria-pressed={confidence[idx] === c.id}
+                    onClick={() => setConfidence((cf) => {
+                      const next = { ...cf };
+                      if (next[idx] === c.id) delete next[idx];
+                      else next[idx] = c.id;
+                      return next;
+                    })}
                     className={`flex-1 py-2.5 rounded-md border text-sm font-medium transition-all ${
                       confidence[idx] === c.id ? c.tone : "border-white/[0.06] text-text-3 hover:text-text-2"
                     }`}

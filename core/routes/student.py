@@ -246,7 +246,7 @@ def achievements():
     /api/achievements."""
     if not session.get("user_id"):
         return redirect(url_for("auth.home"))
-    return render_template("achievements.html")
+    return render_template("review.html")
 
 
 @student_bp.route("/student_login", methods=["GET", "POST"])
@@ -400,14 +400,6 @@ def submit():
                            session_key=key, difficulty=difficulty)
     except Exception as e:
         print(f"[WARNING] Learning analysis skipped: {e}")
-
-    # Gamification: award XP (10 per correct answer, +5 completion bonus) and
-    # advance the daily streak. Best-effort — never affects scoring.
-    try:
-        from core.repositories import prefs_repo
-        prefs_repo.record_activity(session.get("user_id"), xp_gain=score * 10 + 5)
-    except Exception as e:
-        print(f"[WARNING] XP/streak update skipped: {e}")
 
     return render_template(
         "result.html", score=score, total=total, details=details, explanations=explanations

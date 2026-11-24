@@ -10,8 +10,6 @@ import { extractText, sampleText, validateFileSize, initPdfWorker, MAX_UPLOAD_SI
 export interface AddResourceData {
   error?: string;
   username: string;
-  streak: number;
-  xp: number;
 }
 
 // Store-only pipeline — no quiz-generation step, ends at "Saved".
@@ -95,7 +93,7 @@ export default function AddResource({ data }: { data: AddResourceData }) {
   }
 
   return (
-    <AppShell active="journey" username={data.username} streak={data.streak} xp={data.xp}>
+    <AppShell active="journey" username={data.username}>
       <div className="max-w-2xl mx-auto px-5 py-10">
         <a href="/journey" className="inline-flex items-center gap-1.5 text-text-3 hover:text-text text-sm mb-6">
           <ArrowLeft className="w-4 h-4" /> Back to Learning Journey

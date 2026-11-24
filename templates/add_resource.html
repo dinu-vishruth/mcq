@@ -22,9 +22,7 @@
        data-page="add-resource"
        data-bootstrap='{{ {
          "error": error | default(""),
-         "username": session.username or "Learner",
-         "streak": session.streak | default(0),
-         "xp": session.xp | default(0)
+         "username": session.username or "Learner"
        } | tojson }}'></div>
 
   <script type="module" src="/static/dist/app.js"></script>

@@ -45,23 +45,6 @@
 
   <div class="sidebar-spacer"></div>
 
-  {% if role == 'student' %}
-  <div class="side-stat">
-    <span class="ss-icon">{{ icon("flame") }}</span>
-    <div>
-      <div class="ss-val">{{ session.streak | default(1) }} day streak</div>
-      <div class="ss-label">Keep it going</div>
-    </div>
-  </div>
-  <div class="side-stat">
-    <span class="ss-icon">{{ icon("spark") }}</span>
-    <div>
-      <div class="ss-val">{{ session.xp | default(0) }} XP</div>
-      <div class="ss-label">Level {{ (session.xp | default(0) // 100) + 1 }}</div>
-    </div>
-  </div>
-  {% endif %}
-
   <div class="storage-meter">
     <div class="row between" style="font-size:0.72rem;color:var(--text-3)">
       <span>Storage</span><span>{{ session.storage_pct | default(18) }}%</span>

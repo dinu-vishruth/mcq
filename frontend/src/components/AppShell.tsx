@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import {
   LayoutDashboard, Compass, FileQuestion, TrendingUp, AlertTriangle,
-  Trophy, Settings, LogOut, GraduationCap, Flame, Zap, Menu, X,
+  RotateCcw, Settings, LogOut, GraduationCap, Menu, X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
@@ -12,8 +12,8 @@ const NAV: NavItem[] = [
   { href: "/journey", label: "Learning Journey", icon: Compass, key: "journey" },
   { href: "/knowledge", label: "Make Quiz & Test", icon: FileQuestion, key: "knowledge" },
   { href: "/progress", label: "Progress", icon: TrendingUp, key: "progress" },
-  { href: "/weak-topics", label: "Weak Topics", icon: AlertTriangle, key: "weak-topics" },
-  { href: "/achievements", label: "Achievements", icon: Trophy, key: "achievements" },
+  { href: "/weak-topics", label: "Topics to revisit", icon: AlertTriangle, key: "weak-topics" },
+  { href: "/review", label: "Review mistakes", icon: RotateCcw, key: "review" },
   { href: "/profile", label: "Settings", icon: Settings, key: "settings" },
 ];
 
@@ -23,11 +23,9 @@ interface Props {
   active: string;
   children: ReactNode;
   username: string;
-  streak?: number;
-  xp?: number;
 }
 
-export function AppShell({ active, children, username, streak = 0, xp = 0 }: Props) {
+export function AppShell({ active, children, username }: Props) {
   const [open, setOpen] = useState(false);
   const initial = (username || "U")[0].toUpperCase();
 
@@ -84,24 +82,6 @@ export function AppShell({ active, children, username, streak = 0, xp = 0 }: Pro
         </nav>
 
         <div className="flex-1" />
-
-        {/* Streak + XP mini-stats */}
-        <div className="space-y-2 mb-3">
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-md bg-white/[0.03]">
-            <span className="grid place-items-center w-8 h-8 rounded-sm bg-warning/10 text-warning"><Flame className="w-4 h-4" /></span>
-            <div>
-              <div className="text-sm font-medium">{streak} day streak</div>
-              <div className="text-text-3 text-xs">Keep it going</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-md bg-white/[0.03]">
-            <span className="grid place-items-center w-8 h-8 rounded-sm bg-violet/10 text-violet"><Zap className="w-4 h-4" /></span>
-            <div>
-              <div className="text-sm font-medium">{xp} XP</div>
-              <div className="text-text-3 text-xs">Level {Math.floor(xp / 100) + 1}</div>
-            </div>
-          </div>
-        </div>
 
         <div className="flex items-center gap-3 pt-3 border-t border-white/[0.06]">
           <a href="/profile" className="flex items-center gap-3 flex-1 min-w-0">

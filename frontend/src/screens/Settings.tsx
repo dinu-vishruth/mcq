@@ -23,13 +23,11 @@ export default function Settings({ data }: { data: SettingsData }) {
   const [goal, setGoal] = useState("");
   const [style, setStyle] = useState("");
   const [minutes, setMinutes] = useState(30);
-  const [xp, setXp] = useState(0);
-  const [streak, setStreak] = useState(0);
   const [prefsSaved, setPrefsSaved] = useState(false);
   const [savingPrefs, setSavingPrefs] = useState(false);
   const [prefsError, setPrefsError] = useState("");
 
-  // Prefs (+ xp/streak) come from the additive /api/prefs endpoint so the
+  // Prefs come from the additive /api/prefs endpoint so the
   // existing /profile route in auth.py stays untouched.
   useEffect(() => {
     let cancelled = false;
@@ -40,8 +38,6 @@ export default function Settings({ data }: { data: SettingsData }) {
         setGoal(p.prefs.goal ?? "");
         setStyle(p.prefs.style ?? "");
         setMinutes(p.prefs.daily_minutes ?? 30);
-        setXp(p.prefs.xp ?? 0);
-        setStreak(p.prefs.streak ?? 0);
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -63,7 +59,7 @@ export default function Settings({ data }: { data: SettingsData }) {
   }
 
   return (
-    <AppShell active="settings" username={data.username} streak={streak} xp={xp}>
+    <AppShell active="settings" username={data.username}>
       <div className="max-w-2xl mx-auto px-5 md:px-8 py-8 md:py-10">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <p className="text-accent-2 text-sm font-medium mb-1">Account</p>

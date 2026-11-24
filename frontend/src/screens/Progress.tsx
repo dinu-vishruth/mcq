@@ -1,8 +1,7 @@
 import { motion } from "framer-motion";
-import { Flame, Zap, Target, Clock, Trophy, Award, TrendingUp, CheckCircle2 } from "lucide-react";
+import { Target, Clock, BookOpen, Check, TrendingUp } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 
 interface WeeklyPoint { label: string; avg: number; count: number; }
@@ -17,8 +16,6 @@ export interface ProgressData {
   heatmap: Record<string, number>;
   weekly: WeeklyPoint[];
   weak_topics: WeakTopic[];
-  xp: number;
-  streak: number;
 }
 
 // Build ~17 weeks (a GitHub-style grid) ending today, using local date math only.
@@ -50,17 +47,8 @@ export default function Progress({ data }: { data: ProgressData }) {
   const maxWeekly = Math.max(1, ...data.weekly.map((w) => w.avg));
   const activeDays = Object.keys(data.heatmap).length;
 
-  const achievements = [
-    { unlocked: data.total_quizzes >= 1, icon: CheckCircle2, label: "First Steps", desc: "Complete a quiz" },
-    { unlocked: data.streak >= 3, icon: Flame, label: "On Fire", desc: "3-day streak" },
-    { unlocked: data.accuracy >= 80, icon: Target, label: "Sharpshooter", desc: "80%+ accuracy" },
-    { unlocked: data.total_quizzes >= 10, icon: Trophy, label: "Dedicated", desc: "10 quizzes done" },
-    { unlocked: data.xp >= 500, icon: Zap, label: "XP Hunter", desc: "500 XP earned" },
-    { unlocked: data.total_answered >= 100, icon: Award, label: "Century", desc: "100 questions" },
-  ];
-
   return (
-    <AppShell active="progress" username={data.username} streak={data.streak} xp={data.xp}>
+    <AppShell active="progress" username={data.username}>
       <div className="max-w-5xl mx-auto px-5 md:px-8 py-8 md:py-10">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <p className="text-accent-2 text-sm font-medium mb-1 flex items-center gap-1.5"><TrendingUp className="w-4 h-4" /> Your journey</p>
@@ -70,8 +58,8 @@ export default function Progress({ data }: { data: ProgressData }) {
         {/* Top stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {[
-            { v: `${data.streak}`, l: "Day Streak", icon: Flame, tone: "text-warning bg-warning/10" },
-            { v: `${data.xp}`, l: `XP · Lvl ${Math.floor(data.xp / 100) + 1}`, icon: Zap, tone: "text-violet bg-violet/10" },
+            { v: `${data.total_quizzes}`, l: "Practice sessions", icon: BookOpen, tone: "text-accent bg-accent/10" },
+            { v: `${data.total_correct}`, l: "Correct answers", icon: Check, tone: "text-success bg-success/10" },
             { v: `${data.accuracy}%`, l: "Accuracy", icon: Target, tone: "text-success bg-success/10" },
             { v: data.total_time >= 60 ? `${Math.floor(data.total_time / 60)}m` : `${data.total_time}s`, l: "Study Time", icon: Clock, tone: "text-accent bg-accent/10" },
           ].map((s, i) => {
@@ -142,21 +130,21 @@ export default function Progress({ data }: { data: ProgressData }) {
             )}
           </Card>
 
-          {/* Topic mastery */}
+          {/* Topic evidence */}
           <Card>
-            <h2 className="text-lg">Topic Mastery</h2>
-            <p className="text-text-3 text-sm mb-4 -mt-2">Where to focus next</p>
+            <h2 className="text-lg">Topic evidence</h2>
+            <p className="text-text-3 text-sm mb-4 -mt-2">Estimates from recorded answers; question sets may differ.</p>
             {data.weak_topics.length ? (
               <div className="space-y-3">
                 {data.weak_topics.slice(0, 6).map((w) => {
-                  const mastery = 100 - w.pct;
+                  const accuracy = 100 - w.pct;
                   return (
                     <div key={w.topic}>
                       <div className="flex items-center justify-between mb-1.5">
                         <strong className="text-sm">{w.topic}</strong>
-                        <span className="text-text-3 text-xs">{mastery}% mastered</span>
+                        <span className="text-text-3 text-xs">{accuracy}% correct across {w.total} answers</span>
                       </div>
-                      <ProgressBar pct={mastery} tone={mastery >= 60 ? "success" : "danger"} />
+                      <ProgressBar pct={accuracy} tone={accuracy >= 60 ? "success" : "danger"} />
                     </div>
                   );
                 })}
@@ -167,31 +155,7 @@ export default function Progress({ data }: { data: ProgressData }) {
           </Card>
         </div>
 
-        {/* Achievements */}
-        <h2 className="text-lg mb-3">Achievements</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          {achievements.map((a, i) => {
-            const Icon = a.icon;
-            return (
-              <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-                <Card className={a.unlocked ? "" : "opacity-50"}>
-                  <div className="flex items-center gap-3">
-                    <span className={`grid place-items-center w-11 h-11 rounded-md ${a.unlocked ? "bg-warning/12 text-warning" : "bg-white/5 text-text-3"}`}>
-                      <Icon className="w-5 h-5" />
-                    </span>
-                    <div>
-                      <div className="text-sm font-medium flex items-center gap-1.5">
-                        {a.label}
-                        {a.unlocked && <Badge tone="success" className="!px-1.5 !py-0.5">✓</Badge>}
-                      </div>
-                      <div className="text-text-3 text-xs">{a.desc}</div>
-                    </div>
-                  </div>
-                </Card>
-              </motion.div>
-            );
-          })}
-        </div>
+        <Card><h2 className="text-lg">What changed in your understanding?</h2><p className="text-text-2 mt-2 mb-3">See earlier mistakes you have corrected and questions worth another attempt.</p><a href="/review" className="text-accent">Review learning evidence &rarr;</a></Card>
       </div>
     </AppShell>
   );

@@ -16,8 +16,8 @@ interface WeakItem {
 
 const SEV: Record<string, { tone: "danger" | "warning" | "success"; label: string }> = {
   high: { tone: "danger", label: "Needs work" },
-  medium: { tone: "warning", label: "Shaky" },
-  low: { tone: "success", label: "Almost there" },
+  medium: { tone: "warning", label: "Review suggested" },
+  low: { tone: "success", label: "Lower miss rate" },
 };
 
 export default function WeakTopics({ data }: { data: { username: string } }) {
@@ -57,10 +57,10 @@ export default function WeakTopics({ data }: { data: { username: string } }) {
     <AppShell active="weak-topics" username={data.username}>
       <div className="max-w-4xl mx-auto px-5 lg:px-8 py-8">
         <h1 className="font-display text-2xl font-semibold flex items-center gap-2.5">
-          <AlertTriangle className="w-6 h-6 text-warning" /> Weak Topics
+          <AlertTriangle className="w-6 h-6 text-warning" /> Topics to revisit
         </h1>
         <p className="text-text-2 mt-1.5 mb-8">
-          Your coach tracks concepts you miss and points you to the fastest way to fix them.
+          Based on recorded answers. These patterns estimate what to revisit; they do not measure mastery.
         </p>
 
         {error && <div className="mb-4 text-danger text-sm bg-danger/8 border border-danger/20 rounded-md px-4 py-3">{error}</div>}

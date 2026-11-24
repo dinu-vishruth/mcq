@@ -18,14 +18,9 @@ import sqlite3
 from typing import Any
 
 
-def level_for_xp(xp: int) -> int:
-    """100 XP per level, starting at level 1."""
-    return xp // 100 + 1
-
-
 def load_prefs(conn: sqlite3.Connection, user_id: int) -> dict[str, Any] | None:
     row = conn.execute(
-        "SELECT goal, style, daily_minutes, xp, streak, onboarded FROM user_prefs WHERE user_id=?",
+        "SELECT goal, style, daily_minutes, onboarded FROM user_prefs WHERE user_id=?",
         (user_id,),
     ).fetchone()
     return dict(row) if row is not None else None
@@ -39,7 +34,7 @@ def study_recommendations(weak: list[dict], prefs: dict | None, total_quizzes: i
         recs.append({
             "kind": "revision",
             "title": f"Revise {top['topic']}",
-            "reason": f"Your weakest topic — {top['pct']}% miss rate.",
+            "reason": f"Based on your saved answers — {top['pct']}% miss rate.",
             "cta": "Quick Revision",
         })
     if total_quizzes == 0:
@@ -132,9 +127,8 @@ def build_dashboard(conn: sqlite3.Connection, user_id: int, username: str) -> di
     prefs = load_prefs(conn, user_id) or {}
     weak = _weak_topics(user_id, limit=5)
 
-    # XP falls back to a 10-per-correct-answer heuristic when prefs aren't seeded.
-    xp = prefs.get("xp") or (total_correct * 10)
-    streak = prefs.get("streak") or 0
+    from .review import build_review
+    learning = build_review(conn, user_id, username)["summary"]
 
     recent = [
         {
@@ -153,9 +147,7 @@ def build_dashboard(conn: sqlite3.Connection, user_id: int, username: str) -> di
         "total_time": total_time,
         "total_correct": total_correct,
         "total_answered": total_answered,
-        "streak": streak,
-        "xp": xp,
-        "level": level_for_xp(xp),
+        "learning": learning,
         "knowledge_count": doc_count,
         "goal": prefs.get("goal", ""),
         "daily_minutes": prefs.get("daily_minutes", 30),
