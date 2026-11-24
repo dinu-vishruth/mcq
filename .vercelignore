@@ -34,6 +34,8 @@ __pycache__/
 
 # Dev-only
 tests/
+# This file configures pytest/ruff only; install runtime deps from requirements.txt.
+pyproject.toml
 .env
 .env*
 .git/
