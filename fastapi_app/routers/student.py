@@ -382,7 +382,8 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     from core.services.personalization import learning_profile
     try:
         with learning_profile(user.id):
-            explanations = explanation_engine.explain_answers(details)
+            from starlette.concurrency import run_in_threadpool
+            explanations = await run_in_threadpool(explanation_engine.explain_answers, details)
     except Exception:
         explanations = ["Explanation is temporarily unavailable." for _ in details]
 
@@ -392,8 +393,10 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
         difficulty_row = conn.execute(
             "SELECT difficulty FROM sessions WHERE session_key=?", (key,)
         ).fetchone()
+        from starlette.concurrency import run_in_threadpool
+
         from core.services.learning_service import analyse_submission
-        analyse_submission(
+        await run_in_threadpool(analyse_submission,
             details, user_id=user.id, session_key=key,
             difficulty=(difficulty_row["difficulty"] if difficulty_row else None) or "medium",
         )

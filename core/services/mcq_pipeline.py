@@ -14,6 +14,7 @@ from core.agents.planner import PlannerAgent
 from core.agents.question import QuestionAgent
 from core.agents.retriever import RetrieverAgent
 from core.observability import log_event, timed
+from core.services.generation_budget import check, generation_scope, remaining
 from core.services.ingestion_service import ingest_document
 from core.services.mcq_quality import accept_candidates
 
@@ -29,6 +30,7 @@ def _retrieval_query(difficulty: str, topic: str | None) -> str:
     return f"The most important concepts, facts and relationships for {difficulty} exam questions."
 
 
+@generation_scope
 def _collect_mcqs(context: str, num_questions: int, difficulty: str,
                   *, deadline_seconds: int | None = None, on_progress=None,
                   topic: str | None = None, candidate_generator=None,
@@ -42,16 +44,16 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
     collected = list(accepted or [])
     generate = candidate_generator or QuestionAgent().run
     rounds = max_attempts if max_attempts is not None else _max_attempts(num_questions)
-    budget = deadline_seconds if deadline_seconds is not None else config.PIPELINE_DEADLINE_SECONDS
-    deadline = time.monotonic() + max(1, budget - config.LLM_TIMEOUT)
+    # The outer request owns the deadline; the local argument only creates it at entry.
     started = time.perf_counter()
     attempts = 0
     for attempt in range(rounds):
         need = num_questions - len(collected)
-        if need <= 0 or (attempt > 0 and time.monotonic() >= deadline):
+        if need <= 0 or (remaining(reserve=4) is not None and remaining(reserve=4) <= 0):
             break
         attempts += 1
         try:
+            check()
             with timed("question", attempt=attempt + 1, requested=need) as stage:
                 raw = generate(context, need, difficulty, topic=topic, excluded=tuple(collected))
                 stage["mcqs"] = len(raw) if isinstance(raw, list) else 0
@@ -59,6 +61,7 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
                 result = accept_candidates(raw, context, difficulty, topic=topic, excluded=collected)
                 stage.update(accepted=len(result.accepted), rejected=len(result.rejected),
                              unverified=len(result.unverified))
+            check()
             collected.extend(result.accepted[:need])
         except Exception as exc:
             log_event("pipeline.attempt_failed", error_type=type(exc).__name__, collected=len(collected))
@@ -86,18 +89,23 @@ def _require_source(context, num_questions, difficulty):
             raise MCQGenerationError("The source could not be verified as sufficient. Try fewer questions or different material.")
 
 
+@generation_scope
 def _generate_checked(context, num_questions, difficulty, *, topic=None,
                       deadline_seconds=None, on_progress=None):
     _require_source(context, num_questions, difficulty)
     collected = _collect_mcqs(context, num_questions, difficulty, topic=topic,
                               deadline_seconds=deadline_seconds, on_progress=on_progress)
-    if len(collected) < num_questions:
+    if len(collected) < num_questions and (remaining(reserve=4) is None or remaining(reserve=4) > 0):
         collected = _legacy_fallback(context, num_questions, difficulty, topic=topic,
                                      accepted=collected, on_progress=on_progress,
                                      deadline_seconds=deadline_seconds, source_checked=True)
+    if not collected:
+        from models.mcq_generator import MCQGenerationError
+        raise MCQGenerationError("No verified questions completed within the generation budget.")
     return collected
 
 
+@generation_scope
 def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medium",
                       *, owner: str = "", title: str = "", user_request: str = "") -> list[dict]:
     plan = PlannerAgent().run(user_request) if user_request else None
@@ -118,6 +126,7 @@ def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medi
     return _generate_checked(context, num_questions, difficulty, topic=topic)
 
 
+@generation_scope
 def generate_from_text(text: str, num_questions: int = 5, difficulty: str = "medium",
                        *, topic: str | None = None) -> list[dict]:
     context = text[:config.CONTEXT_MAX_CHARS]
@@ -127,6 +136,7 @@ def generate_from_text(text: str, num_questions: int = 5, difficulty: str = "med
     return _legacy_from_context(context, num_questions, difficulty, topic=topic)
 
 
+@generation_scope
 def generate_from_document(document_id: int, num_questions: int = 5,
                            difficulty: str = "medium", *, topic: str | None = None,
                            deadline_seconds: int | None = None, on_progress=None) -> list[dict]:
@@ -144,12 +154,14 @@ def generate_from_document(document_id: int, num_questions: int = 5,
                              deadline_seconds=deadline_seconds, on_progress=on_progress)
 
 
+@generation_scope
 def _legacy_from_context(context, num_questions, difficulty, *, topic=None,
                          deadline_seconds=None, on_progress=None) -> list[dict]:
     return _legacy_fallback(context, num_questions, difficulty, topic=topic,
                             deadline_seconds=deadline_seconds, on_progress=on_progress)
 
 
+@generation_scope
 def _legacy_fallback(text, num_questions, difficulty, reason: str = "", *, topic=None,
                      accepted=None, deadline_seconds=None, on_progress=None,
                      source_checked=False) -> list[dict]:

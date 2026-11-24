@@ -38,7 +38,7 @@ export function csrfToken(): string {
 // centralize it. Mutations automatically attach the CSRF header expected by the
 // Flask-WTF-protected /api endpoints.
 export async function apiGet<T = any>(path: string): Promise<T> {
-  const res = await fetch(path, { headers: { Accept: "application/json" } });
+  const res = await fetch(path, { signal: AbortSignal.timeout(65000), headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
   return res.json();
 }
@@ -50,6 +50,7 @@ export async function apiSend<T = any>(
 ): Promise<T> {
   const res = await fetch(path, {
     method,
+    signal: AbortSignal.timeout(65000),
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",

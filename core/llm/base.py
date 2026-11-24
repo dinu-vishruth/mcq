@@ -14,7 +14,10 @@ from __future__ import annotations
 import abc
 import json
 import logging
+from contextvars import ContextVar
 from typing import Any
+
+from core.services.generation_budget import generation_scope
 
 
 class LLMError(Exception):
@@ -40,7 +43,15 @@ class LLMProvider(abc.ABC):
         self.temperature = temperature
         #: Raw provider usage dict from the most recent successful call (None
         #: when the provider didn't report it). Read by complete() for logging.
-        self.last_usage: dict | None = None
+        self._usage = ContextVar(f"llm_usage_{id(self)}", default=None)
+
+    @property
+    def last_usage(self):
+        return self._usage.get()
+
+    @last_usage.setter
+    def last_usage(self, value):
+        self._usage.set(value)
 
     @abc.abstractmethod
     def _complete_once(self, messages: list[dict], *, temperature: float | None = None,
@@ -49,6 +60,7 @@ class LLMProvider(abc.ABC):
         RateLimitError on HTTP 429 so the retry layer in complete() can back off."""
         raise NotImplementedError
 
+    @generation_scope
     def complete(self, messages: list[dict], *, temperature: float | None = None,
                  max_tokens: int | None = None, json_mode: bool = False) -> str:
         """Return the assistant's raw text, retrying on 429 with exponential
@@ -69,8 +81,11 @@ class LLMProvider(abc.ABC):
         provider = getattr(self, "provider_id", "unknown")
         prompt_chars = sum(len(m.get("content") or "") for m in messages)
 
+        from core.services.generation_budget import check, remaining
+
         attempt = 0
         while True:
+            check()
             self.last_usage = None
             started = time.perf_counter()
             try:
@@ -87,7 +102,12 @@ class LLMProvider(abc.ABC):
                     raise
                 # Prefer the provider's own hint; else exponential backoff.
                 wait = e.retry_after if e.retry_after is not None else base * (2 ** attempt)
-                wait = min(wait, max_wait)
+                if e.retry_after is None:
+                    wait = min(wait, max_wait)
+                available = remaining(reserve=4)
+                if available is not None and wait + 0.1 >= available:
+                    raise
+                # Never retry earlier than Retry-After; caller may retry later.
                 attempt += 1
                 log_event("llm.retry", provider=provider, model=self.model,
                           attempt=attempt, max_retries=max_retries,
@@ -126,8 +146,15 @@ class LLMProvider(abc.ABC):
             val = resp.headers.get("Retry-After") or resp.headers.get("retry-after")
             if val is None:
                 return None
-            return max(0.0, float(val))
-        except (TypeError, ValueError):
+            import math
+            from datetime import datetime, timezone
+            from email.utils import parsedate_to_datetime
+            try:
+                seconds = float(val)
+            except ValueError:
+                seconds = (parsedate_to_datetime(val) - datetime.now(timezone.utc)).total_seconds()
+            return max(0.0, seconds) if math.isfinite(seconds) else None
+        except (TypeError, ValueError, OverflowError):
             return None
 
     # -- helpers -----------------------------------------------------------

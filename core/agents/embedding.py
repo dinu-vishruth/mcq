@@ -77,7 +77,8 @@ class EmbeddingAgent(Agent):
         try:
             q = ",".join("?" * len(hashes))
             rows = conn.execute(
-                f"SELECT content_hash FROM embeddings WHERE content_hash IN ({q})", hashes
+                f"SELECT content_hash FROM embeddings WHERE model=? AND dim=? AND content_hash IN ({q})",
+                [get_embedder().backend_id, get_embedder().dim, *hashes]
             ).fetchall()
             return {r["content_hash"] for r in rows}
         finally:

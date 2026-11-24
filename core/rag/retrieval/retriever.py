@@ -65,7 +65,13 @@ class Retriever:
             return []
 
         if use_mmr and len(hits) > top_k:
-            cand_vecs = [embedder.embed(h.content) for h in hits]
+            cand_vecs = [getattr(h, "vector", None) for h in hits]
+            missing = [i for i, v in enumerate(cand_vecs) if v is None]
+            if missing:
+                # Backends without returned vectors pay one batch, never N calls.
+                vectors = embedder.embed_batch([hits[i].content for i in missing])
+                for i, vector in zip(missing, vectors, strict=True):
+                    cand_vecs[i] = vector
             idxs = mmr_select(qv, cand_vecs, top_k)
             hits = [hits[i] for i in idxs]
 

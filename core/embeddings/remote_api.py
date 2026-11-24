@@ -13,6 +13,7 @@ import requests
 
 import config
 from core.embeddings.base import Embedder
+from core.services.generation_budget import network_timeout
 
 
 def _l2(vec: list[float]) -> list[float]:
@@ -47,7 +48,7 @@ class RemoteAPIEmbedder(Embedder):
             "https://api.openai.com/v1/embeddings",
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             json={"model": self.model, "input": texts},
-            timeout=config.LLM_TIMEOUT,
+            timeout=network_timeout(config.LLM_TIMEOUT),
         )
         resp.raise_for_status()
         data = sorted(resp.json()["data"], key=lambda d: d["index"])
@@ -59,7 +60,7 @@ class RemoteAPIEmbedder(Embedder):
             url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
                    f"{self.model}:embedContent?key={self.api_key}")
             resp = requests.post(url, json={"content": {"parts": [{"text": t}]}},
-                                 timeout=config.LLM_TIMEOUT)
+                                 timeout=network_timeout(config.LLM_TIMEOUT))
             resp.raise_for_status()
             out.append(_l2(resp.json()["embedding"]["values"]))
         return out

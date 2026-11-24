@@ -63,7 +63,10 @@ class SqliteNumpyStore(VectorStore):
 
                 # Upsert embedding keyed by content_hash (shared cache across docs).
                 row = conn.execute("SELECT id FROM embeddings WHERE content_hash=?", (chash,)).fetchone()
-                if row is None:
+                if row is not None:
+                    conn.execute("UPDATE embeddings SET model=?,dim=?,vector=? WHERE content_hash=?",
+                                 (self.model_id, self.dim, _to_blob(vector), chash))
+                else:
                     conn.execute(
                         "INSERT INTO embeddings (content_hash, model, dim, vector) VALUES (?, ?, ?, ?)",
                         (chash, self.model_id, self.dim, _to_blob(vector)),
@@ -76,7 +79,7 @@ class SqliteNumpyStore(VectorStore):
         conn = get_db()
         try:
             rows = conn.execute(
-                "SELECT c.chunk_index, c.content, e.vector "
+                "SELECT c.chunk_index, c.content, e.vector, e.model, e.dim "
                 "FROM chunks c JOIN embeddings e ON c.content_hash = e.content_hash "
                 "WHERE c.document_id=? ORDER BY c.chunk_index",
                 (document_id,),
@@ -87,6 +90,8 @@ class SqliteNumpyStore(VectorStore):
         if not rows:
             return []
 
+        if any(r["model"] != self.model_id or r["dim"] != self.dim for r in rows):
+            raise ValueError("Embedding model changed. Re-index this resource before generating a quiz.")
         mat = np.vstack([_from_blob(r["vector"]) for r in rows])
         q = np.asarray(query_vector, dtype="float32")
         qn = np.linalg.norm(q)
@@ -103,6 +108,7 @@ class SqliteNumpyStore(VectorStore):
                 chunk_index=int(rows[i]["chunk_index"]),
                 content=rows[i]["content"],
                 score=float(scores[i]),
+                vector=mat[i].tolist(),
             )
             for i in top_idx
         ]
@@ -110,12 +116,11 @@ class SqliteNumpyStore(VectorStore):
     def has_document(self, document_id: int) -> bool:
         conn = get_db()
         try:
-            r = conn.execute(
-                "SELECT 1 FROM chunks c JOIN embeddings e ON c.content_hash=e.content_hash "
-                "WHERE c.document_id=? LIMIT 1",
+            rows = conn.execute(
+                "SELECT e.model,e.dim FROM chunks c JOIN embeddings e ON c.content_hash=e.content_hash WHERE c.document_id=?",
                 (document_id,),
-            ).fetchone()
-            return r is not None
+            ).fetchall()
+            return bool(rows) and all(r["model"] == self.model_id and r["dim"] == self.dim for r in rows)
         finally:
             conn.close()
 

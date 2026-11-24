@@ -99,41 +99,46 @@ def run_generation_job(job_id: str) -> None:
     timer = int(params.get("timer") or 600)
     deadline = int(params.get("deadline_seconds") or config.GENERATION_JOB_DEADLINE_SECONDS)
 
-    job_repo.set_running(job_id)
+    if not job_repo.claim(job_id):
+        return
     started = time.perf_counter()
     log_event("job.started", job_id=job_id, document_id=job["document_id"],
               requested=num_questions, difficulty=difficulty, deadline_seconds=deadline)
     try:
-        with timed("job.generate", job_id=job_id, document_id=job["document_id"]) as stage:
-            from core.services.personalization import learning_profile
-            with learning_profile(job["user_id"]):
-                mcqs = generate_from_document(
-                    job["document_id"],
-                    num_questions=num_questions,
-                    difficulty=difficulty,
-                    topic=topic,
-                    deadline_seconds=deadline,
-                    on_progress=lambda n: job_repo.set_progress(job_id, n),
-                )
-            stage["mcqs"] = len(mcqs)
-        if not mcqs:
-            raise ValueError("No questions generated. Try different settings.")
+        from core.services.generation_admission import admission
+        from core.services.generation_budget import budget, check
+        with budget(deadline), admission(job["username"], seconds=deadline, charge=False):
+            with timed("job.generate", job_id=job_id, document_id=job["document_id"]) as stage:
+                from core.services.personalization import learning_profile
+                with learning_profile(job["user_id"]):
+                    mcqs = generate_from_document(
+                        job["document_id"],
+                        num_questions=num_questions,
+                        difficulty=difficulty,
+                        topic=topic,
+                        deadline_seconds=deadline,
+                        on_progress=lambda n: job_repo.set_progress(job_id, n),
+                    )
+                stage["mcqs"] = len(mcqs)
+            if not mcqs:
+                raise ValueError("No questions generated. Try different settings.")
 
-        session_key = create_session_key(
-            teacher=job["username"], difficulty=difficulty, timer=timer, mcqs=mcqs,
-            document_id=job["document_id"],
-        )
-        job_repo.set_done(job_id, {
-            "session_key": session_key,
-            "count": len(mcqs),
-            "requested_count": num_questions,
-            "partial": len(mcqs) < num_questions,
-            "quality_policy": "verified_only",
-            "mcqs": mcqs,
-        })
-        log_event("job.completed", job_id=job_id, document_id=job["document_id"],
-                  count=len(mcqs),
-                  duration_ms=round((time.perf_counter() - started) * 1000, 2))
+            check(reserve=0)
+            session_key = create_session_key(
+                teacher=job["username"], difficulty=difficulty, timer=timer, mcqs=mcqs,
+                document_id=job["document_id"],
+            )
+            job_repo.set_done(job_id, {
+                "session_key": session_key,
+                "count": len(mcqs),
+                "requested_count": num_questions,
+                "partial": len(mcqs) < num_questions,
+                "quality_policy": "verified_only",
+                "mcqs": mcqs,
+            })
+            log_event("job.completed", job_id=job_id, document_id=job["document_id"],
+                      count=len(mcqs),
+                      duration_ms=round((time.perf_counter() - started) * 1000, 2))
     except Exception as exc:
         job_repo.set_failed(job_id, str(exc))
         log_event("job.failed", level=logging.ERROR, job_id=job_id,

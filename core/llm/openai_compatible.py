@@ -12,6 +12,7 @@ from __future__ import annotations
 import requests
 
 from core.llm.base import LLMError, LLMProvider, RateLimitError
+from core.services.generation_budget import network_timeout
 
 # Canonical base URLs per provider id.
 BASE_URLS = {
@@ -61,7 +62,7 @@ class OpenAICompatibleProvider(LLMProvider):
 
         try:
             resp = requests.post(f"{self.base_url}/chat/completions",
-                                 headers=headers, json=payload, timeout=self.timeout)
+                                 headers=headers, json=payload, timeout=network_timeout(self.timeout))
         except requests.exceptions.Timeout:
             raise LLMError("The request to the AI API timed out. Please try again with a shorter text.")
         except requests.exceptions.RequestException as re:

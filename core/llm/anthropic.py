@@ -11,6 +11,7 @@ from __future__ import annotations
 import requests
 
 from core.llm.base import LLMError, LLMProvider, RateLimitError
+from core.services.generation_budget import network_timeout
 
 URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
@@ -53,7 +54,7 @@ class AnthropicProvider(LLMProvider):
         }
 
         try:
-            resp = requests.post(URL, headers=headers, json=payload, timeout=self.timeout)
+            resp = requests.post(URL, headers=headers, json=payload, timeout=network_timeout(self.timeout))
         except requests.exceptions.Timeout:
             raise LLMError("The request to the AI API timed out. Please try again with a shorter text.")
         except requests.exceptions.RequestException as re:

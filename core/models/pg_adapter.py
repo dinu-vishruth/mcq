@@ -70,7 +70,14 @@ def open_postgres(database_url: str) -> "_PgConnection":
             "DATABASE_URL is set but psycopg is not installed. "
             "Install it with: pip install 'psycopg[binary]'"
         )
-    conn = psycopg.connect(database_url, row_factory=dict_row, autocommit=False)
+    import math
+
+    from core.services.generation_budget import remaining
+    seconds = remaining()
+    cap = 30 if seconds is None else max(0.05, min(30, seconds))
+    conn = psycopg.connect(database_url, row_factory=dict_row, autocommit=False,
+                           connect_timeout=max(2, math.ceil(cap)),
+                           options=f"-c statement_timeout={max(1, int(cap * 1000))}")
     return _PgConnection(conn)
 
 

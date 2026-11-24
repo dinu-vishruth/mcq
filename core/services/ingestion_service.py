@@ -31,7 +31,8 @@ def ingest_document(raw_text: str, *, owner: str = "", title: str = "",
     # which previously left the second uploader with no row and an empty library.
     dh = document_repo.doc_hash(processed.text)
     existing = document_repo.find_by_hash(dh, owner=owner)
-    if existing is not None and existing["status"] == "ready":
+    from core.vectorstore import get_vector_store
+    if existing is not None and existing["status"] == "ready" and get_vector_store().has_document(existing["id"]):
         return {"document_id": existing["id"], "reused": True,
                 "chunk_count": existing["chunk_count"], "embed_stats": None}
 

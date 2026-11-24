@@ -10,6 +10,7 @@ from __future__ import annotations
 import requests
 
 from core.llm.base import LLMError, LLMProvider, RateLimitError
+from core.services.generation_budget import network_timeout
 
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -43,7 +44,7 @@ class GeminiProvider(LLMProvider):
 
         url = f"{BASE_URL}/{self.model}:generateContent?key={self.api_key}"
         try:
-            resp = requests.post(url, json=payload, timeout=self.timeout)
+            resp = requests.post(url, json=payload, timeout=network_timeout(self.timeout))
         except requests.exceptions.Timeout:
             raise LLMError("The request to the AI API timed out. Please try again with a shorter text.")
         except requests.exceptions.RequestException as re:

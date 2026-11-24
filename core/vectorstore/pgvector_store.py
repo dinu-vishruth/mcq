@@ -84,7 +84,7 @@ class PgVectorStore(VectorStore):
         conn = self._one()
         try:
             cur = conn.execute(
-                "SELECT chunk_index, content, 1 - (embedding <=> ?::vector) AS score "
+                "SELECT chunk_index, content, embedding::text AS stored_vector, 1 - (embedding <=> ?::vector) AS score "
                 "FROM chunk_vectors WHERE document_id = ? "
                 "ORDER BY embedding <=> ?::vector LIMIT ?",
                 (
@@ -102,6 +102,7 @@ class PgVectorStore(VectorStore):
                     chunk_index=row["chunk_index"],
                     content=row["content"],
                     score=float(row["score"]),
+                    vector=__import__("json").loads(row["stored_vector"]),
                 )
                 for row in rows
             ]

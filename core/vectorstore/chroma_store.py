@@ -43,8 +43,10 @@ class ChromaStore(VectorStore):
         n = col.count()
         if n == 0:
             return []
-        res = col.query(query_embeddings=[query_vector], n_results=min(top_k, n))
+        res = col.query(query_embeddings=[query_vector], n_results=min(top_k, n), include=["documents", "metadatas", "distances", "embeddings"])
         hits = []
+        vectors = res.get("embeddings")
+        vectors = vectors[0] if vectors is not None else []
         ids = res.get("ids", [[]])[0]
         docs = res.get("documents", [[]])[0]
         metas = res.get("metadatas", [[]])[0]
@@ -59,6 +61,7 @@ class ChromaStore(VectorStore):
                 chunk_index=int(meta.get("chunk_index", i)),
                 content=docs[i] if i < len(docs) else "",
                 score=score,
+                vector=list(vectors[i]) if i < len(vectors) else None,
             ))
         return hits
 

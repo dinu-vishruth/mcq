@@ -274,6 +274,16 @@ def quiz_upload(upload_id: str, user: CurrentApiUser):
 
 @router.post("/practice/generate")
 def practice_generate(user: CurrentApiUser, payload: PracticeIn):
+    import config
+    from core.services.generation_budget import GenerationDeadlineExceeded, budget
+    try:
+        with budget(config.PIPELINE_DEADLINE_SECONDS):
+            return _admit_generation(user, payload)
+    except GenerationDeadlineExceeded as exc:
+        raise HTTPException(504, str(exc))
+
+
+def _admit_generation(user, payload):
     """Generate an MCQ set from an indexed Knowledge document and create a session.
 
     Reuses the RAG/agent pipeline (falling back to legacy when a document has no
@@ -290,9 +300,8 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
     session_key; the client polls GET /api/jobs/{id}. The default inline mode
     keeps the original response shape unchanged -- see README "Compatibility".
     """
-    from core.repositories import document_repo, job_repo, quiz_upload_repo
+    from core.repositories import document_repo, quiz_upload_repo
     from core.services.generation_status import require_generation
-    from core.services.personalization import learning_profile
 
     source = None
     if payload.upload_id:
@@ -315,12 +324,27 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
     if throttle_message:
         raise HTTPException(status_code=429, detail=throttle_message)
 
+    import config
+    from core.services.generation_admission import GenerationBusy, admission
+    from core.services.generation_budget import GenerationDeadlineExceeded, budget
+    try:
+        with budget(config.PIPELINE_DEADLINE_SECONDS), admission(user.username, seconds=config.PIPELINE_DEADLINE_SECONDS):
+            return _execute_generation(user, payload, source)
+    except GenerationBusy as exc:
+        raise HTTPException(429, str(exc))
+    except GenerationDeadlineExceeded as exc:
+        raise HTTPException(504, str(exc))
+
+
+def _execute_generation(user, payload, source):
+    from core.repositories import job_repo, quiz_upload_repo
+    from core.services.generation_budget import check
     from core.services.job_runner import (
         create_job,
         enqueue_job,
         generation_backend,
-        run_generation_job,
     )
+    from core.services.personalization import learning_profile
 
     if source is not None:
         # One-off text never enters document ingestion, embeddings or Library.
@@ -333,6 +357,7 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
                                           payload.difficulty, topic=payload.topic)
             if not mcqs:
                 raise ValueError("No questions generated. Try different settings.")
+            check(reserve=0)
             session_key = create_session_key(
                 teacher=user.username, difficulty=payload.difficulty,
                 timer=payload.timer, mcqs=mcqs,
@@ -353,18 +378,8 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
         )
         if enqueue_job(job_id):
             return {"ok": True, "job_id": job_id, "status": "queued"}
-        # Redis/queue hiccup: still do the work rather than fail the request.
-        try:
-            run_generation_job(job_id)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=str(exc))
-        job = job_repo.get(job_id) or {}
-        result = job_repo.public_view(job).get("result") or {}
-        return {"ok": True, "session_key": result.get("session_key"),
-                "count": result.get("count", 0), "job_id": job_id,
-                "requested_count": payload.num_questions,
-                "partial": result.get("count", 0) < payload.num_questions,
-                "quality_policy": "verified_only"}
+        job_repo.set_failed(job_id, "Generation queue unavailable. Please retry shortly.")
+        raise HTTPException(503, "Generation queue unavailable. Please retry shortly.")
 
     try:
         from core.services.mcq_pipeline import generate_from_document
@@ -383,6 +398,7 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
 
     from utils.session_manager import create_session_key
 
+    check(reserve=0)
     session_key = create_session_key(
         teacher=user.username, difficulty=payload.difficulty, timer=payload.timer, mcqs=mcqs,
         document_id=payload.document_id,

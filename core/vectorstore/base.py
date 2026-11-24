@@ -18,6 +18,7 @@ class SearchHit:
     chunk_index: int
     content: str
     score: float           # cosine similarity in [-1, 1]
+    vector: list[float] | None = None
 
 
 class VectorStore(abc.ABC):

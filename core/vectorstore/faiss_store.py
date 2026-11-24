@@ -72,6 +72,7 @@ class FaissStore(VectorStore):
                 chunk_index=int(rows[ci]["chunk_index"]),
                 content=rows[ci]["content"],
                 score=float(scores[0][rank]),
+                vector=index.reconstruct(int(ci)).tolist(),
             ))
         return hits
 

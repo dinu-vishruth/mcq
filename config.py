@@ -389,3 +389,6 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1500"))      # chars per chunk
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "80"))   # char overlap
 RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "8"))
 CONTEXT_MAX_CHARS = int(os.getenv("CONTEXT_MAX_CHARS", "12000"))
+
+# Maximum generation jobs executing against the configured provider at once.
+GENERATION_MAX_CONCURRENT = int(os.getenv("GENERATION_MAX_CONCURRENT", "4"))

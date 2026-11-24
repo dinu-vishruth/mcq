@@ -30,7 +30,10 @@ CONNECT_TIMEOUT_SECONDS = 30
 
 
 def open_connection(db_path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path, timeout=CONNECT_TIMEOUT_SECONDS)
+    from core.services.generation_budget import remaining
+    seconds = remaining()
+    wait = CONNECT_TIMEOUT_SECONDS if seconds is None else max(0.05, min(CONNECT_TIMEOUT_SECONDS, seconds))
+    conn = sqlite3.connect(db_path, timeout=wait)
     conn.row_factory = sqlite3.Row
     # WAL lets readers proceed while a writer commits. Persistent per file, but
     # cheap to re-assert and correct even for a database created in journal mode.

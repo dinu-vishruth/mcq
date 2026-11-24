@@ -84,7 +84,9 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
         topic: topic.trim() || undefined,
         timer: timerMinutes * 60,
       });
+      const stopPollingAt = Date.now() + 16 * 60 * 1000;
       while (!res.session_key && res.job_id) {
+        if (Date.now() >= stopPollingAt) throw new Error("Generation is taking longer than expected. Check your progress later or try again.");
         await new Promise((resolve) => setTimeout(resolve, 1500));
         const job = await apiGet<{ status: string; error?: string; result?: { session_key: string } }>(`/api/jobs/${res.job_id}`);
         if (job.status === "failed") throw new Error(job.error || "Quiz generation failed. Please retry.");

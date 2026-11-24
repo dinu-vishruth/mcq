@@ -186,9 +186,9 @@ class TestSharedQuality(unittest.TestCase):
             candidate = mcq()
             candidate['options'][1]['text'] = duplicate
             self.assertEqual(QualityAssuranceAgent().run([candidate])[0], [])
-        # Retry-After handling is deliberately unchanged in Phase 1.
-        response = Mock(headers={'Retry-After': 'Wed, 25 Nov 2026 00:00:00 GMT'})
-        self.assertIsNone(LLMProvider._parse_retry_after(response))
+        # Phase 2 parses HTTP-date Retry-After values.
+        response = Mock(headers={'Retry-After': 'Wed, 25 Nov 2099 00:00:00 GMT'})
+        self.assertGreater(LLMProvider._parse_retry_after(response), 0)
 
     def test_metadata_and_quote_required_for_fresh_generation(self):
         for changes in [{'explanation': None}, {'source_hint': None}, {'source_hint': 'invented quote'}]:

@@ -65,10 +65,11 @@ class TestRetry(unittest.TestCase):
         p.complete_json([{"role": "user", "content": "hi"}])
         self.assertEqual(self.waits, [5.0])          # used the provider's hint
 
-    def test_retry_after_capped_by_max_wait(self):
+    def test_retry_after_beyond_budget_fails_without_retrying_early(self):
         p = _FlakyProvider(fail_times=1, retry_after=999.0)
-        p.complete_json([{"role": "user", "content": "hi"}])
-        self.assertEqual(self.waits, [8.0])          # clamped to LLM_RETRY_MAX_WAIT
+        with self.assertRaises(RateLimitError):
+            p.complete_json([{"role": "user", "content": "hi"}])
+        self.assertEqual(self.waits, [])
 
     def test_no_retries_when_disabled(self):
         config.LLM_MAX_RETRIES = 0

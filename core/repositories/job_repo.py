@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from core.models.db import get_db
 
@@ -46,7 +46,22 @@ def get(job_id: str):
         row = conn.execute(
             "SELECT * FROM generation_jobs WHERE id=?", (job_id,)
         ).fetchone()
-        return dict(row) if row is not None else None
+        if row is None:
+            return None
+        job = dict(row)
+        if job["status"] in (STATUS_QUEUED, STATUS_RUNNING):
+            params = json.loads(job.get("params_json") or "{}")
+            last = datetime.fromisoformat(job["updated_at"]).replace(tzinfo=timezone.utc)
+            limit = int(params.get("deadline_seconds") or 900) + 60
+            if (datetime.now(timezone.utc) - last).total_seconds() > limit:
+                failed = conn.execute("UPDATE generation_jobs SET status=?,error=?,updated_at=? "
+                                      "WHERE id=? AND status=? AND updated_at=? RETURNING id",
+                                      (STATUS_FAILED, "Generation worker expired. Please retry.", _now(),
+                                       job_id, job["status"], job["updated_at"])).fetchone()
+                conn.commit()
+                if failed:
+                    job.update(status=STATUS_FAILED, error="Generation worker expired. Please retry.")
+        return job
     finally:
         conn.close()
 
@@ -56,6 +71,17 @@ def get_for_user(job_id: str, username: str):
     if job is None or job.get("username") != username:
         return None
     return job
+
+
+def claim(job_id: str) -> bool:
+    conn = get_db()
+    try:
+        row = conn.execute("UPDATE generation_jobs SET status=?, updated_at=? WHERE id=? AND status=? RETURNING id",
+                           (STATUS_RUNNING, _now(), job_id, STATUS_QUEUED)).fetchone()
+        conn.commit()
+        return row is not None
+    finally:
+        conn.close()
 
 
 def set_running(job_id: str) -> None:
