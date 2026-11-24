@@ -20,6 +20,8 @@ not here.
 """
 from __future__ import annotations
 
+import sqlite3
+
 try:  # psycopg 3
     import psycopg
     from psycopg.rows import dict_row
@@ -126,15 +128,17 @@ class _PgConnection:
     def execute(self, sql: str, params: tuple = ()):
         self._cur = self._conn.cursor()
         self._bound_statement(self._cur)
-        self._cur.execute(_translate(sql), params)
+        try:
+            self._cur.execute(_translate(sql), params)
+        except psycopg.IntegrityError as exc:
+            raise sqlite3.IntegrityError(str(exc)) from exc
         return _Cursor(self._cur)
 
     def executescript(self, sql: str) -> None:
-        """Run a multi-statement script (DDL) on one cursor."""
+        """Run a script in the caller's transaction without committing it."""
         with self._conn.cursor() as cur:
             self._bound_statement(cur)
             cur.execute(sql)
-        self.commit()
 
     def executemany(self, sql: str, seq: list[tuple]) -> None:
         with self._conn.cursor() as cur:

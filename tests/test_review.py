@@ -84,7 +84,7 @@ class TestLearningEvidence(Base):
                 patch('core.services.learning_service.analyse_submission'), \
                 patch('core.repositories.prefs_repo.record_activity') as award:
             response = self.client.post('/submit', data={'q-0': FIXED_MCQS[0]['answer_text']})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 303)
         award.assert_not_called()
         dashboard = self.client.get('/api/dashboard').get_json()
         self.assertNotIn('xp', dashboard)

@@ -96,7 +96,11 @@ def init_db() -> None:
         conn = db_mod.get_db()
         try:
             from core.models.sql_migrations import run_sql_migrations
+
+            # Keep concurrent cold starts from applying the same migrations.
+            conn.execute("SELECT pg_advisory_xact_lock(7842301)")
             run_sql_migrations(conn, "postgres")
+            conn.commit()
         finally:
             conn.close()
         return

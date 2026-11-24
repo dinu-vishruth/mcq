@@ -53,6 +53,7 @@ export default function Quiz({ data }: { data: QuizData }) {
   const [confidence, setConfidence] = useState<Record<number, Confidence>>(initial.confidence);
   const [remaining, setRemaining] = useState(Math.ceil(data.timer));
   const [saveError, setSaveError] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const submittingRef = useRef(false);
@@ -107,6 +108,23 @@ export default function Quiz({ data }: { data: QuizData }) {
     if (idx < total - 1) setIdx(idx + 1);
   }
 
+  function skip() {
+    if (submittingRef.current || remaining <= 0) return;
+    // A skipped question must not submit a previously selected answer.
+    setAnswers((previous) => {
+      const updated = { ...previous };
+      delete updated[idx];
+      return updated;
+    });
+    setConfidence((previous) => {
+      const updated = { ...previous };
+      delete updated[idx];
+      return updated;
+    });
+    if (idx < total - 1) setIdx(idx + 1);
+    else setReviewing(true);
+  }
+
   function submit() {
     if (!formRef.current || submittingRef.current) return;
     submittingRef.current = true;
@@ -117,7 +135,7 @@ export default function Quiz({ data }: { data: QuizData }) {
   const lowTime = remaining <= 30;
 
   return (
-    <div className="app-glow min-h-screen flex flex-col">
+    <div className="app-glow min-h-screen flex flex-col" aria-busy={submitting}>
       {/* Top bar: brand, progress, timer */}
       <div className="relative z-10 border-b border-white/[0.06]">
         <div className="max-w-3xl mx-auto px-5 py-4 flex items-center gap-4">
@@ -150,6 +168,23 @@ export default function Quiz({ data }: { data: QuizData }) {
       <div className="relative z-10 flex-1 max-w-3xl w-full mx-auto px-5 py-10 flex flex-col">
         {saveError && <p role="alert" className="mb-4 text-warning">Progress could not sync. Keep this tab open and submit your answers when finished.</p>}
         <p className="mb-4 text-xs text-text-3">Use this set to find what to revisit. Confidence is optional and never changes your score.</p>
+        {reviewing ? (
+          <div className="flex-1 flex flex-col justify-center gap-5">
+            <h1 className="font-display text-2xl font-semibold">Review your quiz</h1>
+            <p className="text-text-2" role="status">
+              {answeredCount} answered · {total - answeredCount} unanswered
+            </p>
+            <p className="text-text-3">You can return to unanswered questions or submit now. Unanswered questions receive no marks.</p>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="secondary" disabled={submitting} onClick={() => {
+                setIdx(Math.max(0, data.mcqs.findIndex((_, i) => !answers[i])));
+                setReviewing(false);
+              }}>Review unanswered</Button>
+              <Button disabled={submitting} onClick={submit}>{submitting ? "Submitting..." : "Submit Answers"}</Button>
+            </div>
+          </div>
+        ) : (
+          <>
         <AnimatePresence mode="wait">
           <motion.div
             key={idx}
@@ -221,24 +256,27 @@ export default function Quiz({ data }: { data: QuizData }) {
         <div className="flex items-center justify-between mt-10 pt-6 border-t border-white/[0.06]">
           <button
             onClick={() => idx > 0 && setIdx(idx - 1)}
-            disabled={idx === 0}
+            disabled={submitting || idx === 0}
             className="text-text-3 text-sm hover:text-text-2 disabled:opacity-40 transition-colors"
           >
             Previous
           </button>
 
-          <div className="relative">
+          <div className="relative flex items-center gap-3">
+            <Button variant="ghost" disabled={submitting || remaining <= 0} onClick={skip}>Skip</Button>
             {idx < total - 1 ? (
-              <Button disabled={!selected} rightIcon={<ArrowRight className="w-4 h-4" />} onClick={next}>
+              <Button disabled={submitting || !selected} rightIcon={<ArrowRight className="w-4 h-4" />} onClick={next}>
                 Next
               </Button>
             ) : (
-              <Button disabled={submitting || answeredCount === 0} leftIcon={<Check className="w-4 h-4" />} onClick={submit}>
+              <Button disabled={submitting} leftIcon={<Check className="w-4 h-4" />} onClick={submit}>
                 {submitting ? "Submitting…" : "Submit Answers"}
               </Button>
             )}
           </div>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

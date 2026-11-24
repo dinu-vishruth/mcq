@@ -10,7 +10,7 @@ import os
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Form, Request, UploadFile
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
 
 from config import ALLOWED_EXT, UPLOAD_FOLDER
@@ -169,13 +169,31 @@ def upload(
     file: UploadFile | None = None,
     title: Annotated[str, Form()] = "",
     extracted_text: Annotated[str, Form()] = "",
+    num_questions: Annotated[str | None, Form()] = None,
+    difficulty: Annotated[str, Form()] = "medium",
+    timer: Annotated[str, Form()] = "10",
 ):
     """Prepare temporary quiz input without adding it to the Library."""
     def reject(message: str):
         return render(request, "upload.html", error=message)
 
+    # Already-open versions of the upload screen submit Generate & Start here.
+    # Preserve that contract instead of silently treating generation as upload.
+    if num_questions is not None:
+        try:
+            count = int(num_questions)
+            minutes = int(timer)
+        except ValueError:
+            return reject("Enter a whole number for the question count and time limit.")
+        if not 1 <= count <= 30:
+            return reject("Number of questions must be between 1 and 30.")
+        if not 1 <= minutes <= 180:
+            return reject("Time limit must be between 1 and 180 minutes.")
+        if difficulty not in ("easy", "medium", "hard"):
+            return reject("Invalid difficulty level selected.")
+
     try:
-        text, resolved_title, source_ext = extract_upload_text(file, title, extracted_text)
+        text, resolved_title, _ = extract_upload_text(file, title, extracted_text)
     except ExtractError as exc:
         return reject(str(exc))
 
@@ -185,6 +203,17 @@ def upload(
     except Exception:
         return reject("Could not prepare this quiz material. Please try again.")
 
+    if num_questions is not None:
+        from .api import PracticeIn, practice_generate
+
+        try:
+            result = practice_generate(user, PracticeIn(
+                upload_id=upload_id, num_questions=count, difficulty=difficulty, timer=minutes * 60,
+            ))
+        except HTTPException as exc:
+            return reject(str(exc.detail))
+        request.session["session_key"] = result["session_key"]
+        return RedirectResponse("/mcq_test", status_code=302)
     return RedirectResponse(f"/knowledge?upload={upload_id}", status_code=302)
 
 

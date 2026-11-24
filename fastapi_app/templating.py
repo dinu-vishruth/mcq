@@ -14,6 +14,8 @@ in the templates already handle.
 """
 from __future__ import annotations
 
+import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +34,21 @@ TEMPLATES_DIR = BASE_DIR / "templates"
 _FLASH_KEY = "_flashes"
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+@lru_cache(maxsize=1)
+def _frontend_entry() -> dict:
+    manifest = json.loads((BASE_DIR / "static" / "dist" / "manifest.json").read_text(encoding="utf-8"))
+    return next(item for item in manifest.values() if item.get("isEntry"))
+
+
+def frontend_asset(kind: str) -> str:
+    entry = _frontend_entry()
+    filename = entry["css"][0] if kind == "css" else entry["file"]
+    return "/static/dist/" + filename
+
+
+templates.env.globals["frontend_asset"] = frontend_asset
 
 # Available to every template without each route passing it: login.html and
 # signup.html use it to decide whether to render the Google button as a working
@@ -61,9 +78,11 @@ def render(request: Request, template_name: str, /, **context: Any) -> HTMLRespo
     validation.
     """
     context.setdefault("request", request)
-    context["session"] = request.session
+    context["session"] = dict(request.session)
+    if request.session.get("is_demo"):
+        context["session"]["username"] = "Demo Learner"
     context["csrf_token"] = lambda: get_csrf_token(request)
     context["get_flashed_messages"] = (
         lambda with_categories=False: _get_flashed_messages(request, with_categories)
     )
-    return templates.TemplateResponse(request, template_name, context)
+    return templates.TemplateResponse(request, template_name, context, headers={"Cache-Control": "no-store"})

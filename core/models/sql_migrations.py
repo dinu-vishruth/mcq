@@ -38,7 +38,8 @@ def run_sql_migrations(conn, backend: str) -> list[str]:
     """Apply pending migrations for `backend` ("sqlite" or "postgres").
 
     Returns the names of migrations applied this call. Adding a file without
-    bumping any code is the point of this runner.
+    bumping any code is the point of this runner. The Postgres caller owns the
+    transaction so it can hold an advisory lock until all migrations commit.
     """
     if backend not in ("sqlite", "postgres"):
         raise ValueError(f"unknown backend {backend!r}")
@@ -61,7 +62,8 @@ def run_sql_migrations(conn, backend: str) -> list[str]:
             sql = fh.read()
         conn.executescript(sql)
         conn.execute(f"INSERT INTO {_TRACKING_TABLE} (name) VALUES (?)", (filename,))
-        conn.commit()
+        if backend == "sqlite":
+            conn.commit()
         applied_now.append(filename)
 
     return applied_now

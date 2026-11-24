@@ -59,6 +59,7 @@ class PgVectorStore(VectorStore):
             conn.executescript(
                 "CREATE INDEX IF NOT EXISTS idx_chunk_vectors_doc ON chunk_vectors(document_id)"
             )
+            conn.commit()
         finally:
             conn.close()
 

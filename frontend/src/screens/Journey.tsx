@@ -17,11 +17,12 @@ export default function Journey({ data }: { data: { username: string } }) {
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<number | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     apiGet<{ items: KnowledgeItem[] }>("/api/knowledge")
       .then((d) => setItems(d.items))
-      .catch(() => setItems([]))
+      .catch(() => setError("Your Library could not be loaded. Please refresh to try again."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -53,6 +54,7 @@ export default function Journey({ data }: { data: { username: string } }) {
           </a>
         </div>
 
+        {error && <p role="alert" className="mb-4 text-danger">{error}</p>}
         {loading ? (
           <div className="grid place-items-center py-24 text-text-3">
             <Loader2 className="w-6 h-6 animate-spin" />

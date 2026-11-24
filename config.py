@@ -146,7 +146,8 @@ ALLOWED_EXT = {"pdf", "docx", "txt", "pptx"}
 # Postgres through core/models/pg_adapter.py instead of SQLite. Left unset, the
 # app keeps its local-dev SQLite file at DB_PATH. DB_PATH is ignored while a
 # DATABASE_URL is present.
-DATABASE_URL = env_str("DATABASE_URL", default="")
+# An explicitly blank DATABASE_URL selects SQLite even when POSTGRES_URL is set.
+DATABASE_URL = env_str("DATABASE_URL") if "DATABASE_URL" in os.environ else env_str("POSTGRES_URL")
 
 #: Ceiling on a buffered request body. Vercel enforced ~4.5MB for us before our
 #: own code ran; a persistent host applies no such cap, and CSRFMiddleware has to

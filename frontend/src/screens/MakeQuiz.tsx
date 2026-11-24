@@ -9,7 +9,12 @@ import { Button } from "@/components/ui/Button";
 import { csrfToken, apiGet, apiSend } from "@/bootstrap";
 import type { KnowledgeItem } from "@/types";
 
-interface MakeQuizData { username: string; document_id: number | null }
+interface MakeQuizData {
+  username: string;
+  document_id: number | string | null;
+  selected_document?: KnowledgeItem | null;
+  error?: string;
+}
 
 const DIFFS = ["easy", "medium", "hard"] as const;
 const COUNTS = [5, 10, 15, 20, 25, 30];
@@ -30,10 +35,11 @@ function qs(name: string): string | null {
 // (2) generate from a resource already saved in the Learning Journey library.
 // Absorbs the old standalone Practice page.
 export default function MakeQuiz({ data }: { data: MakeQuizData }) {
-  const [items, setItems] = useState<KnowledgeItem[]>([]);
-  const [loadingList, setLoadingList] = useState(true);
+  const selected = data.selected_document;
+  const [items, setItems] = useState<KnowledgeItem[]>(selected ? [selected] : []);
+  const [loadingList, setLoadingList] = useState(!selected);
   const [docId, setDocId] = useState<number | null>(
-    data.document_id ?? (qs("doc") ? Number(qs("doc")) : null),
+    Number(data.document_id ?? qs("doc")) || null,
   );
 
   const [difficulty, setDifficulty] = useState<(typeof DIFFS)[number]>("medium");
@@ -42,7 +48,7 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
   const [timerMinutes, setTimerMinutes] = useState<number>(10);
 
   const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(data.error ?? "");
   const uploadId = qs("upload");
   const [uploadTitle, setUploadTitle] = useState("");
   const [useUpload, setUseUpload] = useState(Boolean(uploadId));
@@ -64,10 +70,11 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
     apiGet<{ items: KnowledgeItem[] }>("/api/knowledge")
       .then((d) => {
         const ready = d.items.filter((k) => k.indexed);
+        if (selected?.indexed && !ready.some((k) => k.id === selected.id)) ready.unshift(selected);
         setItems(ready);
         if (!docId && ready.length === 1) setDocId(ready[0].id);
       })
-      .catch(() => setItems([]))
+      .catch(() => setError("Could not refresh your Library. Please try again; your saved resource remains selected."))
       .finally(() => setLoadingList(false));
   }, []); // eslint-disable-line
 

@@ -107,7 +107,7 @@ def create_app() -> FastAPI:
         max_age=SESSION_MAX_AGE,
         same_site="lax",
         https_only=IS_DEPLOYED,
-        session_cookie="session",
+        session_cookie="mcq_session" if config.DATABASE_URL else "session",
     )
     if IS_DEPLOYED:
         app.add_middleware(HTTPSRedirectMiddleware)

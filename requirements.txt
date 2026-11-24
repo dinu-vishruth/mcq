@@ -20,7 +20,7 @@ numpy
 # Postgres backend for persistent production storage (DATABASE_URL). "binary"
 # ships a prebuilt client lib so no system build tools are needed. Locally the
 # app still uses SQLite: DATABASE_URL unset => sqlite3 at DB_PATH.
-psycopg[binary]
+psycopg[binary]>=3.2,<4
 
 # --- Optional / local-only (do NOT add to the Vercel deploy) --------------
 # These power the high-quality local embedding path. torch + sentence-

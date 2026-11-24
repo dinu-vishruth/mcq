@@ -65,7 +65,7 @@ class TestQuizIntegrity(Base):
                 **self.answers(), 'time_spent': '-999999', 'confidence-0': 'maybe',
                 'confidence-1': 'invalid',
             })
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 303)
         row = self.result()
         self.assertEqual((row['score'], row['time_spent']), (2, 42))
         details = json.loads(row['detail_json'])
@@ -108,7 +108,8 @@ class TestQuizIntegrity(Base):
             })
             response = self.client.post('/submit', data=self.answers())
         self.assertEqual(rejected.status_code, 409)
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 303)
+        self.assertIn('Time expired', bootstrap(self.client.get(response.headers['Location']))['notice'])
         row = self.result()
         self.assertEqual((row['score'], row['time_spent']), (1, 60))
         self.assertEqual(json.loads(row['detail_json'])[0]['confidence'], 'maybe')
@@ -122,10 +123,11 @@ class TestQuizIntegrity(Base):
         with self.clock(1040), patch('models.explanation_engine.explain_answers', side_effect=RuntimeError):
             response = self.client.post('/submit', data=self.answers())
             repeated = self.client.post('/submit', data=self.answers())
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('temporarily unavailable', response.text)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers['Location'], repeated.headers['Location'])
+        saved = self.client.get(response.headers['Location'])
+        self.assertIn('temporarily unavailable', saved.text)
         self.assertEqual(self.result()['score'], 2)
-        self.assertIn('already taken', bootstrap(repeated)['error'])
         with sqlite3.connect(_DB) as conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM results WHERE session_key=?',
                                           (self.key,)).fetchone()[0], 1)
@@ -161,8 +163,8 @@ class TestQuizIntegrity(Base):
                 submissions = [pool.submit(client.post, '/submit', data=self.answers())
                                for client in (self.client, other)]
                 responses = [future.result(timeout=20) for future in submissions]
-        self.assertTrue(all(response.status_code == 200 for response in responses))
-        self.assertEqual(sum('data-page="result"' in response.text for response in responses), 1)
+        self.assertTrue(all(response.status_code == 303 for response in responses))
+        self.assertEqual({response.headers['Location'] for response in responses}, {f'/results/{self.key}'})
         with sqlite3.connect(_DB) as conn:
             self.assertEqual(conn.execute('SELECT count(*) FROM results WHERE session_key=?',
                                           (self.key,)).fetchone()[0], 1)

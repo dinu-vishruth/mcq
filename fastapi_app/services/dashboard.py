@@ -140,7 +140,7 @@ def build_dashboard(conn: sqlite3.Connection, user_id: int, username: str) -> di
     ]
 
     return {
-        "username": username or "there",
+        "username": "Demo Learner" if username.startswith("Demo Learner ") else (username or "there"),
         "total_quizzes": total_quizzes,
         "avg_score": avg_score,
         "best_score": best_score,

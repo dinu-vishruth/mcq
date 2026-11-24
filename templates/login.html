@@ -121,10 +121,12 @@
         <p class="authx-alt">Don't have an account? <a href="/signup" class="authx-link">Create Account</a></p>
 
         <div class="demo-hint">
-          <span class="dh-title">Try the demo</span>
-          <div>
-            <code>demo_user</code> / <code>DemoPass123</code>
-          </div>
+          <span class="dh-title">Explore as Demo Learner</span>
+          <p>No sign-up or password needed. Sample study material is included.</p>
+          <form action="/demo" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-primary btn-lg">Try Demo</button>
+          </form>
         </div>
       </div>
     </section>

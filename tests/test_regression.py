@@ -219,20 +219,15 @@ class TestGenerationAndQuizFlow(Base):
         finally:
             conn.close()
 
-    def test_upload_stops_setting_up_a_quiz(self):
-        """Stale quiz-config fields must not resurrect the old generate-on-upload.
-
-        Regression: the form used to carry num_questions/difficulty/timer and the
-        route generated a session from them, which silently ignored whatever the
-        user later picked on the MakeQuiz screen.
-        """
+    def test_legacy_upload_rejects_invalid_timer_without_creating_quiz(self):
         c = self.client()
         self._seed_user("uploader2", "password123", "teacher")
         self._login(c, "uploader2", "password123")
         before = self._count_sessions()
         r = c.post("/upload", data={"extracted_text": "Some study material.",
                                     "num_questions": "2", "difficulty": "medium", "timer": "999"})
-        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b"Time limit must be between 1 and 180 minutes", r.data)
         self.assertEqual(self._count_sessions(), before)
         with c.session_transaction() as sess:
             self.assertNotIn("session_key", sess)
@@ -257,7 +252,7 @@ class TestGenerationAndQuizFlow(Base):
         for i, q in enumerate(FIXED_MCQS):
             form[f"q-{i}"] = q["answer_text"]  # all correct
 
-        r = c.post("/submit", data=form)
+        r = c.post("/submit", data=form, follow_redirects=True)
         self.assertEqual(r.status_code, 200)
         # Result is now a React island; score is carried in the bootstrap JSON
         # payload rather than server-rendered HTML.
@@ -284,9 +279,9 @@ class TestGenerationAndQuizFlow(Base):
         c.get("/mcq_test")
         form = {f"q-{i}": q["answer_text"] for i, q in enumerate(FIXED_MCQS)}
         c.post("/submit", data=form)
-        # Second join attempt must be blocked
+        # A completed quiz reopens the saved result instead of another attempt.
         r = c.post("/student_login", data={"session_key": key})
-        self.assertIn(b"already taken", r.data)
+        self.assertEqual(r.headers["Location"], f"/results/{key}")
 
 
 class TestTeacherSessionManagement(Base):

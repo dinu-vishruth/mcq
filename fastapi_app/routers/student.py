@@ -214,9 +214,22 @@ async def add_resource(request: Request, user: CurrentUser):
 
 
 @router.get("/practice")
-async def practice(request: Request, user: CurrentUser, doc: str | None = None):
+async def practice(request: Request, user: CurrentUser, doc: int | None = None):
     """Practice configuration. Optional ?doc=<id> preselects a source."""
-    return render(request, "practice.html", document_id=doc)
+    from core.repositories import document_repo
+    selected = None
+    error = ""
+    if doc is not None:
+        row = document_repo.get(doc)
+        if row is None or row["owner"] != user.username:
+            error = "This resource could not be loaded from your Library. Please return to the Library and try again."
+        else:
+            selected = {
+                "id": row["id"], "title": row["title"],
+                "indexed": row["status"] == "ready", "status": row["status"],
+                "topic_count": row["chunk_count"] or 0,
+            }
+    return render(request, "practice.html", document_id=doc, selected_document=selected, error=error)
 
 
 @router.get("/weak-topics")
@@ -257,7 +270,7 @@ async def student_login(
     if not validate_session_key(key):
         return reject("Invalid session key")
     if _already_attempted(conn, key, user.id):
-        return reject("You have already taken this test.")
+        return RedirectResponse(f"/results/{key}", status_code=302)
     quiz = session_repo.get(key)
     if quiz is None:
         return reject("Session not found")
@@ -278,7 +291,7 @@ async def mcq_test(request: Request, user: CurrentUser, conn: Db):
     if not row:
         return RedirectResponse("/student_login", status_code=302)
     if _already_attempted(conn, key, user.id):
-        return _dashboard_response(request, user, conn, "You have already taken this test.")
+        return RedirectResponse(f"/results/{key}", status_code=302)
 
     attempt = _start_attempt(conn, key, user.id, row["timer"])
 
@@ -305,6 +318,28 @@ async def mcq_test(request: Request, user: CurrentUser, conn: Db):
     )
 
 
+@router.get("/results/{session_key}")
+async def quiz_result(request: Request, session_key: str, user: CurrentUser, conn: Db):
+    row = conn.execute(
+        "SELECT score, total, detail_json FROM results "
+        "WHERE session_key=? AND user_id=? ORDER BY id LIMIT 1", (session_key, user.id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, "Quiz result not found")
+    details = json.loads(row["detail_json"])
+    explanations = [
+        detail.get("explanation") or (
+            f"Correct. The answer is {detail['correct']}." if detail["is_correct"] else
+            f"{'Not answered' if not detail.get('selected') else 'Incorrect'}. "
+            f"The correct answer is {detail['correct']}."
+        ) for detail in details
+    ]
+    return render(request, "result.html", score=row["score"], total=row["total"],
+                  details=details, explanations=explanations,
+                  notice=("Time expired. Only answers saved before the deadline were scored."
+                          if any(detail.get("graded_from_draft") for detail in details) else None))
+
+
 @router.post("/submit")
 async def submit(request: Request, user: CurrentUser, conn: Db):
     key = request.session.get("session_key")
@@ -317,13 +352,10 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     stored = session_repo.get(key)
     if not stored:
         return RedirectResponse("/student_login", status_code=302)
-    questions = [
-        {"question": q["question"], "answer_text": q["answer_text"]}
-        for q in json.loads(stored["mcqs_json"])
-    ]
+    questions = json.loads(stored["mcqs_json"])
 
     if _already_attempted(conn, key, user.id):
-        return _dashboard_response(request, user, conn, "You have already taken this test.")
+        return RedirectResponse(f"/results/{key}", status_code=303)
 
     attempt = conn.execute(
         "SELECT * FROM quiz_attempts WHERE session_key=? AND user_id=?", (key, user.id)
@@ -357,6 +389,7 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
             "correct": question["answer_text"],
             "is_correct": is_correct,
             "confidence": confidence,
+            "graded_from_draft": late,
             "source_question": question,
         })
 
@@ -369,7 +402,18 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     ).fetchone()
     if not claimed:
         conn.rollback()
-        return _dashboard_response(request, user, conn, "You have already taken this test.")
+        return RedirectResponse(f"/results/{key}", status_code=303)
+
+    # The explanation engine only reads saved evidence. Commit its output with
+    # the score so concurrent submissions always see the same complete result.
+    try:
+        explanations = explanation_engine.explain_answers(details)
+    except Exception:
+        explanations = []
+    for index, detail in enumerate(details):
+        detail["explanation"] = (explanations[index] if index < len(explanations)
+                                 else "Explanation is temporarily unavailable.")
+        del detail["source_question"]
 
     conn.execute(
         "INSERT INTO results (session_key, student_name, user_id, score, total, "
@@ -378,15 +422,6 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
          datetime.utcnow().isoformat(), json.dumps(details), time_spent),
     )
     conn.commit()
-
-    # Explanation failures must never discard an already completed assessment.
-    from core.services.personalization import learning_profile
-    try:
-        with learning_profile(user.id):
-            from starlette.concurrency import run_in_threadpool
-            explanations = await run_in_threadpool(explanation_engine.explain_answers, details)
-    except Exception:
-        explanations = ["Explanation is temporarily unavailable." for _ in details]
 
     # Weak-concept detection. Best-effort: wrapped so any failure here can never
     # affect the student's score or result page.
@@ -404,8 +439,4 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     except Exception as exc:
         print(f"[WARNING] Learning analysis skipped: {exc}")
 
-    return render(
-        request, "result.html",
-        score=score, total=len(questions), details=details, explanations=explanations,
-        notice=("Time expired. Only answers saved before the deadline were scored." if late else None),
-    )
+    return RedirectResponse(f"/results/{key}", status_code=303)
