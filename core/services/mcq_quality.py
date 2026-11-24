@@ -8,6 +8,8 @@ from core.agents.difficulty import DifficultyAgent
 from core.agents.fact_verification import FactVerificationAgent
 from core.agents.quality_assurance import QualityAssuranceAgent
 from core.observability import timed
+from core.services.ai_safety import candidate_allowed
+from core.services.source_evidence import issue
 
 
 @dataclass
@@ -30,6 +32,14 @@ def accept_candidates(raw, context: str, difficulty: str, *, topic: str | None =
         )
         stage.update(valid=len(valid), rejected=len(rejected))
     result = AcceptanceResult(rejected=rejected)
+    safe = []
+    for candidate in valid:
+        if candidate_allowed(candidate):
+            safe.append(candidate)
+        else:
+            result.rejected.append({"question": "[withheld]", "status": "rejected",
+                                    "reason": "content safety policy"})
+    valid = safe
     if not valid:
         return result
     if not config.FACT_VERIFICATION_ENABLED:
@@ -50,5 +60,7 @@ def accept_candidates(raw, context: str, difficulty: str, *, topic: str | None =
     for i in grades["unverified_indices"]:
         result.unverified.append({"question": facts.verified[i]["question"],
                                   "status": "unverified", "reason": "difficulty verification unavailable"})
-    result.accepted = [{**q, "verification_status": "verified"} for q in grades["matched"]]
+    result.accepted = [{**q, "verification_status": "verified", "safety_status": "verified",
+                        "source_evidence": issue(q, context)}
+                       for q in grades["matched"]]
     return result

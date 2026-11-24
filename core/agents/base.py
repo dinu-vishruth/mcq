@@ -6,4 +6,5 @@ class Agent:
     name: str = "agent"
 
     def _log(self, msg: str) -> None:
-        print(f"[agent:{self.name}] {msg}")
+        from core.services.ai_safety import redact
+        print(f"[agent:{self.name}] {redact(msg)}")

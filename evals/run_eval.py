@@ -8,13 +8,13 @@ a real LLM (cost + credentials), so it is not part of CI.
 Usage
 -----
     # Real provider configured via the usual LLM_* variables:
-    python evals/run_eval.py
+    python evals/run_eval.py --live
 
     # Deterministic stub -- verifies the harness end-to-end without a key:
     python evals/run_eval.py --dry-run
 
     # Limit cases / choose output paths:
-    python evals/run_eval.py --limit 3 --output evals/results/latest.json
+    python evals/run_eval.py --live --limit 3 --output evals/results/latest.json
 
 Metrics per case (all in [0, 1] unless noted):
   count_ratio        generated / requested
@@ -32,7 +32,6 @@ import json
 import os
 import statistics
 import sys
-import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -278,6 +277,12 @@ def render_markdown(report: dict) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from evals.isolation import isolated_evaluation
+    with isolated_evaluation():
+        return _main(argv)
+
+
+def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Evaluate MCQ generation.")
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -286,13 +291,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="Evaluate only the first N cases.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Use the deterministic stub generator; no LLM/credentials.")
+    parser.add_argument("--live", action="store_true", help="Explicitly allow cost-bearing provider calls.")
     args = parser.parse_args(argv)
+    if args.live == args.dry_run:
+        print("Choose exactly one of --dry-run or --live.", file=sys.stderr)
+        return 2
 
     cases = load_cases(args.dataset, args.limit)
 
     # The harness ingests documents, so point it at a throwaway database: an
     # evaluation run must never add rows to the real library.
-    config.DB_PATH = os.path.join(tempfile.mkdtemp(prefix="mcq_eval_"), "eval.db")
     from fastapi_app.database import init_db
 
     init_db()

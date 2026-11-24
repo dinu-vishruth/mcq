@@ -73,7 +73,9 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
 
 
 def _require_source(context, num_questions, difficulty):
+    from core.services.ai_safety import source_block
     from models.mcq_generator import MCQGenerationError
+    source_block(context)
     if not context.strip():
         raise MCQGenerationError("No readable source material is available.")
     if not config.FACT_VERIFICATION_ENABLED:

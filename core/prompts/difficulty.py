@@ -4,7 +4,9 @@ question's true cognitive difficulty against the requested level, so a set
 labelled "hard" doesn't silently contain recall questions.
 """
 
-SYSTEM = "You are an assessment-difficulty grader that only outputs valid JSON objects."
+from core.services.ai_safety import POLICY
+
+SYSTEM = POLICY + "\n" + "You are an assessment-difficulty grader that only outputs valid JSON objects."
 
 
 def grade_prompt(questions: list[dict], requested: str) -> str:

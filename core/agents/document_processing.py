@@ -35,5 +35,5 @@ class DocumentProcessingAgent(Agent):
             "chunk_count": len(chunks),
             "avg_chunk_chars": (sum(len(c.content) for c in chunks) // len(chunks)) if chunks else 0,
         }
-        self._log(f"processed '{title or source_type}': {len(text)} chars -> {len(chunks)} chunks")
+        self._log(f"processed {len(text)} chars -> {len(chunks)} chunks")
         return ProcessedDocument(text=text, chunks=chunks, char_count=len(text), metadata=meta)

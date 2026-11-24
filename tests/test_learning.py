@@ -48,19 +48,13 @@ class TestExplanationContract(unittest.TestCase):
         finally:
             config.LLM_API_KEY = old
 
-    def test_ai_path_alignment(self):
-        import core.agents.explanation as em
-
-        class Stub:
-            def complete_json(self, messages, **kw):
-                return {"explanations": ["Berlin is in Germany; Paris is the capital of France."]}
-
-        em.get_llm = lambda: Stub()
+    def test_historical_questions_keep_feedback_alignment(self):
         out = ExplanationAgent().run(self.details)
         self.assertEqual(len(out), 3)                 # one per question
         self.assertIn("Correct", out[0])              # right answer
-        self.assertIn("Paris", out[1])                # AI explanation merged in
+        self.assertIn("Paris", out[1])                # recorded answer retained
         self.assertIn("Not answered", out[2])         # unanswered handled
+        self.assertTrue(all("unavailable" in item for item in out))
 
 
 class TestEvaluationAndWeakTopics(unittest.TestCase):

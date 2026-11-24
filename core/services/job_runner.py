@@ -20,6 +20,7 @@ import time
 import config
 from core.observability import log_event, timed
 from core.repositories import job_repo
+from core.services.ai_safety import public_generation_error
 
 
 def generation_backend() -> str:
@@ -79,7 +80,7 @@ def enqueue_job(job_id: str) -> bool:
         return True
     except Exception as exc:
         log_event("job.enqueue_failed", level=logging.WARNING, job_id=job_id,
-                  error_type=type(exc).__name__, error=str(exc))
+                  error_type=type(exc).__name__, error_type_only=type(exc).__name__)
         return False
 
 
@@ -140,9 +141,9 @@ def run_generation_job(job_id: str) -> None:
                       count=len(mcqs),
                       duration_ms=round((time.perf_counter() - started) * 1000, 2))
     except Exception as exc:
-        job_repo.set_failed(job_id, str(exc))
+        job_repo.set_failed(job_id, public_generation_error(exc))
         log_event("job.failed", level=logging.ERROR, job_id=job_id,
                   document_id=job["document_id"], error_type=type(exc).__name__,
-                  error=str(exc),
+                  error_type_only=type(exc).__name__,
                   duration_ms=round((time.perf_counter() - started) * 1000, 2))
         raise

@@ -357,6 +357,7 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
             "correct": question["answer_text"],
             "is_correct": is_correct,
             "confidence": confidence,
+            "source_question": question,
         })
 
     # Claim the attempt in the same transaction as the result, including when

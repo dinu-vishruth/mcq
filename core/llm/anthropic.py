@@ -57,8 +57,8 @@ class AnthropicProvider(LLMProvider):
             resp = requests.post(URL, headers=headers, json=payload, timeout=network_timeout(self.timeout))
         except requests.exceptions.Timeout:
             raise LLMError("The request to the AI API timed out. Please try again with a shorter text.")
-        except requests.exceptions.RequestException as re:
-            raise LLMError(f"Network error when connecting to the AI API: {re}")
+        except requests.exceptions.RequestException:
+            raise LLMError("The AI service could not be reached. Please retry shortly.")
 
         if resp.status_code == 401:
             raise LLMError("Invalid API key! Please check your ANTHROPIC_API_KEY.")
@@ -66,7 +66,7 @@ class AnthropicProvider(LLMProvider):
             raise RateLimitError("API rate limit exceeded! Please wait a moment and try again.",
                                  retry_after=self._parse_retry_after(resp))
         if resp.status_code != 200:
-            raise LLMError(f"API request failed with status code {resp.status_code}: {resp.text[:300]}")
+            raise LLMError(f"The AI service returned HTTP {resp.status_code}. Please retry shortly.")
 
         try:
             data = resp.json()

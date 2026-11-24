@@ -91,8 +91,8 @@ class TestFactVerification(unittest.TestCase):
 
     def test_rejects_failed_question(self):
         self.mod.get_llm = lambda: _Stub({"results": [
-            {"index": 0, "passed": True, "confidence": 0.95, "issue": ""},
-            {"index": 1, "passed": False, "confidence": 0.9, "issue": "two correct answers"},
+            {"index": 0, "passed": True, "safe": True, "confidence": 0.95, "issue": ""},
+            {"index": 1, "passed": False, "safe": True, "confidence": 0.9, "issue": "two correct answers"},
         ]})
         verified, rejected = FactVerificationAgent().run([_mcq("Q1?"), _mcq("Q2?")], "some context")
         self.assertEqual(len(verified), 1)
@@ -101,7 +101,7 @@ class TestFactVerification(unittest.TestCase):
 
     def test_low_confidence_pass_is_rejected(self):
         self.mod.get_llm = lambda: _Stub({"results": [
-            {"index": 0, "passed": True, "confidence": 0.1, "issue": ""},
+            {"index": 0, "passed": True, "safe": True, "confidence": 0.1, "issue": ""},
         ]})
         verified, rejected = FactVerificationAgent().run([_mcq()], "ctx")
         self.assertEqual(len(verified), 0)

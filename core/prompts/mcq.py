@@ -2,7 +2,9 @@
 
 import json
 
-SYSTEM = "You are an expert exam creator that only outputs valid JSON objects."
+from core.services.ai_safety import POLICY, source_block
+
+SYSTEM = POLICY + "\n" + "You are an expert exam creator that only outputs valid JSON objects."
 
 def legacy_prompt(text: str, num_questions: int, difficulty: str, *, topic=None, excluded=()) -> str:
     """Direct source-reading generation; acceptance remains identical to RAG."""
@@ -78,6 +80,6 @@ If the CONTEXT does not contain enough information to write {num_questions} grou
 
 CONTEXT:
 \"\"\"
-{context}
+{source_block(context)}
 \"\"\"
 """

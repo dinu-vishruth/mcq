@@ -177,7 +177,7 @@ class TestJobExecution(Base):
 
         view = job_repo.public_view(job_repo.get(job_id))
         self.assertEqual(view["status"], "failed")
-        self.assertIn("no indexed content", view["error"])
+        self.assertIn("verified quiz generation", view["error"])
 
 
 if __name__ == "__main__":

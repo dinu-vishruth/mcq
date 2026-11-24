@@ -15,6 +15,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
+from core.services.ai_safety import public_generation_error
+
 from ..deps import CurrentApiUser, Db
 from ..services.dashboard import build_dashboard, load_prefs
 
@@ -363,7 +365,7 @@ def _execute_generation(user, payload, source):
                 timer=payload.timer, mcqs=mcqs,
             )
         except Exception as exc:
-            raise HTTPException(status_code=502, detail=str(exc))
+            raise HTTPException(status_code=502, detail=public_generation_error(exc))
         quiz_upload_repo.delete(payload.upload_id, user.id)
         return {"ok": True, "session_key": session_key, "count": len(mcqs),
                 "requested_count": payload.num_questions, "partial": len(mcqs) < payload.num_questions,
@@ -391,7 +393,7 @@ def _execute_generation(user, payload, source):
                 topic=(payload.topic or "").strip() or None,
             )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        raise HTTPException(status_code=502, detail=public_generation_error(exc))
 
     if not mcqs:
         raise HTTPException(status_code=502, detail="No questions generated. Try different settings.")

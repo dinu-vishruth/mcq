@@ -50,7 +50,7 @@ def persist_original_file(user: str, upload: UploadFile, source_ext: str) -> Non
         upload.file.seek(0)
         get_upload_store().save(key, upload.file, size_hint=size_of(upload))
     except Exception as exc:
-        print(f"[WARNING] Could not persist original upload '{upload.filename}': {exc}")
+        print(f"[WARNING] Could not persist original upload: {type(exc).__name__}")
 
 #: App-enforced upload ceiling lives in config.MAX_UPLOAD_BYTES so the limit and
 #: the error message can't drift apart. Enforced by uploads.validate_upload.
@@ -110,9 +110,9 @@ def extract_upload_text(
                         os.remove(path)
             else:
                 text = stored.read().decode("utf-8", errors="ignore")
-        except Exception as exc:
+        except Exception:
             raise ExtractError(
-                f"Failed to extract text from the file: {exc}. "
+                "Failed to extract text from the file. "
                 "Please check if the file is corrupted."
             )
 
@@ -148,10 +148,10 @@ def ingest_resource(
 
     try:
         ingest_document(text, owner=user.username, title=resolved_title, source_type=source_ext)
-    except Exception as exc:
+    except Exception:
         return render(
             request, "add_resource.html",
-            error=f"Could not save this resource: {exc}. Please try another file.",
+            error="Could not save this resource. Please try another file.",
         )
 
     return RedirectResponse("/journey", status_code=302)
@@ -182,8 +182,8 @@ def upload(
     try:
         from core.repositories import quiz_upload_repo
         upload_id = quiz_upload_repo.create(user.id, resolved_title, text)
-    except Exception as exc:
-        return reject(f"Could not prepare this quiz material: {exc}. Please try again.")
+    except Exception:
+        return reject("Could not prepare this quiz material. Please try again.")
 
     return RedirectResponse(f"/knowledge?upload={upload_id}", status_code=302)
 

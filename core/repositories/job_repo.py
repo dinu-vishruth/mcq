@@ -106,7 +106,8 @@ def set_done(job_id: str, result: dict) -> None:
 
 
 def set_failed(job_id: str, error: str) -> None:
-    _update(job_id, status=STATUS_FAILED, error=str(error)[:2000])
+    from core.services.ai_safety import redact
+    _update(job_id, status=STATUS_FAILED, error=redact(str(error))[:2000])
 
 
 def _update(job_id: str, **fields) -> None:

@@ -6,7 +6,9 @@ guardrail that turns "invent something plausible" into an explicit
 INSUFFICIENT_CONTEXT signal.
 """
 
-SYSTEM = "You are a strict context-sufficiency checker that only outputs valid JSON objects."
+from core.services.ai_safety import POLICY, source_block
+
+SYSTEM = POLICY + "\n" + "You are a strict context-sufficiency checker that only outputs valid JSON objects."
 
 
 def validate_prompt(context: str, num_questions: int, difficulty: str) -> str:
@@ -21,6 +23,6 @@ Respond with a JSON object exactly like:
 
 CONTEXT:
 \"\"\"
-{context}
+{source_block(context)}
 \"\"\"
 """

@@ -51,6 +51,9 @@ class FactVerificationAgent(Agent):
             if verdict is None:
                 result.unverified.append({"question": q.get("question", "?"),
                                           "reason": reason, "status": "unverified"})
+            elif not verdict.safe:
+                result.rejected.append({"question": q["question"], "reason": "content safety policy",
+                                        "status": "rejected"})
             elif not verdict.passed:
                 result.rejected.append({"question": q["question"],
                                         "reason": verdict.issue or "failed fact check", "status": "rejected"})

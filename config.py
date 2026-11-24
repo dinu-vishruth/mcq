@@ -391,3 +391,12 @@ CONTEXT_MAX_CHARS = int(os.getenv("CONTEXT_MAX_CHARS", "12000"))
 
 # Maximum generation jobs executing against the configured provider at once.
 GENERATION_MAX_CONCURRENT = int(os.getenv("GENERATION_MAX_CONCURRENT", "4"))
+
+# Conservative whole-generation reservations, including verification and retries.
+GENERATION_MAX_LLM_CALLS = int(os.getenv("GENERATION_MAX_LLM_CALLS", "32"))
+GENERATION_MAX_RESERVED_TOKENS = int(os.getenv("GENERATION_MAX_RESERVED_TOKENS", "200000"))
+LLM_DEFAULT_MAX_OUTPUT_TOKENS = int(os.getenv("LLM_DEFAULT_MAX_OUTPUT_TOKENS", "4096"))
+# Dollar limits are opt-in and require rates for the configured provider/model.
+GENERATION_MAX_COST_USD = float(os.getenv("GENERATION_MAX_COST_USD", "0"))
+LLM_INPUT_USD_PER_MILLION = float(os.getenv("LLM_INPUT_USD_PER_MILLION", "0"))
+LLM_OUTPUT_USD_PER_MILLION = float(os.getenv("LLM_OUTPUT_USD_PER_MILLION", "0"))

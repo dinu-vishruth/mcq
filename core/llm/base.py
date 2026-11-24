@@ -82,15 +82,17 @@ class LLMProvider(abc.ABC):
         prompt_chars = sum(len(m.get("content") or "") for m in messages)
 
         from core.services.generation_budget import check, remaining
+        from core.services.generation_spend import reserve
 
         attempt = 0
         while True:
             check()
+            attempt_tokens = reserve(messages, max_tokens)
             self.last_usage = None
             started = time.perf_counter()
             try:
                 result = self._complete_once(messages, temperature=temperature,
-                                             max_tokens=max_tokens, json_mode=json_mode)
+                                             max_tokens=attempt_tokens, json_mode=json_mode)
             except RateLimitError as e:
                 log_event(
                     "llm.rate_limited", level=logging.WARNING, provider=provider,

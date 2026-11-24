@@ -54,7 +54,14 @@ class JsonFormatter(logging.Formatter):
             payload.update(fields)
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
-        return json.dumps(payload, default=str, separators=(",", ":"))
+        from core.services.ai_safety import redact
+        return json.dumps(redact(payload), default=str, separators=(",", ":"))
+
+
+class RedactedTextFormatter(logging.Formatter):
+    def format(self, record):
+        from core.services.ai_safety import redact
+        return redact(super().format(record))
 
 
 def configure_logging() -> logging.Logger:
@@ -73,7 +80,7 @@ def configure_logging() -> logging.Logger:
     level = getattr(logging, level_name, logging.INFO)
     handler = logging.StreamHandler(sys.stdout)
     if (getattr(config, "LOG_FORMAT", "json") or "json").lower() == "text":
-        handler.setFormatter(logging.Formatter(
+        handler.setFormatter(RedactedTextFormatter(
             "%(asctime)s %(levelname)s %(name)s %(message)s"))
     else:
         handler.setFormatter(JsonFormatter())
@@ -120,7 +127,9 @@ def log_event(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
     """Emit one structured event. This is the only logging entry point."""
     if not _CONFIGURED:
         configure_logging()
-    fields = dict(fields)
+    from core.services.ai_safety import redact
+    fields = redact(dict(fields))
+    event = redact(event)
     request_id = current_request_id()
     if request_id:
         # Captured at emission time, not at format time: a handler that formats

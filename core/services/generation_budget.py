@@ -38,11 +38,14 @@ def budget(seconds):
     current = _deadline.get()
     # Nested strategies inherit the existing deadline; fallback never resets it.
     token = _deadline.set(time.monotonic() + max(0, seconds)) if current is None else None
+    from core.services import generation_spend
+    spend_token = generation_spend.begin() if token is not None else None
     try:
         yield
     finally:
         if token is not None:
             _deadline.reset(token)
+            generation_spend.end(spend_token)
 
 
 def generation_scope(function):

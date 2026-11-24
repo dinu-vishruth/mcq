@@ -65,8 +65,8 @@ class OpenAICompatibleProvider(LLMProvider):
                                  headers=headers, json=payload, timeout=network_timeout(self.timeout))
         except requests.exceptions.Timeout:
             raise LLMError("The request to the AI API timed out. Please try again with a shorter text.")
-        except requests.exceptions.RequestException as re:
-            raise LLMError(f"Network error when connecting to the AI API: {re}")
+        except requests.exceptions.RequestException:
+            raise LLMError("The AI service could not be reached. Please retry shortly.")
 
         if resp.status_code == 401:
             # Distinguish "wrong key" from "right key, wrong provider": a Groq
@@ -90,7 +90,7 @@ class OpenAICompatibleProvider(LLMProvider):
             salvaged = self._failed_generation(resp)
             if salvaged:
                 return salvaged
-            raise LLMError(f"API request failed with status code {resp.status_code}: {resp.text[:300]}")
+            raise LLMError(f"The AI service returned HTTP {resp.status_code}. Please retry shortly.")
 
         try:
             data = resp.json()

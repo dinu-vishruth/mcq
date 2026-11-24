@@ -120,7 +120,7 @@ class TestPipelineWithStubbedLLM(unittest.TestCase):
                 if "Verify each multiple-choice question" in content:
                     import re
                     idxs = [int(n) for n in re.findall(r"^#(\d+)", content, re.M)]
-                    return {"results": [{"index": i, "passed": True, "confidence": 0.95, "issue": ""}
+                    return {"results": [{"index": i, "passed": True, "safe": True, "confidence": 0.95, "issue": ""}
                                         for i in idxs]}
                 # Question generation.
                 return {"questions": questions}

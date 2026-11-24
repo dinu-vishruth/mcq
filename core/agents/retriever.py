@@ -25,7 +25,7 @@ class RetrieverAgent(Agent):
 
     def run(self, document_id: int, query: str, top_k: int, *, spread: bool = True):
         hits = self._retriever.retrieve(document_id, query, top_k, use_mmr=True, spread=spread)
-        self._log(f"doc {document_id}: retrieved {len(hits)} chunks for query '{query[:40]}'")
+        self._log(f"doc {document_id}: retrieved {len(hits)} chunks")
         return hits
 
     @staticmethod
