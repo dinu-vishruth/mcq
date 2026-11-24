@@ -13,6 +13,7 @@ from typing import Annotated, Any
 from fastapi import Depends, HTTPException, Request, status
 
 from core.models.db import get_db
+from core.services.account_identity import SESSION_VERSION
 
 
 class RedirectException(HTTPException):
@@ -38,12 +39,31 @@ class User:
         self.username = username
 
 
-def require_user(request: Request) -> User:
-    """Session-backed auth guard for HTML pages -- redirects home when absent."""
+def _session_user(request: Request) -> User | None:
     user_id = request.session.get("user_id")
     if not user_id:
+        return None
+    if request.session.get("identity_version") != SESSION_VERSION:
+        request.session.clear()
+        return None
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT id, username FROM users WHERE id=?", (user_id,)).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        request.session.clear()
+        return None
+    request.session["username"] = row["username"]
+    return User(row["id"], row["username"])
+
+
+def require_user(request: Request) -> User:
+    """Session-backed auth guard for HTML pages -- redirects home when absent."""
+    user = _session_user(request)
+    if user is None:
         raise RedirectException("/")
-    return User(user_id, request.session.get("username", ""))
+    return user
 
 
 def require_api_user(request: Request) -> User:
@@ -52,10 +72,10 @@ def require_api_user(request: Request) -> User:
     Matches the old ``_require_user()`` helper in core/routes/api.py so the React
     client's error handling is unchanged.
     """
-    user_id = request.session.get("user_id")
-    if not user_id:
+    user = _session_user(request)
+    if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return User(user_id, request.session.get("username", ""))
+    return user
 
 
 async def db() -> Any:

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import sqlite3
 from urllib.parse import urlencode, urlsplit
 
 import httpx
@@ -29,6 +30,13 @@ from werkzeug.security import generate_password_hash
 
 import config
 from core.observability import log_event
+from core.services.account_identity import (
+    claim_verified_email,
+    establish_session,
+    identity_write_lock,
+    normalize_email,
+    unique_oauth_username,
+)
 
 from ..deps import Db
 from ..templating import render
@@ -52,6 +60,7 @@ _GOOGLE_ERROR_CODES = frozenset({
 })
 _UNAVAILABLE = "Google sign-in is temporarily unavailable. Try another sign-in method or try again later."
 _RESTART = "This Google sign-in attempt could not be completed. Start Google sign-in again."
+_ACCOUNT_CONFLICT = "This Google account could not be used to sign in. Try another sign-in method."
 
 
 def _google_error_code(value) -> str:
@@ -164,16 +173,19 @@ async def google_callback(
         log_event("oauth.google.failed", level=logging.WARNING, stage="exchange", reason="transport_error")
         return fail(_UNAVAILABLE)
 
-    if not profile.get("sub") or not profile.get("email"):
+    if not isinstance(profile.get("sub"), str) or not profile["sub"].strip():
         return fail("Google did not return a complete account profile. Please try again.")
-    if profile.get("email_verified") is not True:
-        # An unverified email could belong to someone else, and we match accounts
-        # by email below -- so refuse rather than risk linking the wrong user.
-        return fail("Your Google account's email address isn't verified.")
 
-    user = _upsert_google_user(conn, profile)
-    request.session["user_id"] = user["id"]
-    request.session["username"] = user["username"]
+    try:
+        user = _upsert_google_user(conn, profile)
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        log_event("oauth.google.failed", level=logging.WARNING, stage="account", reason="identity_conflict")
+        return fail(_ACCOUNT_CONFLICT)
+    except ValueError as exc:
+        conn.rollback()
+        return fail(str(exc))
+    establish_session(request, user)
     return RedirectResponse("/dashboard", status_code=302)
 
 
@@ -202,53 +214,40 @@ async def _fetch_google_profile(code: str, redirect_uri: str) -> dict:
 
 
 def _upsert_google_user(conn, profile: dict) -> dict:
-    """Find or create the local account for this Google identity.
-
-    Matching order matters:
-      1. by google_id  -- a returning OAuth user
-      2. by email      -- someone who signed up with a password first; link the
-                          accounts instead of creating a confusing duplicate
-      3. create        -- brand new user
-
-    New rows get a random unusable password_hash: the column is NOT NULL, and a
-    random value means the account cannot be logged into via /login (no password
-    will ever hash to it) without adding a nullable-password code path.
-    """
-    google_id = str(profile.get("sub") or "")
-    email = (profile.get("email") or "").strip()
-    picture = profile.get("picture") or ""
-
-    existing = conn.execute("SELECT * FROM users WHERE google_id=?", (google_id,)).fetchone()
-    if existing is None and email:
-        existing = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
-        if existing is not None:
-            conn.execute(
-                "UPDATE users SET google_id=?, picture=?, auth_provider='google' WHERE id=?",
-                (google_id, picture, existing["id"]),
-            )
-            conn.commit()
-
+    """Match the stable Google subject, then synchronize its verified contact."""
+    google_id = profile["sub"]
+    identity_write_lock(conn)
+    existing = conn.execute("SELECT id, username, email, email_verified FROM users WHERE google_id=?",
+                            (google_id,)).fetchone()
+    email = None
+    raw_email = profile.get("email")
+    if profile.get("email_verified") is True and isinstance(raw_email, str):
+        try:
+            email = normalize_email(raw_email)
+        except ValueError:
+            # A malformed contact does not replace the stable subject identity.
+            pass
     if existing is not None:
+        if (email and (existing["email"] != email or not existing["email_verified"])
+                and claim_verified_email(conn, email, user_id=existing["id"])):
+            conn.execute("UPDATE users SET email=?, email_verified=1 WHERE id=?", (email, existing["id"]))
+        conn.commit()
         return {"id": existing["id"], "username": existing["username"]}
 
-    username = _unique_username(conn, profile, email)
+    if profile.get("email_verified") is not True:
+        raise ValueError("Your Google account's email address isn't verified.")
+    if not email:
+        raise ValueError("Google did not return a complete account profile. Please try again.")
+    if not claim_verified_email(conn, email):
+        raise sqlite3.IntegrityError("Google email already claimed")
+    picture = profile.get("picture")
+    username = unique_oauth_username(conn, profile.get("name"))
     cursor = conn.execute(
         "INSERT INTO users (username, email, password_hash, role, google_id, picture, "
-        "auth_provider) VALUES (?, ?, ?, 'user', ?, ?, 'google') RETURNING id",
+        "auth_provider, email_verified) VALUES (?, ?, ?, 'user', ?, ?, 'google', 1) RETURNING id",
         (username, email, generate_password_hash(secrets.token_urlsafe(32)),
-         google_id, picture),
+         google_id, picture if isinstance(picture, str) else ""),
     )
     user_id = cursor.fetchone()["id"]
     conn.commit()
     return {"id": user_id, "username": username}
-
-
-def _unique_username(conn, profile: dict, email: str) -> str:
-    """Derive a username from the Google profile, suffixing on collision."""
-    base = (profile.get("name") or email.split("@")[0] or "user").strip()[:32] or "user"
-    candidate = base
-    suffix = 2
-    while conn.execute("SELECT 1 FROM users WHERE username=?", (candidate,)).fetchone():
-        candidate = f"{base}{suffix}"
-        suffix += 1
-    return candidate

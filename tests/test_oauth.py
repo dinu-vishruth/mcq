@@ -22,7 +22,12 @@ def browser(tmp_path, monkeypatch):
     connection.execute("""CREATE TABLE users (
         id INTEGER PRIMARY KEY, username TEXT UNIQUE, email TEXT,
         password_hash TEXT NOT NULL, role TEXT, google_id TEXT UNIQUE,
-        github_id TEXT UNIQUE, picture TEXT, auth_provider TEXT)""")
+        github_id TEXT UNIQUE, picture TEXT, auth_provider TEXT,
+        email_verified INTEGER NOT NULL DEFAULT 0)""")
+    connection.execute("""CREATE TABLE identity_email_conflicts (
+        user_id INTEGER NOT NULL, former_email TEXT NOT NULL,
+        PRIMARY KEY(user_id, former_email))""")
+    connection.execute("CREATE TABLE retired_usernames (name TEXT PRIMARY KEY)")
     for provider in ("GOOGLE", "GITHUB"):
         monkeypatch.setattr(config, provider + "_OAUTH_ENABLED", True)
         monkeypatch.setattr(config, provider + "_CLIENT_ID", "test-client")
@@ -89,6 +94,87 @@ def test_invalid_state_never_exchanges_code(browser, monkeypatch, provider):
 
 
 @pytest.mark.parametrize("provider", ["google", "github"])
+def test_oauth_email_collision_does_not_sign_in_or_link_an_existing_account(browser, monkeypatch, provider):
+    client, connection = browser
+    connection.execute("INSERT INTO users (username, email, password_hash, email_verified) VALUES (?, ?, ?, 1)",
+                       ("existing", "owner@example.com", "hash"))
+    connection.commit()
+    module = google_auth if provider == "google" else github_auth
+    profile = {"sub": "new-google-subject", "id": 456, "email": "owner@example.com",
+               "email_verified": True, "name": "Learner"}
+    monkeypatch.setattr(module, f"_fetch_{provider}_profile", AsyncMock(return_value=profile))
+    start = client.get(f"/auth/{provider}")
+    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    response = client.get(f"/auth/{provider}/callback", params={"code": "case", "state": state})
+    assert response.status_code == 200
+    assert "another sign-in method" in response.text
+    assert not client.get("/test-session").json().get("user_id")
+    users = connection.execute("SELECT username, google_id, github_id FROM users").fetchall()
+    assert [tuple(user) for user in users] == [("existing", None, None)]
+
+
+@pytest.mark.parametrize("provider", ["google", "github"])
+def test_verified_provider_claims_contact_without_linking_unverified_account(browser, monkeypatch, provider):
+    client, connection = browser
+    connection.execute("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+                       ("unverified", "  OWNER@EXAMPLE.COM  ", "local-password-hash"))
+    connection.commit()
+    module = google_auth if provider == "google" else github_auth
+    profile = {"sub": "new-google-subject", "id": 456, "email": "owner@example.com",
+               "email_verified": True, "name": "Learner"}
+    monkeypatch.setattr(module, f"_fetch_{provider}_profile", AsyncMock(return_value=profile))
+    start = client.get(f"/auth/{provider}")
+    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    response = client.get(f"/auth/{provider}/callback", params={"code": "case", "state": state})
+    assert response.headers["location"] == "/dashboard"
+    assert client.get("/test-session").json()["user_id"] == 2
+    old_account = connection.execute("SELECT email, password_hash, google_id, github_id FROM users WHERE id=1").fetchone()
+    assert not old_account["email"]
+    assert old_account["password_hash"] == "local-password-hash"
+    assert old_account["google_id"] is None and old_account["github_id"] is None
+    owner = connection.execute("SELECT email, email_verified FROM users WHERE id=2").fetchone()
+    assert tuple(owner) == ("owner@example.com", 1)
+    assert connection.execute("SELECT user_id FROM identity_email_conflicts").fetchone()[0] == 1
+
+
+@pytest.mark.parametrize("provider", ["google", "github"])
+def test_returning_subject_keeps_own_account_if_provider_email_changes(browser, monkeypatch, provider):
+    client, connection = browser
+    connection.execute("INSERT INTO users (username, email, password_hash, email_verified) VALUES (?, ?, ?, 1)",
+                       ("different-user", "different@example.com", "hash"))
+    connection.execute("INSERT INTO users (username, email, password_hash, google_id, github_id) "
+                       "VALUES (?, ?, ?, ?, ?)", ("returning", "original@example.com", "hash", "sub-123", "123"))
+    connection.commit()
+    module = google_auth if provider == "google" else github_auth
+    profile = {"sub": "sub-123", "id": 123, "email": "different@example.com",
+               "email_verified": True, "name": "Learner"}
+    monkeypatch.setattr(module, f"_fetch_{provider}_profile", AsyncMock(return_value=profile))
+    start = client.get(f"/auth/{provider}")
+    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    response = client.get(f"/auth/{provider}/callback", params={"code": "case", "state": state})
+    assert response.headers["location"] == "/dashboard"
+    assert client.get("/test-session").json()["user_id"] == 2
+    assert connection.execute("SELECT email FROM users WHERE id=2").fetchone()[0] == "original@example.com"
+
+
+@pytest.mark.parametrize("provider", ["google", "github"])
+def test_oauth_does_not_use_an_email_as_username(browser, monkeypatch, provider):
+    client, connection = browser
+    module = google_auth if provider == "google" else github_auth
+    profile = {"sub": "sub-123", "id": 123, "email": "MixedCase@example.com", "email_verified": True,
+               "name": "MixedCase@example.com", "login": "MixedCase@example.com"}
+    monkeypatch.setattr(module, f"_fetch_{provider}_profile", AsyncMock(return_value=profile))
+    start = client.get(f"/auth/{provider}")
+    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    response = client.get(f"/auth/{provider}/callback", params={"code": "case", "state": state})
+    assert response.headers["location"] == "/dashboard"
+    user = connection.execute("SELECT username, email FROM users").fetchone()
+    assert "@" not in user["username"]
+    assert user["username"].casefold() != "mixedcase"
+    assert user["email"] == "mixedcase@example.com"
+
+
+@pytest.mark.parametrize("provider", ["google", "github"])
 def test_start_on_registered_callback_host(browser, monkeypatch, provider):
     client, _ = browser
     monkeypatch.setattr(config, provider.upper() + "_REDIRECT_URI",
@@ -152,12 +238,9 @@ def test_google_denied_consent_shows_feedback_without_exchanging_code(browser, m
     fetch.assert_not_awaited()
 
 
-@pytest.mark.parametrize("verified", [True, False])
-def test_github_links_only_verified_email(browser, monkeypatch, verified):
+@pytest.mark.parametrize("verified", [True, False, "true"])
+def test_github_only_stores_verified_email(browser, monkeypatch, verified):
     _, connection = browser
-    connection.execute("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
-                       ("existing", "existing@example.com", "hash"))
-    connection.commit()
 
     def respond(request):
         if request.url == github_auth.GITHUB_TOKEN_ENDPOINT:
@@ -176,5 +259,5 @@ def test_github_links_only_verified_email(browser, monkeypatch, verified):
 
     profile = asyncio.run(github_auth._fetch_github_profile("code", "https://examly.example"))
     user = github_auth._upsert_github_user(connection, profile)
-    assert user["id"] == (1 if verified else 2)
-    assert profile["email"] == ("existing@example.com" if verified else "")
+    email = connection.execute("SELECT email FROM users WHERE id=?", (user["id"],)).fetchone()[0]
+    assert email == ("existing@example.com" if verified is True else None)

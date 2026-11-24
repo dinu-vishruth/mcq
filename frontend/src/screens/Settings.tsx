@@ -9,6 +9,8 @@ import { apiSend, csrfToken } from "@/bootstrap";
 export interface SettingsData {
   username: string;
   email: string;
+  email_locked?: boolean;
+  password_enabled?: boolean;
   error?: string;
   flash?: string;
 }
@@ -84,17 +86,24 @@ export default function Settings({ data }: { data: SettingsData }) {
               <label className="text-text-2 text-sm block mb-1.5">Username</label>
               <input name="username" defaultValue={data.username} required
                 className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
+              {data.username.normalize("NFKC").includes("@") && (
+                <p className="mt-1.5 text-xs text-text-3">Choose a username without an @ sign.</p>
+              )}
             </div>
             <div>
               <label className="text-text-2 text-sm block mb-1.5">Email</label>
-              <input type="email" name="email" defaultValue={data.email} placeholder="name@example.com"
+              <input type="email" name={data.email_locked ? undefined : "email"} defaultValue={data.email}
+                readOnly={data.email_locked} placeholder={data.email_locked ? "No email from your sign-in provider" : "name@example.com"}
                 className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
+              <p className="mt-1.5 text-xs text-text-3">
+                {data.email_locked ? "Managed by your sign-in provider." : "Optional contact email. Sign in with your username."}
+              </p>
             </div>
-            <div>
+            {data.password_enabled !== false && <div>
               <label className="text-text-2 text-sm block mb-1.5">New Password <span className="text-text-3">(leave blank to keep current)</span></label>
               <input type="password" name="password" placeholder="At least 8 characters"
                 className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
-            </div>
+            </div>}
             <Button type="submit" leftIcon={<Check className="w-4 h-4" />}>Save Changes</Button>
           </form>
         </Card>

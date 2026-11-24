@@ -23,6 +23,8 @@
        data-bootstrap='{{ {
          "username": user["username"],
          "email": user["email"] or "",
+         "email_locked": email_locked,
+         "password_enabled": password_enabled,
          "error": error | default(""),
          "flash": (_flash[0] if _flash else "")
        } | tojson }}'></div>

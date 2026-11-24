@@ -8,7 +8,9 @@ the user profile endpoint may not expose a verified email, so we fetch
 """
 from __future__ import annotations
 
+import logging
 import secrets
+import sqlite3
 from urllib.parse import urlencode, urlsplit
 
 import httpx
@@ -17,6 +19,14 @@ from fastapi.responses import RedirectResponse
 from werkzeug.security import generate_password_hash
 
 import config
+from core.observability import log_event
+from core.services.account_identity import (
+    claim_verified_email,
+    establish_session,
+    identity_write_lock,
+    normalize_email,
+    unique_oauth_username,
+)
 
 from ..deps import Db
 from ..templating import render
@@ -92,19 +102,23 @@ async def github_callback(
         return RedirectResponse("/", status_code=302)
     if not code:
         return fail("GitHub sign-in failed: no authorization code was returned.")
-    if not state or not expected_state or not secrets.compare_digest(state, expected_state):
+    if not state or not state.isascii() or not expected_state or not secrets.compare_digest(state, expected_state):
         return fail("GitHub sign-in failed: invalid state. Please try again.")
 
     try:
         profile = await _fetch_github_profile(code, redirect_uri or _redirect_uri(request))
-    except httpx.HTTPError as exc:
-        return fail(f"Could not reach GitHub to complete sign-in: {exc}")
-    except ValueError as exc:
-        return fail(str(exc))
+    except (httpx.HTTPError, ValueError):
+        return fail("Could not complete GitHub sign-in. Please try again.")
 
-    user = _upsert_github_user(conn, profile)
-    request.session["user_id"] = user["id"]
-    request.session["username"] = user["username"]
+    if type(profile.get("id")) is not int or profile["id"] <= 0:
+        return fail("GitHub did not return a complete account profile. Please try again.")
+    try:
+        user = _upsert_github_user(conn, profile)
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        log_event("oauth.github.failed", level=logging.WARNING, stage="account", reason="identity_conflict")
+        return fail("This GitHub account could not be used to sign in. Try another sign-in method.")
+    establish_session(request, user)
     return RedirectResponse("/dashboard", status_code=302)
 
 
@@ -139,11 +153,12 @@ async def _fetch_github_profile(code: str, redirect_uri: str) -> dict:
             raise ValueError("Could not read your GitHub profile.")
         profile = profile_response.json()
 
-        if not profile.get("id"):
+        if not isinstance(profile, dict) or type(profile.get("id")) is not int or profile["id"] <= 0:
             raise ValueError("GitHub did not return a complete account profile. Please try again.")
-        # Only verified addresses may link an existing local account. The public
-        # profile's email field does not include its verification status.
-        profile["email"] = ""
+        # The public profile email has no verification status. A returning
+        # account only needs the stable GitHub ID even when email is unavailable.
+        profile["email"] = None
+        profile["email_verified"] = False
         emails_response = await client.get(
             GITHUB_EMAILS_ENDPOINT,
             headers={
@@ -152,56 +167,50 @@ async def _fetch_github_profile(code: str, redirect_uri: str) -> dict:
             },
         )
         if emails_response.status_code == 200:
-            for entry in emails_response.json():
-                if entry.get("primary") and entry.get("verified"):
-                    profile["email"] = entry.get("email")
-                    break
-            if not profile.get("email"):
-                for entry in emails_response.json():
-                    if entry.get("verified"):
-                        profile["email"] = entry.get("email")
-                        break
+            try:
+                entries = emails_response.json()
+            except ValueError:
+                entries = []
+            if isinstance(entries, list):
+                verified = (entry for entry in entries if isinstance(entry, dict) and entry.get("verified") is True
+                            and isinstance(entry.get("email"), str) and entry["email"].strip())
+                email_entry = max(verified, key=lambda entry: entry.get("primary") is True, default=None)
+                if email_entry:
+                    profile["email"] = email_entry["email"]
+                    profile["email_verified"] = True
         return profile
 
 
 def _upsert_github_user(conn, profile: dict) -> dict:
-    github_id = str(profile.get("id") or "")
-    login = (profile.get("login") or "").strip()
-    name = (profile.get("name") or "").strip()
-    email = (profile.get("email") or "").strip()
-    picture = profile.get("avatar_url") or ""
-
-    existing = conn.execute("SELECT * FROM users WHERE github_id=?", (github_id,)).fetchone()
-
-    if existing is None and email:
-        existing = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
-        if existing is not None:
-            conn.execute(
-                "UPDATE users SET github_id=?, picture=?, auth_provider='github' WHERE id=?",
-                (github_id, picture, existing["id"]),
-            )
-            conn.commit()
-
+    github_id = str(profile["id"])
+    identity_write_lock(conn)
+    existing = conn.execute("SELECT id, username, email, email_verified FROM users WHERE github_id=?",
+                            (github_id,)).fetchone()
+    email = None
+    raw_email = profile.get("email")
+    if profile.get("email_verified") is True and isinstance(raw_email, str):
+        try:
+            email = normalize_email(raw_email)
+        except ValueError:
+            # GitHub email is optional and never identifies the signed-in account.
+            pass
     if existing is not None:
+        if (email and (existing["email"] != email or not existing["email_verified"])
+                and claim_verified_email(conn, email, user_id=existing["id"])):
+            conn.execute("UPDATE users SET email=?, email_verified=1 WHERE id=?", (email, existing["id"]))
+        conn.commit()
         return {"id": existing["id"], "username": existing["username"]}
 
-    username = _unique_username(conn, name or login or "github-user")
+    if email and not claim_verified_email(conn, email):
+        raise sqlite3.IntegrityError("GitHub email already claimed")
+    picture = profile.get("avatar_url")
+    username = unique_oauth_username(conn, profile.get("name"), profile.get("login"))
     cursor = conn.execute(
         "INSERT INTO users (username, email, password_hash, role, github_id, picture, "
-        "auth_provider) VALUES (?, ?, ?, 'user', ?, ?, 'github') RETURNING id",
+        "auth_provider, email_verified) VALUES (?, ?, ?, 'user', ?, ?, 'github', ?) RETURNING id",
         (username, email, generate_password_hash(secrets.token_urlsafe(32)),
-         github_id, picture),
+         github_id, picture if isinstance(picture, str) else "", int(bool(email))),
     )
     user_id = cursor.fetchone()["id"]
     conn.commit()
     return {"id": user_id, "username": username}
-
-
-def _unique_username(conn, base: str) -> str:
-    base = (base or "user").strip()[:32] or "user"
-    candidate = base
-    suffix = 2
-    while conn.execute("SELECT 1 FROM users WHERE username=?", (candidate,)).fetchone():
-        candidate = f"{base}{suffix}"
-        suffix += 1
-    return candidate
