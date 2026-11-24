@@ -73,6 +73,9 @@ def generate_legacy_candidates(text, num_questions=5, difficulty="medium", *, to
         {"role": "system", "content": system_prompt(mcq_prompts.SYSTEM)},
         {"role": "user", "content": prompt},
     ], max_tokens=config.mcq_token_budget(num_questions))
+    if isinstance(data, dict) and data.get("status") == "INSUFFICIENT_CONTEXT":
+        from core.agents.question import InsufficientContextError
+        raise InsufficientContextError("The source is insufficient to generate grounded questions.")
     questions = _extract_questions(data)
     if not isinstance(questions, list):
         raise MCQGenerationError("The AI service did not return a questions array.")

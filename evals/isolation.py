@@ -1,4 +1,5 @@
 """Evaluation owns temporary storage and never inherits the application's DB URL."""
+import os
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -20,10 +21,12 @@ def isolated_evaluation():
         }
         original = {key: getattr(config, key) for key in overrides}
         cached = embeddings._cached, vectors._cached
+        tracing = os.environ.get("OBSERVABILITY_BACKEND")
         try:
             for key, value in overrides.items():
                 setattr(config, key, value)
             embeddings._cached = vectors._cached = None
+            os.environ["OBSERVABILITY_BACKEND"] = "none"
             if config.DATABASE_URL or not Path(config.DB_PATH).is_relative_to(root):
                 raise RuntimeError("Evaluation storage isolation failed")
             yield
@@ -31,3 +34,7 @@ def isolated_evaluation():
             for key, value in original.items():
                 setattr(config, key, value)
             embeddings._cached, vectors._cached = cached
+            if tracing is None:
+                os.environ.pop("OBSERVABILITY_BACKEND", None)
+            else:
+                os.environ["OBSERVABILITY_BACKEND"] = tracing

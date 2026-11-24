@@ -81,10 +81,13 @@ class TestJobRepository(Base):
         self.assertEqual(view["total"], 3)
 
         job_repo.set_progress(job_id, 2)
-        job_repo.set_done(job_id, {"session_key": "abc", "count": 2, "mcqs": []})
+        job_repo.set_done(job_id, {"session_key": "abc", "count": 2, "fallback_count": 1,
+                                   "mcqs": [{"answer_text": "private"}]})
         view = job_repo.public_view(job_repo.get(job_id))
         self.assertEqual(view["status"], "done")
         self.assertEqual(view["result"]["session_key"], "abc")
+        self.assertEqual(view["result"]["fallback_count"], 1)
+        self.assertNotIn("mcqs", view["result"])
 
     def test_ownership_filter(self):
         from core.repositories import job_repo

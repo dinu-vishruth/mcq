@@ -286,22 +286,7 @@ def practice_generate(user: CurrentApiUser, payload: PracticeIn):
 
 
 def _admit_generation(user, payload):
-    """Generate an MCQ set from an indexed Knowledge document and create a session.
-
-    Reuses the RAG/agent pipeline (falling back to legacy when a document has no
-    retrievable context). Returns the session_key the Quiz screen loads via the
-    existing /student_login flow.
-
-    Deliberately sync rather than async: the pipeline blocks on ``requests.post``,
-    and on a single-worker container an ``async def`` handler would hold the event
-    loop for the whole generation -- including the health check, which the host
-    reads as an unresponsive service. Sync handlers run in the threadpool.
-
-    Queue mode (GENERATION_BACKEND=rq): the work is enqueued and this endpoint
-    returns ``{"ok": true, "job_id": ..., "status": "queued"}`` instead of a
-    session_key; the client polls GET /api/jobs/{id}. The default inline mode
-    keeps the original response shape unchanged -- see README "Compatibility".
-    """
+    """Authorize one source, reserve capacity, and generate or enqueue a quiz."""
     from core.repositories import document_repo, quiz_upload_repo
     from core.services.generation_status import require_generation
 
@@ -341,6 +326,7 @@ def _admit_generation(user, payload):
 def _execute_generation(user, payload, source):
     from core.repositories import job_repo, quiz_upload_repo
     from core.services.generation_budget import check
+    from core.services.generation_metrics import track_generation
     from core.services.job_runner import (
         create_job,
         enqueue_job,
@@ -354,7 +340,7 @@ def _execute_generation(user, payload, source):
         from core.services.mcq_pipeline import generate_from_text
         from utils.session_manager import create_session_key
         try:
-            with learning_profile(user.id):
+            with track_generation() as metrics, learning_profile(user.id):
                 mcqs = generate_from_text(source["content"], payload.num_questions,
                                           payload.difficulty, topic=payload.topic)
             if not mcqs:
@@ -367,9 +353,7 @@ def _execute_generation(user, payload, source):
         except Exception as exc:
             raise HTTPException(status_code=502, detail=public_generation_error(exc))
         quiz_upload_repo.delete(payload.upload_id, user.id)
-        return {"ok": True, "session_key": session_key, "count": len(mcqs),
-                "requested_count": payload.num_questions, "partial": len(mcqs) < payload.num_questions,
-                "quality_policy": "verified_only"}
+        return {"ok": True, **metrics.result(session_key, count=len(mcqs), requested=payload.num_questions)}
 
     if generation_backend() == "rq":
         job_id = create_job(
@@ -385,7 +369,7 @@ def _execute_generation(user, payload, source):
 
     try:
         from core.services.mcq_pipeline import generate_from_document
-        with learning_profile(user.id):
+        with track_generation() as metrics, learning_profile(user.id):
             mcqs = generate_from_document(
                 payload.document_id,
                 num_questions=payload.num_questions,
@@ -405,6 +389,4 @@ def _execute_generation(user, payload, source):
         teacher=user.username, difficulty=payload.difficulty, timer=payload.timer, mcqs=mcqs,
         document_id=payload.document_id,
     )
-    return {"ok": True, "session_key": session_key, "count": len(mcqs),
-            "requested_count": payload.num_questions, "partial": len(mcqs) < payload.num_questions,
-            "quality_policy": "verified_only"}
+    return {"ok": True, **metrics.result(session_key, count=len(mcqs), requested=payload.num_questions)}

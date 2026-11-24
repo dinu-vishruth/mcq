@@ -16,6 +16,35 @@ interface MakeQuizData {
   error?: string;
 }
 
+interface GenerationResult {
+  session_key?: string;
+  job_id?: string;
+  count?: number;
+  requested_count?: number;
+  partial?: boolean;
+  quality_policy?: string;
+  fallback_attempted?: boolean;
+  fallback_count?: number;
+}
+
+interface GenerationJob {
+  status: string;
+  progress?: number;
+  total?: number;
+  error?: string;
+  result?: GenerationResult;
+}
+
+interface ReadyQuiz {
+  sessionKey: string;
+  count: number | undefined;
+  requested: number;
+  verified: boolean;
+  partial: boolean;
+  fallbackAttempted: boolean;
+  fallbackCount: number;
+}
+
 const DIFFS = ["easy", "medium", "hard"] as const;
 const COUNTS = [5, 10, 15, 20, 25, 30];
 const TIMERS = [
@@ -30,10 +59,32 @@ function qs(name: string): string | null {
   return new URLSearchParams(window.location.search).get(name);
 }
 
-// Make Quiz & Test: the single place to generate a quiz/test. Two paths —
-// (1) upload fresh material (hands off to /upload, which generates immediately),
-// (2) generate from a resource already saved in the Learning Journey library.
-// Absorbs the old standalone Practice page.
+function openQuiz(sessionKey: string) {
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = "/student_login";
+  form.hidden = true;
+  for (const [name, value] of [["csrf_token", csrfToken()], ["session_key", sessionKey]]) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
+}
+
+function jobProgress(job: GenerationJob, requested: number): string {
+  if (job.status === "queued") return "Waiting to start quiz generation…";
+  const total = job.total && job.total > 0 ? job.total : requested;
+  if (job.status === "running" && typeof job.progress === "number"
+      && Number.isInteger(job.progress) && job.progress >= 0 && job.progress <= total) {
+    return `${job.progress} of ${total} requested questions have passed the checks so far.`;
+  }
+  return "Generating and checking questions…";
+}
+
 export default function MakeQuiz({ data }: { data: MakeQuizData }) {
   const selected = data.selected_document;
   const [items, setItems] = useState<KnowledgeItem[]>(selected ? [selected] : []);
@@ -48,6 +99,8 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
   const [timerMinutes, setTimerMinutes] = useState<number>(10);
 
   const [generating, setGenerating] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [readyQuiz, setReadyQuiz] = useState<ReadyQuiz | null>(null);
   const [error, setError] = useState(data.error ?? "");
   const uploadId = qs("upload");
   const [uploadTitle, setUploadTitle] = useState("");
@@ -79,41 +132,50 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
   }, []); // eslint-disable-line
 
   async function generate() {
-    if (!aiReady) return;
+    if (generating || readyQuiz || !aiReady) return;
     if (useUpload ? !uploadTitle : !docId) { setError("Choose a saved resource first, or upload new material above."); return; }
     setGenerating(true);
+    setProgress("Generating and checking questions…");
     setError("");
     try {
-      let res = await apiSend<{ session_key?: string; job_id?: string }>("/api/practice/generate", "POST", {
+      let res = await apiSend<GenerationResult>("/api/practice/generate", "POST", {
         ...(useUpload ? { upload_id: uploadId } : { document_id: docId }),
         num_questions: count,
         difficulty,
         topic: topic.trim() || undefined,
         timer: timerMinutes * 60,
       });
+      if (!res.session_key && res.job_id) setProgress("Waiting to start quiz generation…");
       const stopPollingAt = Date.now() + 16 * 60 * 1000;
       while (!res.session_key && res.job_id) {
         if (Date.now() >= stopPollingAt) throw new Error("Generation is taking longer than expected. Check your progress later or try again.");
         await new Promise((resolve) => setTimeout(resolve, 1500));
-        const job = await apiGet<{ status: string; error?: string; result?: { session_key: string } }>(`/api/jobs/${res.job_id}`);
+        const job = await apiGet<GenerationJob>(`/api/jobs/${res.job_id}`);
         if (job.status === "failed") throw new Error(job.error || "Quiz generation failed. Please retry.");
         if (job.status === "done") {
           if (!job.result?.session_key) throw new Error("The quiz could not be opened. Please retry.");
           res = job.result;
+        } else {
+          setProgress(jobProgress(job, count));
         }
       }
       if (!res.session_key) throw new Error("The quiz could not be opened. Please retry.");
-      const form = document.createElement("form");
-      form.method = "POST";
-      form.action = "/student_login";
-      form.innerHTML =
-        `<input name="csrf_token" value="${csrfToken()}">` +
-        `<input name="session_key" value="${res.session_key}">`;
-      document.body.appendChild(form);
-      form.submit();
+      const requested = res.requested_count ?? count;
+      const partial = res.partial === true || (res.count !== undefined && res.count < requested);
+      const fallbackCount = res.fallback_count ?? 0;
+      if (partial || fallbackCount > 0) {
+        setReadyQuiz({ sessionKey: res.session_key, count: res.count, requested, partial,
+          verified: res.quality_policy === "verified_only", fallbackCount,
+          fallbackAttempted: res.fallback_attempted === true });
+        setGenerating(false);
+        setProgress("");
+      } else {
+        openQuiz(res.session_key);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed. Try again.");
       setGenerating(false);
+      setProgress("");
     }
   }
 
@@ -125,7 +187,6 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
         </h1>
         <p className="text-text-2 mt-1.5 mb-8">Turn your material into a quiz — upload something new, or use a resource you've already saved.</p>
 
-        {/* Path 1: upload fresh material -> generates immediately via /upload */}
         <a href="/upload" className="block mb-6">
           <Card hover pad="md" className="flex items-center gap-4">
             <span className="grid place-items-center w-11 h-11 rounded-md bg-accent/10 text-accent shrink-0">
@@ -135,7 +196,7 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
               <div className="font-display font-semibold flex items-center gap-1.5">
                 Upload new material <ChevronRight className="w-4 h-4 text-text-3" />
               </div>
-              <p className="text-text-2 text-sm mt-0.5">Upload a file and generate a quiz from it right away.</p>
+              <p className="text-text-2 text-sm mt-0.5">Upload a file to use it for your next quiz.</p>
             </div>
           </Card>
         </a>
@@ -203,15 +264,38 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
           />
         </Setting>
 
-        {error && <div className="mt-4 text-danger text-sm bg-danger/8 border border-danger/20 rounded-md px-4 py-3">{error}</div>}
+        {error && <div role="alert" className="mt-4 text-danger text-sm bg-danger/8 border border-danger/20 rounded-md px-4 py-3">{error}</div>}
         {aiMessage && <p role="status" className="mt-4 text-text-2 text-sm">{aiMessage}</p>}
+        {progress && <p role="status" className="mt-4 text-text-2 text-sm">{progress}</p>}
 
         <div className="mt-6">
-          <Button size="lg" className="w-full" onClick={generate} disabled={generating || !aiReady || (useUpload ? !uploadTitle : !docId)}
-            leftIcon={generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            rightIcon={!generating ? <ChevronRight className="w-4 h-4" /> : undefined}>
-            {generating ? "Generating your quiz…" : "Generate & Start"}
-          </Button>
+          {readyQuiz ? (
+            <Card pad="md">
+              <div role="status" className="mb-4 space-y-1">
+                <p className="font-medium">{readyQuiz.partial ? "A shorter quiz is ready" : "Your quiz is ready"}</p>
+                {readyQuiz.count !== undefined && (
+                  <p className="text-text-2 text-sm">
+                    {readyQuiz.count} of {readyQuiz.requested} requested questions {readyQuiz.verified ? "passed the checks." : "are ready."}
+                  </p>
+                )}
+                {readyQuiz.fallbackCount > 0 ? (
+                  <p className="text-text-2 text-sm">
+                    A second generation method added {readyQuiz.fallbackCount} {readyQuiz.fallbackCount === 1 ? "question" : "questions"}.
+                    {readyQuiz.verified && " These passed the same checks."}
+                  </p>
+                ) : readyQuiz.fallbackAttempted && (
+                  <p className="text-text-2 text-sm">A second generation method did not add any questions.</p>
+                )}
+              </div>
+              <Button size="lg" className="w-full" onClick={() => openQuiz(readyQuiz.sessionKey)}>Start quiz</Button>
+            </Card>
+          ) : (
+            <Button size="lg" className="w-full" onClick={generate} disabled={generating || !aiReady || (useUpload ? !uploadTitle : !docId)}
+              leftIcon={generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              rightIcon={!generating ? <ChevronRight className="w-4 h-4" /> : undefined}>
+              {generating ? "Generating…" : "Generate & Start"}
+            </Button>
+          )}
         </div>
       </div>
     </AppShell>

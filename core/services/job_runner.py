@@ -21,6 +21,7 @@ import config
 from core.observability import log_event, timed
 from core.repositories import job_repo
 from core.services.ai_safety import public_generation_error
+from core.services.generation_metrics import track_generation
 
 
 def generation_backend() -> str:
@@ -111,7 +112,7 @@ def run_generation_job(job_id: str) -> None:
         with budget(deadline), admission(job["username"], seconds=deadline, charge=False):
             with timed("job.generate", job_id=job_id, document_id=job["document_id"]) as stage:
                 from core.services.personalization import learning_profile
-                with learning_profile(job["user_id"]):
+                with track_generation() as metrics, learning_profile(job["user_id"]):
                     mcqs = generate_from_document(
                         job["document_id"],
                         num_questions=num_questions,
@@ -129,14 +130,7 @@ def run_generation_job(job_id: str) -> None:
                 teacher=job["username"], difficulty=difficulty, timer=timer, mcqs=mcqs,
                 document_id=job["document_id"],
             )
-            job_repo.set_done(job_id, {
-                "session_key": session_key,
-                "count": len(mcqs),
-                "requested_count": num_questions,
-                "partial": len(mcqs) < num_questions,
-                "quality_policy": "verified_only",
-                "mcqs": mcqs,
-            })
+            job_repo.set_done(job_id, metrics.result(session_key, count=len(mcqs), requested=num_questions))
             log_event("job.completed", job_id=job_id, document_id=job["document_id"],
                       count=len(mcqs),
                       duration_ms=round((time.perf_counter() - started) * 1000, 2))

@@ -23,6 +23,8 @@ def _mcq(question: str = "What does the source say about ATP?",
         "options": [{"label": label, "text": text}
                     for label, text in zip("ABCD", texts)],
         "answer_text": answer,
+        "source_hint": "Mitochondria produce ATP through respiration.",
+        "explanation": "The source places ATP production in mitochondria.",
     }
 
 
@@ -37,9 +39,13 @@ CASE = {
 
 class TestScoring(unittest.TestCase):
     def test_perfect_batch_passes(self):
-        result = score_case(CASE, [_mcq(), _mcq(question="Where is DNA stored?")], 1.2)
+        nucleus = _mcq(question="What does the nucleus store?", answer="DNA",
+                       options=["DNA", "starch", "glucose", "oxygen"])
+        nucleus.update(source_hint="The nucleus stores DNA.", explanation="The source states that the nucleus stores DNA.")
+        result = score_case(CASE, [_mcq(), nucleus], 1.2)
         self.assertEqual(result["validity"], 1.0)
         self.assertEqual(result["grounded"], 1.0)
+        self.assertEqual(result["source_quote_rate"], 1.0)
         self.assertEqual(result["keyword_coverage"], 1.0)
         self.assertEqual(result["duplicate_rate"], 0.0)
         self.assertTrue(result["passed"])
@@ -50,14 +56,15 @@ class TestScoring(unittest.TestCase):
         self.assertEqual(result["validity"], 0.0)
         self.assertFalse(result["passed"])
 
-    def test_answer_must_be_in_source_to_count_as_grounded(self):
+    def test_answer_match_is_only_a_lexical_metric(self):
         fabricated = _mcq(answer="chloroplasts generate ATP")
         result = score_case(CASE, [fabricated], 0.1)
-        self.assertEqual(result["grounded"], 0.0)
+        self.assertEqual(result["answer_text_match_rate"], 0.0)
+        self.assertEqual(result["source_quote_rate"], 1.0)
         self.assertFalse(result["passed"])
 
     def test_duplicate_questions_are_flagged(self):
-        result = score_case(CASE, [_mcq(), _mcq()], 0.1)
+        result = score_case(CASE, [_mcq(), _mcq(question="WHAT does the source say about ATP?!")], 0.1)
         self.assertEqual(result["duplicate_rate"], 0.5)
         self.assertFalse(result["passed"])
 
@@ -71,6 +78,29 @@ class TestScoring(unittest.TestCase):
         result = score_case(CASE, [_mcq()], 0.1)
         self.assertEqual(result["count_ratio"], 0.5)
         self.assertFalse(result["passed"])
+
+    def test_malformed_types_and_normalized_option_duplicates_fail(self):
+        broken = _mcq(options=["mitochondria produce ATP", "ｏｘｙｇｅｎ", "OXYGEN", "other"])
+        result = score_case(CASE, [broken, "not an object"], 0.1)
+        self.assertEqual(result["validity"], 0.0)
+        self.assertFalse(result["passed"])
+
+    def test_quote_must_appear_in_the_evidence_actually_supplied(self):
+        result = score_case(CASE, [_mcq(), _mcq(question="What does the nucleus store?")], 0.1,
+                            evidence="The nucleus stores DNA.")
+        self.assertEqual(result["source_quote_rate"], 0.0)
+        self.assertEqual(result["grounding_contract_rate"], 1.0)
+        self.assertEqual(result["validity"], 1.0)
+        self.assertFalse(result["passed"])
+
+    def test_withholding_requires_positive_confirmation(self):
+        case = {**CASE, "expected_outcome": "withhold"}
+        empty = score_case(case, [], 0.1)
+        withheld = score_case(case, [], 0.1, withheld=True)
+        unexpected = score_case(case, [_mcq()], 0.1, withheld=True)
+        self.assertEqual((empty["status"], empty["passed"]), ("failed", False))
+        self.assertEqual((withheld["status"], withheld["passed"]), ("withheld", True))
+        self.assertFalse(unexpected["passed"])
 
 
 class TestDatasetAndStub(unittest.TestCase):

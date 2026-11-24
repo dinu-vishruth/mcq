@@ -19,33 +19,36 @@ Usage
 Metrics per case (all in [0, 1] unless noted):
   count_ratio        generated / requested
   validity           fraction of questions that satisfy the MCQ contract
-  grounded           fraction whose answer text appears in the source document
-  keyword_coverage   fraction of expected_keywords found in question/options
-  duplicate_rate     duplicate question texts / generated (lower is better)
-  passed             count_ratio >= 0.8, validity == 1.0, no duplicates, and
-                     keyword_coverage >= 0.6 when the case defines keywords
+  grounding_contract_rate   fraction with the required explanation and quote
+  source_quote_rate          fraction whose quote appears in supplied evidence
+  answer_text_match_rate    fraction whose answer appears verbatim in evidence
+  keyword_coverage          expected terms matched in stems and answers
+  duplicate_rate            duplicate normalized stems / generated
+  passed                    deterministic contract checks only
+
+Substrings and keyword matches cannot establish factual correctness,
+difficulty, ambiguity, or explanation quality. Use the human review packet for
+those judgments.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
+import re
 import statistics
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from pydantic import ValidationError
+
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Offline-friendly defaults, set before the app modules read config. An operator
-# can override either variable to evaluate the production retrieval stack.
-os.environ.setdefault("EMBEDDING_BACKEND", "hashing")
-os.environ.setdefault("VECTOR_STORE", "sqlite")
-
 import config  # noqa: E402
+from core.models.mcq_contract import MCQ, GroundedMCQ, normalized_text, question_key  # noqa: E402
 
 DEFAULT_DATASET = ROOT / "evals" / "dataset.jsonl"
 DEFAULT_OUTPUT = ROOT / "evals" / "results" / "latest.json"
@@ -57,11 +60,12 @@ MIN_KEYWORD_COVERAGE = 0.6
 
 
 def _norm(text: str) -> str:
-    return " ".join((text or "").lower().split())
+    return normalized_text(text) if isinstance(text, str) else ""
 
 
 def load_cases(path: Path, limit: int | None = None) -> list[dict]:
     cases = []
+    case_ids = set()
     with path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, 1):
             line = line.strip()
@@ -71,11 +75,25 @@ def load_cases(path: Path, limit: int | None = None) -> list[dict]:
                 case = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise SystemExit(f"{path}:{line_number}: invalid JSON ({exc})")
+            if not isinstance(case, dict):
+                raise SystemExit(f"{path}:{line_number}: each case must be an object")
             case.setdefault("num_questions", 5)
             case.setdefault("difficulty", "medium")
             case.setdefault("topic", None)
             case.setdefault("expected_keywords", [])
             case.setdefault("id", f"case-{line_number}")
+            case.setdefault("expected_outcome", "generate")
+            case_id, document = case["id"], case.get("document")
+            requested, keywords = case["num_questions"], case["expected_keywords"]
+            if (not isinstance(case_id, str) or not case_id.strip() or case_id in case_ids
+                    or not isinstance(document, str) or not document.strip()
+                    or type(requested) is not int or not 1 <= requested <= 30
+                    or case["difficulty"] not in ("easy", "medium", "hard")
+                    or not isinstance(case["topic"], (str, type(None)))
+                    or not isinstance(keywords, list) or any(not _norm(term) for term in keywords)
+                    or case["expected_outcome"] not in ("generate", "withhold")):
+                raise SystemExit(f"{path}:{line_number}: invalid case fields or duplicate case ID")
+            case_ids.add(case_id)
             cases.append(case)
     if limit is not None:
         cases = cases[:limit]
@@ -84,62 +102,51 @@ def load_cases(path: Path, limit: int | None = None) -> list[dict]:
     return cases
 
 
-def _is_valid(mcq: dict) -> bool:
-    """Mirror of the structural MCQ contract (QualityAssuranceAgent)."""
-    question = (mcq.get("question") or "").strip()
-    options = mcq.get("options")
-    if not question or not isinstance(options, list) or len(options) != 4:
-        return False
-    texts = []
-    for option in options:
-        if not isinstance(option, dict):
-            return False
-        text = (option.get("text") or "").strip()
-        if not text:
-            return False
-        texts.append(text)
-    if len(set(texts)) != 4:
-        return False
-    answer = (mcq.get("answer_text") or "").strip()
-    return answer in texts
+def _validate(schema, candidate):
+    try:
+        return schema.model_validate(candidate)
+    except ValidationError:
+        return None
 
 
-def score_case(case: dict, mcqs: list[dict], elapsed_seconds: float) -> dict:
+def score_case(case: dict, mcqs: list[dict], elapsed_seconds: float, *,
+               evidence: str | None = None, withheld: bool = False) -> dict:
     """Deterministic per-case scoring. Pure; used by the harness and its tests."""
     requested = int(case.get("num_questions") or 5)
-    document = _norm(case.get("document") or "")
-    keywords = [k for k in (case.get("expected_keywords") or []) if k]
+    source = _norm(case.get("document") if evidence is None else evidence)
+    keywords = [k for k in case.get("expected_keywords", []) if _norm(k)]
+    expected_outcome = case.get("expected_outcome", "generate")
 
     generated = len(mcqs)
-    count_ratio = min(1.0, generated / requested) if requested else 1.0
+    count_ratio = generated / requested
+    valid = [item for raw in mcqs if (item := _validate(MCQ, raw)) is not None]
+    grounded = [item for raw in mcqs if (item := _validate(GroundedMCQ, raw)) is not None]
+    validity = len(valid) / generated if generated else 0.0
+    grounding_contract_rate = len(grounded) / generated if generated else 0.0
+    answer_matches = sum(_norm(item.answer_text) in source for item in valid)
+    quotes_found = sum(_norm(item.source_hint) in source for item in grounded)
+    answer_text_match_rate = answer_matches / generated if generated else 0.0
+    source_quote_rate = quotes_found / generated if generated else 0.0
 
-    validity = (sum(1 for m in mcqs if _is_valid(m)) / generated) if generated else 0.0
-    grounded_hits = 0
-    for mcq in mcqs:
-        answer = _norm(mcq.get("answer_text") or "")
-        if answer and answer in document:
-            grounded_hits += 1
-    grounded = (grounded_hits / generated) if generated else 0.0
-
-    haystack = _norm(" ".join(
-        [str(m.get("question") or "") for m in mcqs]
-        + [str(o.get("text") or "") for m in mcqs for o in (m.get("options") or [])]
-        + [str(m.get("answer_text") or "") for m in mcqs]
-    ))
-    matched_keywords = [k for k in keywords if _norm(k) in haystack]
+    terms = [_norm(field) for item in valid for field in (item.question, item.answer_text)]
+    matched_keywords = [term for term in keywords if any(_norm(term) in text for text in terms)]
     keyword_coverage = (len(matched_keywords) / len(keywords)) if keywords else 1.0
 
-    questions = [_norm(m.get("question") or "") for m in mcqs]
-    duplicate_rate = 0.0
-    if questions:
-        duplicate_rate = 1.0 - (len(set(questions)) / len(questions))
+    questions = [question_key(item.question) for item in valid]
+    duplicate_rate = (len(questions) - len(set(questions))) / generated if generated else 0.0
 
     passed = (
-        count_ratio >= MIN_COUNT_RATIO
+        MIN_COUNT_RATIO <= count_ratio <= 1.0
         and validity >= MIN_VALIDITY
+        and grounding_contract_rate == 1.0
+        and source_quote_rate == 1.0
         and duplicate_rate == 0.0
         and keyword_coverage >= (MIN_KEYWORD_COVERAGE if keywords else 0.0)
     )
+    if expected_outcome == "withhold":
+        passed = withheld and generated == 0
+    status = ("complete" if generated >= requested else "partial" if generated else
+              "withheld" if withheld else "failed")
 
     return {
         "id": case["id"],
@@ -147,11 +154,17 @@ def score_case(case: dict, mcqs: list[dict], elapsed_seconds: float) -> dict:
         "generated": generated,
         "count_ratio": round(count_ratio, 3),
         "validity": round(validity, 3),
-        "grounded": round(grounded, 3),
+        # Keep the historical machine-readable key as an alias for lexical matching.
+        "grounded": round(answer_text_match_rate, 3),
+        "answer_text_match_rate": round(answer_text_match_rate, 3),
+        "source_quote_rate": round(source_quote_rate, 3),
+        "grounding_contract_rate": round(grounding_contract_rate, 3),
         "keyword_coverage": round(keyword_coverage, 3),
         "matched_keywords": matched_keywords,
         "duplicate_rate": round(duplicate_rate, 3),
         "passed": bool(passed),
+        "expected_outcome": expected_outcome,
+        "status": status,
         "seconds": round(elapsed_seconds, 2),
     }
 
@@ -167,32 +180,34 @@ def generate_live(case: dict) -> list[dict]:
         case["document"],
         num_questions=int(case["num_questions"]),
         difficulty=case["difficulty"],
+        topic=case.get("topic"),
         owner="eval",
         title=str(case["id"]),
     )
 
 
 def _sentences(document: str) -> list[str]:
-    parts = [p.strip() for p in document.replace("\n", " ").split(". ")]
-    return [p if p.endswith(".") else p + "." for p in parts if p.strip()]
+    return [part.strip() for part in re.split(r"(?<=[.!?])\s+", document) if part.strip()]
 
 
 def _stub_options(sentence: str, others: list[str], index: int) -> tuple[list[dict], str]:
     """Four distinct options where the correct one is a verbatim source span."""
     correct = sentence[:160]
-    candidates = [s[:160] for s in others if s[:160] != correct]
-    distractors = candidates[:3]
     fillers = [
         "None of the statements above is supported by the source.",
         "The source explicitly rejects this statement.",
         "This claim is not mentioned in the source.",
         "The opposite of the statement is true.",
     ]
-    while len(distractors) < 3:
-        filler = fillers[len(distractors)]
-        if filler != correct and filler not in distractors:
-            distractors.append(filler)
-    texts = list(distractors[:3])
+    seen = {_norm(correct)}
+    texts = []
+    for candidate in [s[:160] for s in others] + fillers:
+        key = _norm(candidate)
+        if key not in seen:
+            texts.append(candidate)
+            seen.add(key)
+        if len(texts) == 3:
+            break
     texts.insert(index % 4, correct)  # rotate the answer position A-D
     labels = ["A", "B", "C", "D"]
     options = [{"label": labels[i], "text": text} for i, text in enumerate(texts)]
@@ -201,6 +216,8 @@ def _stub_options(sentence: str, others: list[str], index: int) -> tuple[list[di
 
 def generate_stub(case: dict) -> list[dict]:
     """Deterministic, offline stand-in. NOT a measure of generation quality."""
+    if case.get("expected_outcome") == "withhold":
+        return []
     sentences = _sentences(case["document"]) or [case["document"]]
     keywords = case.get("expected_keywords") or [case.get("topic") or "the source"]
     wanted = int(case["num_questions"])
@@ -214,6 +231,8 @@ def generate_stub(case: dict) -> list[dict]:
             "question": f"Which statement about {keyword} is supported by the source? ({index + 1})",
             "options": options,
             "answer_text": answer,
+            "source_hint": answer,
+            "explanation": "The marked statement quotes the supplied text.",
         })
     return mcqs
 
@@ -233,6 +252,9 @@ def summarise(results: list[dict]) -> dict:
         "mean_count_ratio": mean("count_ratio"),
         "mean_validity": mean("validity"),
         "mean_grounded": mean("grounded"),
+        "mean_answer_text_match_rate": mean("answer_text_match_rate"),
+        "mean_source_quote_rate": mean("source_quote_rate"),
+        "mean_grounding_contract_rate": mean("grounding_contract_rate"),
         "mean_keyword_coverage": mean("keyword_coverage"),
         "mean_duplicate_rate": mean("duplicate_rate"),
         "total_seconds": round(sum(r["seconds"] for r in results), 2),
@@ -251,26 +273,29 @@ def render_markdown(report: dict) -> str:
         f"- Cases: {summary['cases']} | Passed: {summary['passed']} "
         f"({summary['pass_rate'] * 100:.0f}%)",
         f"- Mean validity: {summary['mean_validity']:.2f} | "
-        f"Grounded: {summary['mean_grounded']:.2f} | "
+        f"Source quote match: {summary['mean_source_quote_rate']:.2f} | "
+        f"Answer text match: {summary['mean_answer_text_match_rate']:.2f} | "
         f"Keyword coverage: {summary['mean_keyword_coverage']:.2f} | "
         f"Duplicates: {summary['mean_duplicate_rate']:.2f}",
         "",
-        "| Case | Requested | Generated | Valid | Grounded | Keywords | Dups | Pass | Secs |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | :---: | ---: |",
+        "| Case | Requested | Generated | Status | Valid | Source quote | Answer match | Keywords | Dups | Pass | Secs |",
+        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | :---: | ---: |",
     ]
     for r in report["cases"]:
         lines.append(
-            f"| {r['id']} | {r['requested']} | {r['generated']} | "
-            f"{r['validity']:.2f} | {r['grounded']:.2f} | "
+            f"| {r['id']} | {r['requested']} | {r['generated']} | {r['status']} | "
+            f"{r['validity']:.2f} | {r['source_quote_rate']:.2f} | {r['answer_text_match_rate']:.2f} | "
             f"{r['keyword_coverage']:.2f} | {r['duplicate_rate']:.2f} | "
             f"{'yes' if r['passed'] else 'no'} | {r['seconds']:.2f} |"
         )
+    lines.extend(["", "> Contract and lexical checks only. Factual correctness, relevance, "
+                       "difficulty, distractors, and source coverage require human review."])
     if report["mode"] == "stub":
         lines += [
             "",
             "> Stub mode: questions come from a deterministic local generator, so",
             "> this report verifies the harness and scoring only. It is **not** a",
-            "> measurement of model quality. Run without `--dry-run` for that.",
+            "> measurement of model quality.",
         ]
     lines.append("")
     return "\n".join(lines)
@@ -301,6 +326,7 @@ def _main(argv: list[str] | None = None) -> int:
 
     # The harness ingests documents, so point it at a throwaway database: an
     # evaluation run must never add rows to the real library.
+    from core.services.generation_metrics import track_generation
     from fastapi_app.database import init_db
 
     init_db()
@@ -322,15 +348,22 @@ def _main(argv: list[str] | None = None) -> int:
         print(f"[eval] {case['id']} ({case['num_questions']} x {case['difficulty']}) ...",
               flush=True)
         started = time.perf_counter()
-        try:
-            mcqs = generator(case)
-            error = None
-        except Exception as exc:  # a failed case is data, not a crashed run
-            mcqs = []
-            error = str(exc)
+        with track_generation() as metrics:
+            try:
+                mcqs = generator(case)
+                if not isinstance(mcqs, list):
+                    raise TypeError("Generator output is not an MCQ list")
+                error = None
+            except Exception as exc:  # a failed case is data, not a crashed run
+                mcqs = []
+                error = type(exc).__name__
+        counters = metrics.snapshot()
         elapsed = time.perf_counter() - started
-        result = score_case(case, mcqs, elapsed)
-        if error:
+        withheld = (case["expected_outcome"] == "withhold" and not mcqs
+                    and ((args.dry_run and error is None) or (not counters["errors"] and not counters["unverified"]
+                         and bool(counters["refusals"] or counters["rejected"]))))
+        result = score_case(case, mcqs, elapsed, withheld=withheld)
+        if error and not withheld:
             result["error"] = error
             result["passed"] = False
         results.append(result)

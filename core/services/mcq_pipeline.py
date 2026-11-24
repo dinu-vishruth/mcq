@@ -2,17 +2,24 @@
 from __future__ import annotations
 
 import time
+from typing import Literal
 
 import config
 from core.agents.context_builder import ContextBuilderAgent
 from core.agents.context_validation import ContextValidationAgent
 from core.agents.planner import PlannerAgent
-from core.agents.question import QuestionAgent
+from core.agents.question import InsufficientContextError, QuestionAgent
 from core.agents.retriever import RetrieverAgent
 from core.observability import log_event, timed
 from core.services.generation_budget import check, generation_scope, remaining
+from core.services.generation_metrics import current_metrics
 from core.services.ingestion_service import ingest_document
 from core.services.mcq_quality import accept_candidates
+from models.mcq_generator import MCQGenerationError
+
+
+class SourceRejectedError(MCQGenerationError):
+    """A source was explicitly rejected, or was empty."""
 
 
 def _max_attempts(num_questions: int) -> int:
@@ -30,7 +37,7 @@ def _retrieval_query(difficulty: str, topic: str | None) -> str:
 def _collect_mcqs(context: str, num_questions: int, difficulty: str,
                   *, deadline_seconds: int | None = None, on_progress=None,
                   topic: str | None = None, candidate_generator=None,
-                  accepted=None, max_attempts=None) -> list[dict]:
+                  accepted=None, max_attempts=None, recovery: bool = False) -> list[dict]:
     """Accumulate accepted candidates only; later failures preserve earlier work.
 
     ``accepted`` is an internal handoff of already checked questions from the
@@ -43,6 +50,7 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
     # The outer request owns the deadline; the local argument only creates it at entry.
     started = time.perf_counter()
     attempts = 0
+    metrics = current_metrics()
     for attempt in range(rounds):
         need = num_questions - len(collected)
         if need <= 0 or (remaining(reserve=4) is not None and remaining(reserve=4) <= 0):
@@ -50,6 +58,9 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
         attempts += 1
         try:
             check()
+            if metrics is not None:
+                metrics.attempts += 1
+                metrics.fallback_attempted |= recovery
             with timed("question", attempt=attempt + 1, requested=need) as stage:
                 raw = generate(context, need, difficulty, topic=topic, excluded=tuple(collected))
                 stage["mcqs"] = len(raw) if isinstance(raw, list) else 0
@@ -57,9 +68,22 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
                 result = accept_candidates(raw, context, difficulty, topic=topic, excluded=collected)
                 stage.update(accepted=len(result.accepted), rejected=len(result.rejected),
                              unverified=len(result.unverified))
+            if metrics is not None:
+                metrics.rejected += len(result.rejected)
+                metrics.unverified += len(result.unverified)
             check()
-            collected.extend(result.accepted[:need])
+            accepted_batch = result.accepted[:need]
+            collected.extend(accepted_batch)
+            if metrics is not None and recovery:
+                metrics.fallback_count += len(accepted_batch)
+        except InsufficientContextError:
+            if metrics is not None:
+                metrics.refusals += 1
+            log_event("pipeline.insufficient_context", collected=len(collected), recovery=recovery)
+            break
         except Exception as exc:
+            if metrics is not None:
+                metrics.errors += 1
             log_event("pipeline.attempt_failed", error_type=type(exc).__name__, collected=len(collected))
             break
         if on_progress is not None:
@@ -73,18 +97,25 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
 
 
 def _require_source(context, num_questions, difficulty):
-    from core.services.ai_safety import source_block
-    from models.mcq_generator import MCQGenerationError
-    source_block(context)
-    if not context.strip():
-        raise MCQGenerationError("No readable source material is available.")
-    if not config.FACT_VERIFICATION_ENABLED:
-        raise MCQGenerationError("Verified quiz generation is unavailable while fact checking is disabled.")
-    if config.CONTEXT_VALIDATION_ENABLED:
-        verdict = ContextValidationAgent().run(context, num_questions, difficulty)
-        log_event("context.validated", sufficient=verdict["sufficient"], status=verdict.get("status"))
-        if not verdict["sufficient"]:
-            raise MCQGenerationError("The source could not be verified as sufficient. Try fewer questions or different material.")
+    from core.services.ai_safety import UnsafeSourceError, source_block
+
+    try:
+        source_block(context)
+        if not context.strip():
+            raise SourceRejectedError("No readable source material is available.")
+        if not config.FACT_VERIFICATION_ENABLED:
+            raise MCQGenerationError("Verified quiz generation is unavailable while fact checking is disabled.")
+        if config.CONTEXT_VALIDATION_ENABLED:
+            verdict = ContextValidationAgent().run(context, num_questions, difficulty)
+            log_event("context.validated", sufficient=verdict["sufficient"], status=verdict.get("status"))
+            if not verdict["sufficient"]:
+                error = SourceRejectedError if verdict.get("status") == "rejected" else MCQGenerationError
+                raise error("The source could not be verified as sufficient. Try fewer questions or different material.")
+    except (SourceRejectedError, UnsafeSourceError):
+        metrics = current_metrics()
+        if metrics is not None:
+            metrics.refusals += 1
+        raise
 
 
 @generation_scope
@@ -98,19 +129,19 @@ def _generate_checked(context, num_questions, difficulty, *, topic=None,
                                      accepted=collected, on_progress=on_progress,
                                      deadline_seconds=deadline_seconds, source_checked=True)
     if not collected:
-        from models.mcq_generator import MCQGenerationError
         raise MCQGenerationError("No verified questions completed within the generation budget.")
     return collected
 
 
 @generation_scope
 def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medium",
-                      *, owner: str = "", title: str = "", user_request: str = "") -> list[dict]:
+                     *, owner: str = "", title: str = "", user_request: str = "",
+                     topic: str | None = None) -> list[dict]:
     plan = PlannerAgent().run(user_request) if user_request else None
     if plan:
         num_questions = plan.num_items or num_questions
         difficulty = plan.difficulty or difficulty
-    topic = plan.topic if plan else None
+        topic = plan.topic or topic
     ingest = ingest_document(text, owner=owner, title=title or "uploaded document", source_type="paste")
     top_k = max(config.RETRIEVAL_TOP_K, min(num_questions * 2, 40))
     retriever = RetrieverAgent()
@@ -156,19 +187,19 @@ def generate_from_document(document_id: int, num_questions: int = 5,
 def _legacy_from_context(context, num_questions, difficulty, *, topic=None,
                          deadline_seconds=None, on_progress=None) -> list[dict]:
     return _legacy_fallback(context, num_questions, difficulty, topic=topic,
-                            deadline_seconds=deadline_seconds, on_progress=on_progress)
+                            deadline_seconds=deadline_seconds, on_progress=on_progress, recovery=False)
 
 
 @generation_scope
 def _legacy_fallback(text, num_questions, difficulty, reason: str = "", *, topic=None,
                      accepted=None, deadline_seconds=None, on_progress=None,
-                     source_checked=False) -> list[dict]:
+                     source_checked=False, recovery=True, allow_empty=False) -> list[dict]:
     """Request the shortfall through an explicit candidate generator and shared gate.
 
     No public-generator recursion or global pipeline-mode mutation is necessary.
     Partial results survive failure. No acceptable result is a recoverable error.
     """
-    from models.mcq_generator import MCQGenerationError, generate_legacy_candidates
+    from models.mcq_generator import generate_legacy_candidates
     if not source_checked:
         _require_source(text, num_questions, difficulty)
     if reason:
@@ -176,7 +207,25 @@ def _legacy_fallback(text, num_questions, difficulty, reason: str = "", *, topic
     result = _collect_mcqs(text, num_questions, difficulty, topic=topic,
                            candidate_generator=generate_legacy_candidates, accepted=accepted,
                            max_attempts=3 if num_questions <= 10 else 6,
-                           deadline_seconds=deadline_seconds, on_progress=on_progress)
-    if not result:
+                           deadline_seconds=deadline_seconds, on_progress=on_progress, recovery=recovery)
+    if not result and not allow_empty:
         raise MCQGenerationError("No questions passed the quality checks. Please retry or use different material.")
     return result
+
+
+@generation_scope
+def evaluate_candidates(context: str, num_questions: int, difficulty: str, *,
+                        topic: str | None = None, strategy: Literal["primary", "fallback"]) -> list[dict]:
+    """Isolate one producer for evals while keeping the production acceptance gate."""
+    from core.services.ai_safety import UnsafeSourceError
+
+    if strategy not in ("primary", "fallback"):
+        raise ValueError("Unknown evaluation strategy.")
+    try:
+        _require_source(context, num_questions, difficulty)
+    except (SourceRejectedError, UnsafeSourceError):
+        return []
+    if strategy == "fallback":
+        return _legacy_fallback(context, num_questions, difficulty, topic=topic,
+                               source_checked=True, allow_empty=True)
+    return _collect_mcqs(context, num_questions, difficulty, topic=topic)

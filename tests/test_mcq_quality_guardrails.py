@@ -13,6 +13,7 @@ from core.agents.quality_assurance import QualityAssuranceAgent
 from core.llm.base import LLMError, LLMProvider
 from core.models.mcq_contract import question_key
 from core.services import mcq_pipeline as pipeline
+from core.services.generation_metrics import current_metrics, track_generation
 from core.services.mcq_quality import accept_candidates
 from models.mcq_generator import MCQGenerationError, generate_mcqs
 
@@ -144,12 +145,47 @@ class TestSharedQuality(unittest.TestCase):
     def test_later_failure_discards_verified_partial_is_fixed(self):
         self.checkers()
         with patch.object(pipeline.QuestionAgent, 'run', side_effect=[[mcq()], LLMError('late failure')]), \
-                patch('models.mcq_generator.generate_legacy_candidates', side_effect=LLMError('fallback down')) as fallback:
+                patch('models.mcq_generator.generate_legacy_candidates', side_effect=LLMError('fallback down')) as fallback, \
+                track_generation() as metrics:
             result = pipeline._generate_checked(SOURCE, 2, 'medium')
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]['verification_status'], 'verified')
         self.assertEqual(fallback.call_args.args[1], 1)
         self.assertEqual(fallback.call_args.args[0], SOURCE)
+        self.assertEqual(metrics.snapshot()['errors'], 2)
+        self.assertTrue(metrics.result('key', count=len(result), requested=2)['partial'])
+        self.assertTrue(metrics.fallback_attempted)
+        self.assertEqual(metrics.fallback_count, 0)
+
+    def test_reports_only_questions_actually_accepted_from_recovery(self):
+        self.checkers()
+        with patch.object(pipeline.QuestionAgent, 'run', side_effect=[[mcq()], LLMError('late failure')]), \
+                patch('models.mcq_generator.generate_legacy_candidates', return_value=[mcq('Which rows match?')]), \
+                track_generation() as metrics:
+            result = pipeline.generate_from_text(SOURCE, 2, 'medium')
+        self.assertEqual(len(result), 2)
+        self.assertEqual(metrics.attempts, 3)
+        self.assertEqual(metrics.fallback_count, 1)
+        self.assertIsNone(current_metrics())
+
+    def test_configured_legacy_is_not_reported_as_recovery(self):
+        self.checkers()
+        with patch.object(config, 'AI_PIPELINE', 'legacy'), \
+                patch('models.mcq_generator.generate_legacy_candidates', return_value=[mcq()]), \
+                track_generation() as metrics:
+            result = pipeline.generate_from_text(SOURCE, 1, 'medium')
+        self.assertEqual(len(result), 1)
+        self.assertFalse(metrics.fallback_attempted)
+        self.assertEqual(metrics.fallback_count, 0)
+
+    def test_evaluation_distinguishes_refusal_and_provider_failure(self):
+        with patch.object(pipeline.QuestionAgent, 'run', side_effect=LLMError('provider down')), \
+                track_generation() as failed:
+            self.assertEqual(pipeline.evaluate_candidates(SOURCE, 1, 'medium', strategy='primary'), [])
+        self.assertEqual((failed.refusals, failed.errors), (0, 1))
+        with track_generation() as refused:
+            self.assertEqual(pipeline.evaluate_candidates('', 1, 'medium', strategy='fallback'), [])
+        self.assertEqual((refused.refusals, refused.errors), (1, 0))
 
     def test_six_source_controlled_comparison(self):
         cases = [json.loads(line) for line in (Path(__file__).parents[1] / 'evals/dataset.jsonl').read_text().splitlines()]

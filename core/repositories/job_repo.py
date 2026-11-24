@@ -125,12 +125,15 @@ def _update(job_id: str, **fields) -> None:
 
 
 def public_view(job: dict) -> dict:
-    """Shape returned to the client. Job ids are unguessable and ownership is
-    checked by the route, so exposing params/result is safe."""
+    """Expose progress and completion metadata, including for older saved jobs."""
     result = None
     if job.get("result_json"):
         try:
-            result = json.loads(job["result_json"])
+            stored = json.loads(job["result_json"])
+            if isinstance(stored, dict):
+                fields = ("session_key", "count", "requested_count", "partial", "quality_policy",
+                          "fallback_attempted", "fallback_count")
+                result = {key: stored[key] for key in fields if key in stored}
         except (TypeError, ValueError):
             result = None
     return {
