@@ -24,6 +24,11 @@ def test_concurrent_boot_and_identity_uniqueness(monkeypatch):
         admin.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
         try:
             monkeypatch.setattr(config, "DATABASE_URL", make_conninfo(url, options=f"-c search_path={schema}"))
+            # Production has historical migrations with reused version numbers.
+            # Their names must not suppress the newer account/control upgrades.
+            with psycopg.connect(config.DATABASE_URL) as legacy:
+                legacy.execute("CREATE TABLE sql_migrations (name TEXT PRIMARY KEY, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)")
+                legacy.execute("INSERT INTO sql_migrations(name) VALUES ('006_postgres_immutable_ownership.sql'), ('007_postgres_generation_reservations.sql')")
             with ThreadPoolExecutor(max_workers=3) as pool:
                 list(pool.map(lambda _: init_db(), range(3)))
             conn = get_db()

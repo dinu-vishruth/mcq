@@ -56,7 +56,10 @@ def run_sql_migrations(conn, backend: str) -> list[str]:
         name_base, dialect = parts[0], parts[1]
         if dialect != backend:
             continue
-        if filename in done or name_base in {p.split("_")[0] for p in done}:
+        # Only bare numeric legacy markers stand for an entire version.
+        # Named migrations can share a number across historical releases;
+        # treating those names as versions silently skips required upgrades.
+        if filename in done or name_base in {p for p in done if p.isdigit()}:
             continue
         with open(os.path.join(MIGRATIONS_DIR, filename), "r", encoding="utf-8") as fh:
             sql = fh.read()
