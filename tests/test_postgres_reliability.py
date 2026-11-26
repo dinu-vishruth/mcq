@@ -46,6 +46,15 @@ def test_concurrent_boot_and_identity_uniqueness(monkeypatch):
                 assert not job_repo.claim(jid, "duplicate-worker")
                 key = job_repo.publish(job_repo.get(jid), "first-worker", [{"question": "test"}], "easy", 60, GenerationMetrics())
                 assert job_repo.public_view(job_repo.get(jid))["result"]["session_key"] == key
+
+                # Exercise the rendered Settings and deletion paths with real
+                # Postgres rows, not only SQLite fixtures.
+                from fastapi_app.main import create_app
+                from tests._client import make_client_factory
+                client = make_client_factory(create_app(), config.SECRET_KEY)()
+                assert client.post("/demo").status_code == 302
+                assert client.get("/profile").status_code == 200
+                assert client.post("/delete_account").status_code == 302
             finally:
                 conn.close()
         finally:
