@@ -76,7 +76,7 @@ class TestSafetyPolicy(unittest.TestCase):
 
     def test_safety_verdict_is_mandatory_strict_and_fail_closed(self):
         for safe, state in [(False, 'rejected'), ('false', 'unverified'), (None, 'unverified')]:
-            verdict = {'index': 0, 'passed': True, 'confidence': 0.99}
+            verdict = {'index': 0, 'passed': True, 'confidence': 0.99, 'semantic_duplicate': False}
             if safe is not None:
                 verdict['safe'] = safe
             with self.subTest(safe=safe), patch('core.agents.fact_verification.get_llm',
@@ -89,7 +89,7 @@ class TestSafetyPolicy(unittest.TestCase):
         from core.services.mcq_pipeline import _legacy_fallback
         from models.mcq_generator import MCQGenerationError
         provider = Mock(complete_json=Mock(return_value={
-            'results': [{'index': 0, 'passed': True, 'safe': False, 'confidence': 0.99}]}))
+            'results': [{'index': 0, 'passed': True, 'safe': False, 'semantic_duplicate': False, 'confidence': 0.99}]}))
         with patch.object(config, 'CONTEXT_VALIDATION_ENABLED', False), \
                 patch('models.mcq_generator.generate_legacy_candidates', return_value=[mcq()]), \
                 patch('core.agents.fact_verification.get_llm', return_value=provider):

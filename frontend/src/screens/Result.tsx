@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, X, Target, Sparkles, Brain, Home } from "lucide-react";
+import { Check, X, Target, Sparkles, Brain, Home, BookOpen } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -11,6 +11,7 @@ interface Detail {
   correct: string;
   is_correct: boolean;
   confidence?: "know" | "maybe" | "no_idea" | null;
+  source_url?: string;
 }
 export interface ResultData {
   score: number;
@@ -43,14 +44,14 @@ function ScoreRing({ pct }: { pct: number }) {
     };
   }, [pct, C]);
 
-  const stroke = pct >= 70 ? "#10b981" : pct >= 40 ? "#f59e0b" : "#ef4444";
+  const stroke = pct >= 70 ? "#16704a" : pct >= 40 ? "#9a5b0b" : "#bc3644";
 
   return (
     <div className="relative w-[200px] h-[200px] mx-auto">
-      <svg width="200" height="200" viewBox="0 0 200 200" className="-rotate-90">
-        <circle cx="100" cy="100" r={R} fill="none" strokeWidth="14" stroke="rgba(255,255,255,0.06)" />
+      <svg aria-hidden="true" width="200" height="200" viewBox="0 0 200 200" className="-rotate-90">
+        <circle cx="100" cy="100" r={R} fill="none" strokeWidth="10" stroke="#e9ece5" />
         <circle
-          cx="100" cy="100" r={R} fill="none" strokeWidth="14" stroke={stroke}
+          cx="100" cy="100" r={R} fill="none" strokeWidth="10" stroke={stroke}
           strokeLinecap="round" strokeDasharray={C} strokeDashoffset={offset}
           style={{ transition: "stroke-dashoffset 1.1s cubic-bezier(0.16,1,0.3,1)" }}
         />
@@ -78,9 +79,9 @@ export default function Result({ data }: { data: ResultData }) {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <span className="grid place-items-center w-8 h-8 rounded-md bg-accent/10 text-accent">
-              <Brain className="w-4 h-4" />
+              <BookOpen className="w-4 h-4" />
             </span>
-            <span className="font-display font-semibold">MCQ Generator</span>
+            <span className="font-display font-semibold">Examly</span>
           </div>
           <Button variant="secondary" size="sm" leftIcon={<Home className="w-4 h-4" />} onClick={() => (window.location.href = "/")}>
             Home
@@ -89,14 +90,18 @@ export default function Result({ data }: { data: ResultData }) {
 
         {/* Score hero */}
         {data.notice && <p role="status" className="mb-4 text-warning">{data.notice}</p>}
-        <Card pad="lg" className="text-center mb-6">
-          <p className="text-accent-2 text-sm font-medium mb-4">{headline}</p>
+        <header className="text-center mt-10 mb-8">
+          <p className="text-accent text-xs font-semibold tracking-[0.15em] uppercase mb-3">{headline}</p>
+          <h1 className="study-page-title text-4xl md:text-5xl">A moment to reflect.</h1>
+          <p className="text-text-2 text-sm mt-3">Take a moment to see what stuck, and what deserves another look.</p>
+        </header>
+        <Card pad="lg" className="text-center mb-6 bg-[#f0f2e9]">
           <ScoreRing pct={pct} />
-          <div className="text-text-3 text-sm mt-2">{score} / {total} correct</div>
+          <div className="text-text-2 text-base mt-3">{score} of {total} correct</div>
         </Card>
 
         {/* Summary stats */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           <Card>
             <div className="flex items-center justify-between">
               <div>
@@ -172,9 +177,10 @@ export default function Result({ data }: { data: ResultData }) {
                   <p className="text-sm text-text-2 mt-1"><strong className="text-text">Correct answer:</strong> <span className="text-success">{d.correct}</span></p>
                 )}
                 {explanations[i] && (
-                  <div className="mt-3 p-3 rounded-md bg-white/[0.03] border border-white/[0.06] text-sm text-text-2">
+                  <div className="mt-3 p-3 rounded-md bg-card-2 border border-line text-sm text-text-2">
                     <strong className="text-text flex items-center gap-1.5 mb-1"><Brain className="w-4 h-4" /> Explanation</strong>
                     {explanations[i]}
+                    {d.source_url?.startsWith("/sources/") && <a className="block mt-2 text-accent underline" href={d.source_url}>Read the supporting passage</a>}
                   </div>
                 )}
               </Card>
@@ -182,9 +188,9 @@ export default function Result({ data }: { data: ResultData }) {
           ))}
         </div>
 
-        <div className="flex justify-center gap-3">
+        <div className="flex flex-wrap justify-center gap-3">
           <Button leftIcon={<Sparkles className="w-4 h-4" />} onClick={() => (window.location.href = "/upload")}>
-            Generate New Quiz
+            Create another quiz
           </Button>
           <Button variant="secondary" leftIcon={<Home className="w-4 h-4" />} onClick={() => (window.location.href = "/review")}>
             Review saved mistakes

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
-  Compass, Plus, Dumbbell, Trash2, Clock, Layers, CheckCircle2, Loader2, Library,
+  BookOpen, Plus, Dumbbell, Trash2, Clock, Layers, CheckCircle2, Loader2, Library,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/Card";
@@ -42,10 +42,10 @@ export default function Journey({ data }: { data: { username: string } }) {
   return (
     <AppShell active="journey" username={data.username}>
       <div className="max-w-6xl mx-auto px-5 lg:px-8 py-8">
-        <div className="flex items-start justify-between gap-4 mb-8">
+        <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
           <div>
-            <h1 className="font-display text-2xl font-semibold flex items-center gap-2.5">
-              <Compass className="w-6 h-6 text-accent" /> Learning Journey
+            <h1 className="study-page-title text-4xl flex items-center gap-2.5">
+              <BookOpen className="w-6 h-6 text-accent" /> Your library
             </h1>
             <p className="text-text-2 mt-1.5">Your saved study resources. Add material once, then make quizzes from it anytime.</p>
           </div>

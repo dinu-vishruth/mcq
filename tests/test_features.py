@@ -80,13 +80,13 @@ class Base(unittest.TestCase):
         conn = sqlite3.connect(_DB)
         try:
             conn.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'student')",
-                         (username, generate_password_hash("password123")))
+                         (username, generate_password_hash("Cedar river orbit 42!")))
             conn.commit()
         except sqlite3.IntegrityError:
             pass
         finally:
             conn.close()
-        c.post("/login", data={"username": username, "password": "password123"})
+        c.post("/login", data={"username": username, "password": "Cedar river orbit 42!"})
 
 
 class TestTemporaryQuizUpload(Base):

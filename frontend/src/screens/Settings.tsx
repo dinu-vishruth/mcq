@@ -11,6 +11,11 @@ export interface SettingsData {
   email: string;
   email_locked?: boolean;
   password_enabled?: boolean;
+  is_admin?: boolean;
+  password_upgrade_required?: boolean;
+  password_min_length?: number;
+  password_max_length?: number;
+  password_help?: string;
   error?: string;
   flash?: string;
 }
@@ -77,6 +82,9 @@ export default function Settings({ data }: { data: SettingsData }) {
           <div className="mb-4 px-4 py-3 rounded-md bg-danger/10 border border-danger/20 text-danger text-sm">{data.error}</div>
         )}
 
+        {data.is_admin && <Card className="mb-5 border-accent/20"><h2 className="font-display text-lg">Your admin workspace</h2><p className="text-sm text-text-2 my-3">Manage application access, accounts, and activity.</p><a href="/admin" className="text-accent font-medium text-sm hover:underline">Open admin dashboard</a></Card>}
+        {data.password_upgrade_required && <p role="alert" className="mb-5 p-4 rounded-md border border-warning/30 bg-warning/5 text-warning text-sm">Your current password needs an upgrade. Set a unique password of at least {data.password_min_length ?? 8} characters before continuing.</p>}
+
         {/* Account */}
         <Card className="mb-5">
           <h2 className="flex items-center gap-2 text-lg"><User className="w-5 h-5 text-accent" /> Account Details</h2>
@@ -85,7 +93,7 @@ export default function Settings({ data }: { data: SettingsData }) {
             <div>
               <label className="text-text-2 text-sm block mb-1.5">Username</label>
               <input name="username" defaultValue={data.username} required
-                className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
+                className="w-full h-11 px-3 rounded-md bg-inset border border-line text-text focus:outline-none focus:border-accent/50" />
               {data.username.normalize("NFKC").includes("@") && (
                 <p className="mt-1.5 text-xs text-text-3">Choose a username without an @ sign.</p>
               )}
@@ -94,15 +102,21 @@ export default function Settings({ data }: { data: SettingsData }) {
               <label className="text-text-2 text-sm block mb-1.5">Email</label>
               <input type="email" name={data.email_locked ? undefined : "email"} defaultValue={data.email}
                 readOnly={data.email_locked} placeholder={data.email_locked ? "No email from your sign-in provider" : "name@example.com"}
-                className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
+                className="w-full h-11 px-3 rounded-md bg-inset border border-line text-text focus:outline-none focus:border-accent/50" />
               <p className="mt-1.5 text-xs text-text-3">
                 {data.email_locked ? "Managed by your sign-in provider." : "Optional contact email. Sign in with your username."}
               </p>
             </div>
             {data.password_enabled !== false && <div>
               <label className="text-text-2 text-sm block mb-1.5">New Password <span className="text-text-3">(leave blank to keep current)</span></label>
-              <input type="password" name="password" placeholder="At least 8 characters"
-                className="w-full h-11 px-3 rounded-md bg-inset border border-white/[0.08] text-text focus:outline-none focus:border-accent/50" />
+              <input type="password" name="password" placeholder={`At least ${data.password_min_length ?? 8} characters`}
+                minLength={data.password_min_length ?? 8} maxLength={data.password_max_length ?? 128}
+                autoComplete="new-password" required={data.password_upgrade_required} aria-describedby="password-requirements"
+                className="w-full h-11 px-3 rounded-md bg-inset border border-line text-text focus:outline-none focus:border-accent/50" />
+              <p id="password-requirements" className="mt-2 text-xs text-text-2">{data.password_help}</p>
+              <label className="text-text-2 text-sm block mt-4 mb-1.5" htmlFor="current-password">Current password <span className="text-text-3">(needed to change your password)</span></label>
+              <input id="current-password" type="password" name="current_password" autoComplete="current-password" maxLength={1024}
+                className="w-full h-11 px-3 rounded-md bg-inset border border-line text-text focus:outline-none focus:border-accent/50" />
             </div>}
             <Button type="submit" leftIcon={<Check className="w-4 h-4" />}>Save Changes</Button>
           </form>
@@ -118,7 +132,7 @@ export default function Settings({ data }: { data: SettingsData }) {
           <div className="flex flex-wrap gap-2 mb-4">
             {GOALS.map((g) => (
               <button key={g} onClick={() => setGoal(g)}
-                className={`px-3 py-1.5 rounded-full text-sm border transition-all ${goal === g ? "border-accent bg-accent/10 text-text" : "border-white/[0.08] text-text-2 hover:border-white/20"}`}>
+                className={`px-3 py-1.5 rounded-full text-sm border transition-all ${goal === g ? "border-accent bg-accent/10 text-text" : "border-line text-text-2 hover:border-line-strong"}`}>
                 {cap(g)}
               </button>
             ))}
@@ -128,7 +142,7 @@ export default function Settings({ data }: { data: SettingsData }) {
           <div className="flex flex-wrap gap-2 mb-4">
             {STYLES.map((s) => (
               <button key={s} onClick={() => setStyle(s)}
-                className={`px-3 py-1.5 rounded-full text-sm border transition-all ${style === s ? "border-accent bg-accent/10 text-text" : "border-white/[0.08] text-text-2 hover:border-white/20"}`}>
+                className={`px-3 py-1.5 rounded-full text-sm border transition-all ${style === s ? "border-accent bg-accent/10 text-text" : "border-line text-text-2 hover:border-line-strong"}`}>
                 {cap(s)}
               </button>
             ))}
@@ -138,7 +152,7 @@ export default function Settings({ data }: { data: SettingsData }) {
           <div className="flex gap-2 mb-5">
             {TIMES.map((m) => (
               <button key={m} onClick={() => setMinutes(m)}
-                className={`flex-1 py-2 rounded-md text-sm border transition-all ${minutes === m ? "border-accent bg-accent/10 text-text" : "border-white/[0.08] text-text-2 hover:border-white/20"}`}>
+                className={`flex-1 py-2 rounded-md text-sm border transition-all ${minutes === m ? "border-accent bg-accent/10 text-text" : "border-line text-text-2 hover:border-line-strong"}`}>
                 {timeLabel(m)}
               </button>
             ))}
@@ -155,10 +169,16 @@ export default function Settings({ data }: { data: SettingsData }) {
           <div className="flex items-center justify-between mt-3">
             <div>
               <div className="text-sm font-medium">Theme</div>
-              <div className="text-text-3 text-sm">Dark mode is tuned for long study sessions.</div>
+              <div className="text-text-3 text-sm">Warm paper, clear text, and a little room to focus.</div>
             </div>
-            <Badge>Dark</Badge>
+            <Badge>Calm workspace</Badge>
           </div>
+        </Card>
+
+        <Card className="mb-5">
+          <h2 className="text-lg">Account security</h2>
+          <p className="text-sm text-text-2 mt-2 mb-4">Manage your contact email, recovery, and linked sign-in providers.</p>
+          <a href="/account" className="text-sm font-medium text-accent hover:underline">Account security and recovery</a>
         </Card>
 
         {/* Data */}
@@ -187,5 +207,5 @@ export default function Settings({ data }: { data: SettingsData }) {
 }
 
 function Badge({ children }: { children: React.ReactNode }) {
-  return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-white/5 text-text-2 border border-white/10">{children}</span>;
+  return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-card-2 text-text-2 border border-line">{children}</span>;
 }

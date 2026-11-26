@@ -1,5 +1,6 @@
 """OAuth browser flows with signed cookies, a temporary DB and mocked providers."""
 import sqlite3
+from pathlib import Path
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlsplit
 
@@ -23,11 +24,12 @@ def browser(tmp_path, monkeypatch):
         id INTEGER PRIMARY KEY, username TEXT UNIQUE, email TEXT,
         password_hash TEXT NOT NULL, role TEXT, google_id TEXT UNIQUE,
         github_id TEXT UNIQUE, picture TEXT, auth_provider TEXT,
-        email_verified INTEGER NOT NULL DEFAULT 0)""")
+        email_verified INTEGER NOT NULL DEFAULT 0, session_epoch INTEGER NOT NULL DEFAULT 0)""")
     connection.execute("""CREATE TABLE identity_email_conflicts (
         user_id INTEGER NOT NULL, former_email TEXT NOT NULL,
         PRIMARY KEY(user_id, former_email))""")
     connection.execute("CREATE TABLE retired_usernames (name TEXT PRIMARY KEY)")
+    connection.executescript((Path(__file__).resolve().parents[1] / "database/migrations/009_sqlite_admin.sql").read_text())
     for provider in ("GOOGLE", "GITHUB"):
         monkeypatch.setattr(config, provider + "_OAUTH_ENABLED", True)
         monkeypatch.setattr(config, provider + "_CLIENT_ID", "test-client")

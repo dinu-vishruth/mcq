@@ -82,7 +82,7 @@ test('Library link selects a numeric resource and enters a quiz from a legacy re
   }, { library: library.promise });
   assert.ok(page.visible().includes('Saved aptitude notes'), 'selected title visible before library fetch');
   await act(async () => library.resolve({ items: [resource] }));
-  const selected = page.root.root.findAllByType('div').find(node => node.props.className?.includes('border-accent bg-accent/8'));
+  const selected = page.root.root.findAllByType('button').find(node => node.props['aria-pressed'] === true);
   assert.ok(selected, 'string bootstrap ID is normalized so saved resource is visibly selected');
   const generate = page.button('Generate & Start');
   assert.equal(generate.props.disabled, false);

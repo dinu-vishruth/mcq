@@ -48,8 +48,8 @@ def test_legacy_duplicates_are_preserved_for_recovery_without_claiming_email(tmp
 def test_old_cookies_are_rejected_and_current_cookies_use_the_database_name(tmp_path, monkeypatch):
     filename = tmp_path / "sessions.db"
     with sqlite3.connect(filename) as conn:
-        conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT)")
-        conn.execute("INSERT INTO users VALUES (1, 'new-name'), (2, 'old-name')")
+        conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, session_epoch INTEGER NOT NULL DEFAULT 0)")
+        conn.execute("INSERT INTO users(id,username) VALUES (1, 'new-name'), (2, 'old-name')")
     monkeypatch.setattr(config, "DATABASE_URL", "")
     monkeypatch.setattr(config, "DB_PATH", str(Path(filename)))
 

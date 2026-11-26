@@ -142,6 +142,11 @@ def init_db() -> None:
         except sqlite3.OperationalError as exc:
             print(f"[WARNING] google_id index skipped: {exc}")
 
+        # Old local databases still reject the unified 'user' role at the
+        # CHECK constraint. CREATE TABLE IF NOT EXISTS cannot upgrade it.
+        from core.models.legacy_roles import upgrade_legacy_user_roles
+        upgrade_legacy_user_roles(conn)
+
         _seed_demo_users(conn)
 
         try:

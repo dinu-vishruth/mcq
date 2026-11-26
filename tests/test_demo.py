@@ -66,5 +66,5 @@ class TestDemo(Base):
 
     def test_login_replaces_old_public_password_hint(self):
         response = self.client().get("/")
-        self.assertIn(b'Try Demo', response.data)
+        self.assertIn(b'Explore the demo', response.data)
         self.assertNotIn(b'student123', response.data)

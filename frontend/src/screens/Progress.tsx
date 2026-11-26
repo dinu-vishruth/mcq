@@ -35,7 +35,7 @@ function buildHeatmap(counts: Record<string, number>) {
 }
 
 function level(count: number): string {
-  if (count === 0) return "bg-white/[0.05]";
+  if (count === 0) return "bg-inset";
   if (count === 1) return "bg-accent/30";
   if (count === 2) return "bg-accent/55";
   if (count <= 4) return "bg-accent/75";
@@ -95,7 +95,7 @@ export default function Progress({ data }: { data: ProgressData }) {
           </div>
           <div className="flex items-center gap-2 mt-3 text-text-3 text-xs">
             <span>Less</span>
-            <span className="w-3 h-3 rounded-[3px] bg-white/[0.05]" />
+            <span className="w-3 h-3 rounded-[3px] bg-inset" />
             <span className="w-3 h-3 rounded-[3px] bg-accent/30" />
             <span className="w-3 h-3 rounded-[3px] bg-accent/55" />
             <span className="w-3 h-3 rounded-[3px] bg-accent/75" />

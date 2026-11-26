@@ -1,0 +1,6 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="csrf-token" content="{{ csrf_token() }}"><title>Recover account</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/static/css/style.css"></head><body class="utility-page"><main class="utility-card"><a class="utility-brand" href="/">Examly</a>
+<h1>Recover your account</h1>
+{% if notice %}<p role="status">{{ notice }}</p>{% endif %}
+{% if mail_available %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Verified email <input type="email" name="email" required></label><button>Send recovery link</button></form>
+{% else %}<p>Email recovery is awaiting mail server setup. Use your existing password or sign-in provider.</p>{% endif %}
+<a href="/">Sign in</a></main></body></html>

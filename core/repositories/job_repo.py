@@ -53,7 +53,8 @@ def get(job_id: str):
             params = json.loads(job.get("params_json") or "{}")
             last = datetime.fromisoformat(job["updated_at"]).replace(tzinfo=timezone.utc)
             limit = int(params.get("deadline_seconds") or 900) + 60
-            if (datetime.now(timezone.utc) - last).total_seconds() > limit:
+            now = datetime.now(timezone.utc)
+            if (now - last).total_seconds() > limit:
                 failed = conn.execute("UPDATE generation_jobs SET status=?,error=?,updated_at=? "
                                       "WHERE id=? AND status=? AND updated_at=? RETURNING id",
                                       (STATUS_FAILED, "Generation worker expired. Please retry.", _now(),
@@ -61,6 +62,18 @@ def get(job_id: str):
                 conn.commit()
                 if failed:
                     job.update(status=STATUS_FAILED, error="Generation worker expired. Please retry.")
+            elif job["status"] == STATUS_RUNNING and job.get("heartbeat_at"):
+                heartbeat = datetime.fromisoformat(job["heartbeat_at"]).replace(tzinfo=timezone.utc)
+                started = datetime.fromisoformat(job["started_at"]).replace(tzinfo=timezone.utc)
+                if (now - heartbeat).total_seconds() > 90 or (now - started).total_seconds() > limit:
+                    status = STATUS_QUEUED if job["attempt_count"] < 2 else STATUS_FAILED
+                    recovered = conn.execute("UPDATE generation_jobs SET status=?,run_token=NULL,progress=0,error=?,updated_at=? "
+                                             "WHERE id=? AND status=? AND run_token=? RETURNING id",
+                                             (status, "Worker stopped. Retry queued." if status == STATUS_QUEUED else "Worker failed repeatedly. Please retry.",
+                                              _now(), job_id, STATUS_RUNNING, job["run_token"])).fetchone()
+                    conn.commit()
+                    if recovered:
+                        job.update(status=status, run_token=None, progress=0, recovered=status == STATUS_QUEUED)
         return job
     finally:
         conn.close()
@@ -73,13 +86,48 @@ def get_for_user(job_id: str, username: str):
     return job
 
 
-def claim(job_id: str) -> bool:
+def claim(job_id: str, token: str | None = None) -> bool:
     conn = get_db()
     try:
-        row = conn.execute("UPDATE generation_jobs SET status=?, updated_at=? WHERE id=? AND status=? RETURNING id",
-                           (STATUS_RUNNING, _now(), job_id, STATUS_QUEUED)).fetchone()
+        row = conn.execute("UPDATE generation_jobs SET status=?, updated_at=?,heartbeat_at=?,started_at=?,"
+                           "run_token=?,attempt_count=attempt_count+1,error=NULL WHERE id=? AND status=? RETURNING id",
+                           (STATUS_RUNNING, _now(), _now(), _now(), token or uuid.uuid4().hex, job_id, STATUS_QUEUED)).fetchone()
         conn.commit()
         return row is not None
+    finally:
+        conn.close()
+
+
+def heartbeat(job_id, token):
+    conn = get_db()
+    try:
+        conn.execute("UPDATE generation_jobs SET heartbeat_at=? WHERE id=? AND run_token=? AND status=?",
+                     (_now(), job_id, token, STATUS_RUNNING))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def publish(job, token, mcqs, difficulty, timer, metrics):
+    """Commit one session and the terminal job result in the same transaction."""
+    conn = get_db()
+    try:
+        owned = conn.execute("UPDATE generation_jobs SET updated_at=? WHERE id=? AND run_token=? AND status=? RETURNING id",
+                             (_now(), job["id"], token, STATUS_RUNNING)).fetchone()
+        document = conn.execute("SELECT owner FROM documents WHERE id=?", (job["document_id"],)).fetchone()
+        if owned is None or document is None or document["owner"] != job["username"]:
+            raise ValueError("Job ownership changed or its worker lease expired")
+        key = uuid.uuid4().hex[:16]
+        conn.execute("INSERT INTO sessions(session_key,teacher,created_at,difficulty,timer,mcqs_json,document_id) VALUES(?,?,?,?,?,?,?)",
+                     (key, job["username"], _now(), difficulty, timer, json.dumps(mcqs), job["document_id"]))
+        result = metrics.result(key, count=len(mcqs), requested=job["total"])
+        conn.execute("UPDATE generation_jobs SET status=?,result_json=?,progress=?,updated_at=? WHERE id=? AND run_token=?",
+                     (STATUS_DONE, json.dumps(result), len(mcqs), _now(), job["id"], token))
+        conn.commit()
+        return key
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -88,13 +136,26 @@ def set_running(job_id: str) -> None:
     _update(job_id, status=STATUS_RUNNING)
 
 
-def set_progress(job_id: str, progress: int) -> None:
+def set_progress(job_id: str, progress: int, token=None) -> None:
     conn = get_db()
     try:
-        conn.execute(
-            "UPDATE generation_jobs SET progress=?, updated_at=? WHERE id=?",
-            (progress, _now(), job_id),
-        )
+        sql = "UPDATE generation_jobs SET progress=?, updated_at=? WHERE id=?"
+        params = (progress, _now(), job_id)
+        if token:
+            sql += " AND run_token=? AND status=?"
+            params += (token, STATUS_RUNNING)
+        conn.execute(sql, params)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def defer_busy(job_id, token):
+    conn = get_db()
+    try:
+        conn.execute("UPDATE generation_jobs SET status=?,run_token=NULL,attempt_count=attempt_count-1,updated_at=? "
+                     "WHERE id=? AND run_token=? AND status=?",
+                     (STATUS_QUEUED, _now(), job_id, token, STATUS_RUNNING))
         conn.commit()
     finally:
         conn.close()
@@ -105,8 +166,17 @@ def set_done(job_id: str, result: dict) -> None:
             progress=result.get("count", 0))
 
 
-def set_failed(job_id: str, error: str) -> None:
+def set_failed(job_id: str, error: str, token=None) -> None:
     from core.services.ai_safety import redact
+    if token:
+        conn = get_db()
+        try:
+            conn.execute("UPDATE generation_jobs SET status=?,error=?,updated_at=? WHERE id=? AND run_token=? AND status=?",
+                         (STATUS_FAILED, redact(str(error))[:2000], _now(), job_id, token, STATUS_RUNNING))
+            conn.commit()
+        finally:
+            conn.close()
+        return
     _update(job_id, status=STATUS_FAILED, error=redact(str(error))[:2000])
 
 

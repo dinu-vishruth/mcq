@@ -140,7 +140,7 @@ export default function Upload({ data }: { data: UploadData }) {
                     if (f && pickFile(f) && fileRef.current) fileRef.current.files = e.dataTransfer.files;
                   }}
                   className={`flex flex-col items-center justify-center text-center gap-3 p-10 rounded-lg border-2 border-dashed cursor-pointer transition-all ${
-                    dragOver ? "border-accent bg-accent/5" : fileName ? "border-success/40 bg-success/[0.04]" : "border-white/[0.12] hover:border-white/25"
+                    dragOver ? "border-accent bg-accent/5" : fileName ? "border-success/40 bg-success/[0.04]" : "border-line-2 hover:border-line-strong"
                   }`}
                 >
                   <span className={`grid place-items-center w-14 h-14 rounded-full ${fileName ? "bg-success/10 text-success" : "bg-accent/10 text-accent"}`}>
@@ -178,7 +178,7 @@ function Pipeline({ stage }: { stage: number }) {
           return (
             <div key={step.label} className="flex items-center gap-3">
               <span className={`grid place-items-center w-9 h-9 rounded-full transition-colors ${
-                done ? "bg-success/15 text-success" : active ? "bg-accent/15 text-accent" : "bg-white/[0.04] text-text-3"
+                done ? "bg-success/15 text-success" : active ? "bg-accent/15 text-accent" : "bg-inset text-text-3"
               }`}>
                 {done ? <Check className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
               </span>

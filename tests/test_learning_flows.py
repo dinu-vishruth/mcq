@@ -21,7 +21,7 @@ class TestLearningPreferences(Base):
         from fastapi_app.main import create_app
         from tests._client import FlaskLikeClient
         fresh = FlaskLikeClient(create_app(), config.SECRET_KEY)
-        response = fresh.post("/login", data={"username": "prefs_once", "password": "password123"})
+        response = fresh.post("/login", data={"username": "prefs_once", "password": "Cedar river orbit 42!"})
         self.assertEqual(response.headers["Location"], "/dashboard")
         stored = fresh.get("/api/prefs").json()
         self.assertFalse(stored["needs_onboarding"])

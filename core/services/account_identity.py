@@ -1,9 +1,10 @@
 """Shared rules for account names, contact addresses, and sign-in sessions."""
 import re
 import sqlite3
+import time
 import unicodedata
 
-SESSION_VERSION = 2
+SESSION_VERSION = 3
 _EMAIL = re.compile(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 
 
@@ -22,6 +23,8 @@ def normalize_username(value: str) -> str:
         raise ValueError("Username is required.")
     if "@" in unicodedata.normalize("NFKC", value):
         raise ValueError("Choose a username without an email address or @ symbol.")
+    if any(c in value for c in ("/", "\\")) or value in (".", ".."):
+        raise ValueError("Choose a username without path separators.")
     if len(value) > 64 or any(not char.isprintable() for char in value):
         raise ValueError("Choose a username with at most 64 printable characters.")
     return value
@@ -78,15 +81,51 @@ def claim_verified_email(conn, email: str, *, user_id: int | None = None) -> boo
 
 def password_signin_allowed(row) -> bool:
     return (not row["google_id"] and not row["github_id"]
-            and row["auth_provider"] not in ("google", "github", "demo"))
+            and row["auth_provider"] not in ("google", "github", "demo")
+            and not (row["is_disabled"] if "is_disabled" in row.keys() else False))
 
 
-def establish_session(request, user) -> None:
+def establish_session(request, user, conn=None) -> None:
+    if "is_disabled" in user.keys() and user["is_disabled"]:
+        from fastapi import HTTPException
+        raise HTTPException(403, "This account has been disabled by the site owner.")
     request.session.clear()
-    request.session.update(user_id=user["id"], username=user["username"], identity_version=SESSION_VERSION)
+    epoch = user["session_epoch"] if "session_epoch" in user.keys() else 0
+    request.session.update(user_id=user["id"], username=user["username"], identity_version=SESSION_VERSION,
+                           session_epoch=epoch, signed_in_at=time.time())
+    if conn is not None:
+        from core.services.admin_control import record_access
+        provider = user["auth_provider"] if "auth_provider" in user.keys() else None
+        record_access(conn, request, user, "demo" if provider == "demo" else "sign_in")
+
+
+def link_provider(conn, request, provider, subject, email):
+    target = request.session.pop(f"_{provider}_link_target", None)
+    if not target:
+        return None
+    if target["expires"] < time.time() or target["user_id"] != request.session.get("user_id"):
+        raise ValueError("Account linking expired. Sign in again.")
+    identity_write_lock(conn)
+    row = conn.execute("SELECT * FROM users WHERE id=?", (target["user_id"],)).fetchone()
+    column = "google_id" if provider == "google" else "github_id"
+    other = conn.execute(f"SELECT id FROM users WHERE {column}=?", (subject,)).fetchone()
+    if row is None or (other and other["id"] != row["id"]) or (row[column] and row[column] != subject):
+        raise ValueError("This provider already belongs to another account. Accounts were not merged.")
+    if email:
+        email = normalize_email(email)
+        if row["email"] and normalize_email(row["email"]) != email:
+            raise ValueError("Use a provider account with the same verified email.")
+        if not claim_verified_email(conn, email, user_id=row["id"]):
+            raise ValueError("This email belongs to another account.")
+        conn.execute("UPDATE users SET email=?, email_verified=1 WHERE id=?", (email, row["id"]))
+    conn.execute(f"UPDATE users SET {column}=?, password_hash='!', session_epoch=session_epoch+1 WHERE id=?", (subject, row["id"]))
+    conn.commit()
+    return conn.execute("SELECT * FROM users WHERE id=?", (row["id"],)).fetchone()
 
 
 def rename_username_owned_rows(conn, old: str, new: str) -> None:
+    conn.execute("INSERT INTO upload_prefixes(user_id,prefix) SELECT id,? FROM users WHERE username=? "
+                 "ON CONFLICT(user_id,prefix) DO NOTHING", (old + "/", new))
     if old.lower() != new.lower():
         # In-flight requests can still hold the old name. Keep it out of use
         # so their work cannot be attributed to another account.

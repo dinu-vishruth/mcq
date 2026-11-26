@@ -62,6 +62,10 @@ def env_str(*names: str, default: str = "") -> str:
             return value
     return default
 
+# Owner access always requires this contact address to be verified by a provider
+# or by an email verification link. Signup form input alone never grants it.
+ADMIN_OWNER_EMAIL = env_str("ADMIN_OWNER_EMAIL").casefold()
+
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     # On Vercel each cold start is a fresh process; a random key here would be
@@ -401,3 +405,13 @@ LLM_DEFAULT_MAX_OUTPUT_TOKENS = int(os.getenv("LLM_DEFAULT_MAX_OUTPUT_TOKENS", "
 GENERATION_MAX_COST_USD = float(os.getenv("GENERATION_MAX_COST_USD", "0"))
 LLM_INPUT_USD_PER_MILLION = float(os.getenv("LLM_INPUT_USD_PER_MILLION", "0"))
 LLM_OUTPUT_USD_PER_MILLION = float(os.getenv("LLM_OUTPUT_USD_PER_MILLION", "0"))
+
+# Account mail is disabled until an operator supplies a delivery server and
+# canonical public URL. Secrets travel only through the mail transport.
+PUBLIC_BASE_URL = env_str("PUBLIC_BASE_URL")
+SMTP_HOST = env_str("SMTP_HOST")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = env_str("SMTP_USERNAME")
+SMTP_PASSWORD = env_str("SMTP_PASSWORD")
+SMTP_FROM = env_str("SMTP_FROM")
+SMTP_STARTTLS = os.getenv("SMTP_STARTTLS", "true").lower() == "true"

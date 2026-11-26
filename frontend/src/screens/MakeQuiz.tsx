@@ -182,8 +182,8 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
   return (
     <AppShell active="knowledge" username={data.username}>
       <div className="max-w-3xl mx-auto px-5 lg:px-8 py-8">
-        <h1 className="font-display text-2xl font-semibold flex items-center gap-2.5">
-          <FileQuestion className="w-6 h-6 text-accent" /> Make Quiz &amp; Test
+        <h1 className="study-page-title text-4xl flex items-center gap-2.5">
+          <FileQuestion className="w-6 h-6 text-accent" /> Create a quiz
         </h1>
         <p className="text-text-2 mt-1.5 mb-8">Turn your material into a quiz — upload something new, or use a resource you've already saved.</p>
 
@@ -202,7 +202,7 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
         </a>
 
         <div className="flex items-center gap-3 text-text-3 text-xs uppercase tracking-wider mb-6">
-          <span className="h-px flex-1 bg-white/[0.08]" /> or use a saved resource <span className="h-px flex-1 bg-white/[0.08]" />
+          <span className="h-px flex-1 bg-line" /> or use a saved resource <span className="h-px flex-1 bg-line" />
         </div>
 
         {/* Path 2: generate from a saved Learning Journey resource */}
@@ -228,9 +228,9 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {items.map((k) => (
-                <button key={k.id} onClick={() => { setDocId(k.id); setUseUpload(false); }} className="text-left">
+                <button key={k.id} aria-pressed={!useUpload && docId === k.id} onClick={() => { setDocId(k.id); setUseUpload(false); }} className="text-left">
                   <div className={`px-3.5 py-3 rounded-md border text-sm transition-colors ${
-                    !useUpload && docId === k.id ? "border-accent bg-accent/8 text-text" : "border-white/10 text-text-2 hover:bg-white/[0.03]"}`}>
+                    !useUpload && docId === k.id ? "border-accent bg-accent/[0.08] text-text" : "border-line text-text-2 hover:bg-card-2"}`}>
                     <div className="font-medium truncate">{k.title}</div>
                     <div className="text-text-3 text-xs mt-0.5">{k.topic_count} topics</div>
                   </div>
@@ -260,7 +260,7 @@ export default function MakeQuiz({ data }: { data: MakeQuizData }) {
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             placeholder="e.g. Deadlocks, Normalization…"
-            className="w-full h-11 px-3.5 rounded-md bg-inset border border-white/10 text-sm placeholder:text-text-3 focus:outline-none focus:border-accent/60"
+            className="w-full h-11 px-3.5 rounded-md bg-inset border border-line text-sm placeholder:text-text-3 focus:outline-none focus:border-accent/60"
           />
         </Setting>
 
@@ -323,7 +323,7 @@ function Segment<T extends string | number>({ options, value, onChange }: {
           key={String(o.value)}
           onClick={() => onChange(o.value)}
           className={`px-3.5 h-10 rounded-md text-sm border transition-colors ${
-            value === o.value ? "border-accent bg-accent/10 text-text font-medium" : "border-white/10 text-text-2 hover:bg-white/[0.03]"}`}
+            value === o.value ? "border-accent bg-accent/10 text-text font-medium" : "border-line text-text-2 hover:bg-card-2"}`}
         >
           {o.label}
         </button>

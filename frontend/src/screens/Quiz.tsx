@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Brain, Clock, ArrowRight, Check } from "lucide-react";
+import { BookOpen, Clock, Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { apiSend, csrfToken } from "@/bootstrap";
@@ -25,7 +25,7 @@ type Confidence = "know" | "maybe" | "no_idea";
 const CONFIDENCE: { id: Confidence; label: string; tone: string }[] = [
   { id: "know", label: "Confident", tone: "text-success border-success/30 bg-success/10" },
   { id: "maybe", label: "Unsure", tone: "text-warning border-warning/30 bg-warning/10" },
-  { id: "no_idea", label: "Guessing", tone: "text-text-3 border-white/10 bg-white/5" },
+  { id: "no_idea", label: "Guessing", tone: "text-text-3 border-line bg-card-2" },
 ];
 
 const OPT_KEYS = ["A", "B", "C", "D"];
@@ -137,11 +137,12 @@ export default function Quiz({ data }: { data: QuizData }) {
   return (
     <div className="app-glow min-h-screen flex flex-col" aria-busy={submitting}>
       {/* Top bar: brand, progress, timer */}
-      <div className="relative z-10 border-b border-white/[0.06]">
+      <div className="relative z-10 border-b border-line bg-elev">
         <div className="max-w-3xl mx-auto px-5 py-4 flex items-center gap-4">
           <span className="grid place-items-center w-9 h-9 rounded-md bg-accent/10 text-accent shrink-0">
-            <Brain className="w-5 h-5" />
+            <BookOpen className="w-5 h-5" />
           </span>
+          <span className="hidden sm:block font-display font-semibold mr-4">Examly</span>
           <div className="flex-1">
             <ProgressBar pct={(answeredCount / total) * 100} />
           </div>
@@ -165,9 +166,9 @@ export default function Quiz({ data }: { data: QuizData }) {
       </form>
 
       {/* Question */}
-      <div className="relative z-10 flex-1 max-w-3xl w-full mx-auto px-5 py-10 flex flex-col">
+      <div className="relative z-10 flex-1 max-w-3xl w-full mx-auto px-5 py-8 md:py-12 flex flex-col">
         {saveError && <p role="alert" className="mb-4 text-warning">Progress could not sync. Keep this tab open and submit your answers when finished.</p>}
-        <p className="mb-4 text-xs text-text-3">Use this set to find what to revisit. Confidence is optional and never changes your score.</p>
+        <p className="mb-6 text-sm text-text-3">A little focus, one question at a time. Confidence is optional and never changes your score.</p>
         {reviewing ? (
           <div className="flex-1 flex flex-col justify-center gap-5">
             <h1 className="font-display text-2xl font-semibold">Review your quiz</h1>
@@ -192,9 +193,9 @@ export default function Quiz({ data }: { data: QuizData }) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -24 }}
             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-            className="flex-1"
+            className="flex-1 rounded-xl bg-card border border-line p-5 md:p-8 shadow-sm"
           >
-            <div className="text-accent-2 text-sm font-medium mb-3">Question {idx + 1}</div>
+            <div className="text-accent text-xs font-semibold uppercase tracking-[0.14em] mb-4">Question {idx + 1} of {total}</div>
             <h1 className="text-[clamp(1.4rem,3vw,2rem)] font-display font-semibold leading-snug mb-8">
               {q.question}
             </h1>
@@ -206,19 +207,20 @@ export default function Quiz({ data }: { data: QuizData }) {
                   <button
                     key={i}
                     disabled={submitting || remaining <= 0}
+                    aria-pressed={on}
                     onClick={() => choose(opt.text)}
                     className={`w-full flex items-center gap-4 p-4 rounded-md border text-left transition-all duration-200 ${
                       on
-                        ? "border-accent bg-accent/10 shadow-glow"
-                        : "border-white/[0.08] hover:border-white/20 hover:bg-white/[0.03]"
+                        ? "border-accent bg-accent/[0.06] ring-1 ring-accent"
+                        : "border-line bg-elev hover:border-line-strong hover:bg-card-2"
                     }`}
                   >
                     <span className={`grid place-items-center w-8 h-8 rounded-sm text-sm font-semibold shrink-0 ${
-                      on ? "bg-accent text-white" : "bg-white/5 text-text-2"
+                      on ? "bg-accent text-white" : "bg-card-2 text-text-2"
                     }`}>
                       {OPT_KEYS[i]}
                     </span>
-                    <span className="text-[0.98rem]">{opt.text}</span>
+                    <span className="text-base">{opt.text}</span>
                     {on && <Check className="w-5 h-5 text-accent ml-auto shrink-0" />}
                   </button>
                 );
@@ -227,7 +229,7 @@ export default function Quiz({ data }: { data: QuizData }) {
 
             {/* Confidence selector */}
             <div className="mt-8">
-              <div className="text-text-3 text-xs uppercase tracking-wider mb-2">How confident are you? (optional)</div>
+              <div className="text-text-2 text-sm mb-3">How confident are you? <span className="text-text-3">(optional)</span></div>
               <div className="flex gap-2">
                 {CONFIDENCE.map((c) => (
                   <button
@@ -241,7 +243,7 @@ export default function Quiz({ data }: { data: QuizData }) {
                       return next;
                     })}
                     className={`flex-1 py-2.5 rounded-md border text-sm font-medium transition-all ${
-                      confidence[idx] === c.id ? c.tone : "border-white/[0.06] text-text-3 hover:text-text-2"
+                      confidence[idx] === c.id ? c.tone : "border-line text-text-3 hover:text-text-2"
                     }`}
                   >
                     {c.label}
@@ -253,7 +255,7 @@ export default function Quiz({ data }: { data: QuizData }) {
         </AnimatePresence>
 
         {/* Nav */}
-        <div className="flex items-center justify-between mt-10 pt-6 border-t border-white/[0.06]">
+        <div className="flex items-center justify-between mt-10 pt-6 border-t border-line">
           <button
             onClick={() => idx > 0 && setIdx(idx - 1)}
             disabled={submitting || idx === 0}
@@ -265,7 +267,7 @@ export default function Quiz({ data }: { data: QuizData }) {
           <div className="relative flex items-center gap-3">
             <Button variant="ghost" disabled={submitting || remaining <= 0} onClick={skip}>Skip</Button>
             {idx < total - 1 ? (
-              <Button disabled={submitting || !selected} rightIcon={<ArrowRight className="w-4 h-4" />} onClick={next}>
+              <Button disabled={submitting || !selected} onClick={next}>
                 Next
               </Button>
             ) : (

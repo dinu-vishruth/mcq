@@ -126,20 +126,20 @@ class TestPublicRoutes(Base):
     def test_home_shows_login_when_logged_out(self):
         r = self.client().get("/")
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"MCQ Generator", r.data)
+        self.assertIn(b"Examly", r.data)
 
     def test_signup_get(self):
         self.assertEqual(self.client().get("/signup").status_code, 200)
 
     def test_signup_rejects_short_password(self):
-        r = self.client().post("/signup", data={"username": "x1", "password": "short", "role": "teacher"})
+        r = self.client().post("/signup", data={"username": "x1", "email": "x1@gmail.com", "password": "short", "role": "teacher"})
         self.assertIn(b"at least 8 characters", r.data)
 
     def test_signup_then_login(self):
         # A newly created account first saves its learning preferences.
         c = self.client()
-        c.post("/signup", data={"username": "newuser", "password": "password123"})
-        r = self._login(c, "newuser", "password123")
+        c.post("/signup", data={"username": "newuser", "email": "newuser@gmail.com", "password": "Cedar river orbit 42!"})
+        r = self._login(c, "newuser", "Cedar river orbit 42!")
         self.assertEqual(r.status_code, 302)
         self.assertIn("/onboarding", r.headers["Location"])
 
@@ -149,7 +149,7 @@ class TestPublicRoutes(Base):
 
     def test_login_lockout_after_5_failures(self):
         c = self.client()
-        self._seed_user("lockme", "password123", "student")
+        self._seed_user("lockme", "Cedar river orbit 42!", "student")
         for _ in range(5):
             self._login(c, "lockme", "wrongpass")
         r = self._login(c, "lockme", "wrongpass")
@@ -170,16 +170,16 @@ class TestAuthGating(Base):
 
     def test_legacy_teacher_path_redirects_to_dashboard(self):
         c = self.client()
-        self._seed_user("teach2", "password123", "student")
-        self._login(c, "teach2", "password123")
+        self._seed_user("teach2", "Cedar river orbit 42!", "student")
+        self._login(c, "teach2", "Cedar river orbit 42!")
         r = c.get("/teacher")
         self.assertEqual(r.status_code, 302)
         self.assertIn("/dashboard", r.headers["Location"])
 
     def test_user_reaches_dashboard(self):
         c = self.client()
-        self._seed_user("stud2", "password123", "student")
-        self._login(c, "stud2", "password123")
+        self._seed_user("stud2", "Cedar river orbit 42!", "student")
+        self._login(c, "stud2", "Cedar river orbit 42!")
         c.post("/api/prefs", json={"goal": "college", "style": "mixed", "daily_minutes": 30})
         r = c.get("/dashboard")
         self.assertEqual(r.status_code, 200)
@@ -201,8 +201,8 @@ class TestGenerationAndQuizFlow(Base):
 
     def test_upload_prepares_temporary_material_and_defers_quiz_setup(self):
         c = self.client()
-        self._seed_user("uploader", "password123", "teacher")
-        self._login(c, "uploader", "password123")
+        self._seed_user("uploader", "Cedar river orbit 42!", "teacher")
+        self._login(c, "uploader", "Cedar river orbit 42!")
         r = c.post("/upload", data={"extracted_text": "Some study material about math and geography.",
                                     "title": "Math Geography"})
         # Upload prepares a temporary source and hands off to quiz settings.
@@ -221,8 +221,8 @@ class TestGenerationAndQuizFlow(Base):
 
     def test_legacy_upload_rejects_invalid_timer_without_creating_quiz(self):
         c = self.client()
-        self._seed_user("uploader2", "password123", "teacher")
-        self._login(c, "uploader2", "password123")
+        self._seed_user("uploader2", "Cedar river orbit 42!", "teacher")
+        self._login(c, "uploader2", "Cedar river orbit 42!")
         before = self._count_sessions()
         r = c.post("/upload", data={"extracted_text": "Some study material.",
                                     "num_questions": "2", "difficulty": "medium", "timer": "999"})
@@ -234,8 +234,8 @@ class TestGenerationAndQuizFlow(Base):
 
     def test_full_student_quiz_scoring(self):
         c = self.client()
-        self._seed_user("stud3", "password123", "student")
-        self._login(c, "stud3", "password123")
+        self._seed_user("stud3", "Cedar river orbit 42!", "student")
+        self._login(c, "stud3", "Cedar river orbit 42!")
         key = self._make_session()
 
         # Join
@@ -272,8 +272,8 @@ class TestGenerationAndQuizFlow(Base):
 
     def test_duplicate_attempt_blocked(self):
         c = self.client()
-        self._seed_user("stud4", "password123", "student")
-        self._login(c, "stud4", "password123")
+        self._seed_user("stud4", "Cedar river orbit 42!", "student")
+        self._login(c, "stud4", "Cedar river orbit 42!")
         key = self._make_session()
         c.post("/student_login", data={"session_key": key})
         c.get("/mcq_test")
@@ -287,8 +287,8 @@ class TestGenerationAndQuizFlow(Base):
 class TestTeacherSessionManagement(Base):
     def _login_teacher_with_session(self, c, name="teach5"):
         from utils.session_manager import create_session_key
-        self._seed_user(name, "password123", "teacher")
-        self._login(c, name, "password123")
+        self._seed_user(name, "Cedar river orbit 42!", "teacher")
+        self._login(c, name, "Cedar river orbit 42!")
         return create_session_key(teacher=name, difficulty="hard", timer=90, mcqs=FIXED_MCQS)
 
     def test_download_report_pdf(self):
@@ -325,8 +325,8 @@ class TestTeacherSessionManagement(Base):
         key = self._login_teacher_with_session(c, "teach9")
         # Log in as a different teacher
         c.get("/logout")
-        self._seed_user("teach10", "password123", "teacher")
-        self._login(c, "teach10", "password123")
+        self._seed_user("teach10", "Cedar river orbit 42!", "teacher")
+        self._login(c, "teach10", "Cedar river orbit 42!")
         r = c.get(f"/session_report/{key}")
         self.assertEqual(r.status_code, 403)
 

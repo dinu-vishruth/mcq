@@ -60,11 +60,11 @@ export function Onboarding({ onDone, initial }: { onDone: () => void; initial: U
         initial={{ opacity: 0, scale: 0.97, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        className="relative z-10 w-full max-w-lg bg-card border border-white/[0.11] rounded-xl p-7 shadow-lg"
+        className="relative z-10 w-full max-w-lg bg-card border border-line-2 rounded-xl p-7 shadow-lg"
       >
         <div className="flex gap-1.5 mb-6">
           {[0, 1, 2].map((i) => (
-            <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= step ? "bg-accent" : "bg-white/10"}`} />
+            <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= step ? "bg-accent" : "bg-line"}`} />
           ))}
         </div>
 
@@ -89,7 +89,7 @@ export function Onboarding({ onDone, initial }: { onDone: () => void; initial: U
                         key={g.id}
                         onClick={() => setGoal(g.id)}
                         className={`flex items-center gap-3 p-3.5 rounded-md border text-left transition-all ${
-                          on ? "border-accent bg-accent/10 text-text" : "border-white/[0.08] text-text-2 hover:border-white/20"
+                          on ? "border-accent bg-accent/10 text-text" : "border-line text-text-2 hover:border-line-strong"
                         }`}
                       >
                         <Icon className="w-5 h-5 shrink-0" />
@@ -114,7 +114,7 @@ export function Onboarding({ onDone, initial }: { onDone: () => void; initial: U
                         key={s.id}
                         onClick={() => setStyle(s.id)}
                         className={`p-4 rounded-md border text-left transition-all ${
-                          on ? "border-accent bg-accent/10" : "border-white/[0.08] hover:border-white/20"
+                          on ? "border-accent bg-accent/10" : "border-line hover:border-line-strong"
                         }`}
                       >
                         <Icon className={`w-5 h-5 mb-2 ${on ? "text-accent" : "text-text-2"}`} />
@@ -139,7 +139,7 @@ export function Onboarding({ onDone, initial }: { onDone: () => void; initial: U
                         key={m}
                         onClick={() => setMinutes(m)}
                         className={`p-5 rounded-md border text-center transition-all ${
-                          on ? "border-accent bg-accent/10 text-text" : "border-white/[0.08] text-text-2 hover:border-white/20"
+                          on ? "border-accent bg-accent/10 text-text" : "border-line text-text-2 hover:border-line-strong"
                         }`}
                       >
                         <div className="text-xl font-display font-bold">{timeLabel(m)}</div>

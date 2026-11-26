@@ -348,7 +348,7 @@ def _execute_generation(user, payload, source):
             check(reserve=0)
             session_key = create_session_key(
                 teacher=user.username, difficulty=payload.difficulty,
-                timer=payload.timer, mcqs=mcqs,
+                timer=payload.timer, mcqs=mcqs, user_id=user.id,
             )
         except Exception as exc:
             raise HTTPException(status_code=502, detail=public_generation_error(exc))
@@ -387,6 +387,6 @@ def _execute_generation(user, payload, source):
     check(reserve=0)
     session_key = create_session_key(
         teacher=user.username, difficulty=payload.difficulty, timer=payload.timer, mcqs=mcqs,
-        document_id=payload.document_id,
+        document_id=payload.document_id, user_id=user.id,
     )
     return {"ok": True, **metrics.result(session_key, count=len(mcqs), requested=payload.num_questions)}

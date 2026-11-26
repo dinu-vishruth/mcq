@@ -64,6 +64,31 @@ class Retriever:
         if not hits:
             return []
 
+        if spread and hasattr(store, "model_id"):
+            # Sample positions across the whole document as additional MMR
+            # candidates. Stored cache vectors keep this free of new embeddings.
+            from core.repositories.document_repo import coverage_candidates
+            extra = coverage_candidates(document_id, top_k, store.model_id, getattr(store, "dim", len(qv)))
+            known = {h.chunk_index for h in hits}
+            for h in extra:
+                if h.chunk_index not in known:
+                    h.score = float(np.asarray(h.vector) @ qv)
+                    hits.append(h)
+
+        if spread and len(hits) > top_k:
+            # Select the best hit from each positional band. Relevance remains
+            # the tie breaker, instead of favoring the beginning of the source.
+            lo, hi = min(h.chunk_index for h in hits), max(h.chunk_index for h in hits)
+            buckets = {}
+            for hit in hits:
+                band = min(top_k - 1, (hit.chunk_index - lo) * top_k // (hi - lo + 1))
+                if band not in buckets or hit.score > buckets[band].score:
+                    buckets[band] = hit
+            selected = list(buckets.values())
+            selected.extend(h for h in sorted(hits, key=lambda h: h.score, reverse=True)
+                            if all(h.chunk_index != item.chunk_index for item in selected))
+            return sorted(selected[:top_k], key=lambda h: h.chunk_index)
+
         if use_mmr and len(hits) > top_k:
             cand_vecs = [getattr(h, "vector", None) for h in hits]
             missing = [i for i, v in enumerate(cand_vecs) if v is None]

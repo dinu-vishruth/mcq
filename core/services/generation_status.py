@@ -5,6 +5,9 @@ import config
 
 
 def generation_available() -> bool:
+    from core.services.admin_control import enabled
+    if not enabled("generation"):
+        return False
     if not config.llm_key_present():
         return False
     try:
@@ -17,6 +20,10 @@ def generation_available() -> bool:
 
 def require_generation() -> None:
     from fastapi import HTTPException
+
+    from core.services.admin_control import enabled
+    if not enabled("generation"):
+        raise HTTPException(503, "Quiz generation is currently paused by the site owner. Please try again later.")
     if not generation_available():
         logging.getLogger(__name__).error(
             "Generation unavailable. Check credentials for LLM_PROVIDER=%s. %s",

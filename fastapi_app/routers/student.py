@@ -413,6 +413,14 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
     for index, detail in enumerate(details):
         detail["explanation"] = (explanations[index] if index < len(explanations)
                                  else "Explanation is temporarily unavailable.")
+        from core.services.source_evidence import authentic
+        question = detail["source_question"]
+        evidence = question.get("source_evidence", {})
+        provenance = evidence.get("provenance", {})
+        if authentic(question) and provenance:
+            doc_id, chunk = provenance.get("document_id"), provenance.get("chunk_index")
+            if type(doc_id) is int and type(chunk) is int:
+                detail["source_url"] = f"/sources/{doc_id}/chunks/{chunk}?version={provenance['chunk_sha256']}"
         del detail["source_question"]
 
     conn.execute(
@@ -440,3 +448,17 @@ async def submit(request: Request, user: CurrentUser, conn: Db):
         print(f"[WARNING] Learning analysis skipped: {exc}")
 
     return RedirectResponse(f"/results/{key}", status_code=303)
+
+
+@router.get("/sources/{document_id}/chunks/{chunk_index}")
+async def source_passage(request: Request, document_id: int, chunk_index: int,
+                         user: CurrentUser, conn: Db, version: str = ""):
+    import hashlib
+    row = conn.execute("SELECT d.title,c.content FROM documents d JOIN chunks c ON c.document_id=d.id "
+                       "WHERE d.id=? AND c.chunk_index=? AND d.owner=?",
+                       (document_id, chunk_index, user.username)).fetchone()
+    if row is None:
+        raise HTTPException(404, "Source passage unavailable")
+    if version and hashlib.sha256(row["content"].encode()).hexdigest() != version:
+        raise HTTPException(409, "This source has changed since the question was generated.")
+    return render(request, "source_passage.html", title=row["title"], content=row["content"], chunk_index=chunk_index)

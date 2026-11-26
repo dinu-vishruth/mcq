@@ -123,8 +123,28 @@ def create_app() -> FastAPI:
     # --- Health checks (used by hosts and load balancers) --------------------
     @app.get("/health")
     @app.get("/healthz")
-    @app.get("/readyz")
     async def health():
+        return {"status": "ok"}
+
+    @app.get("/readyz")
+    def readiness():
+        from core.models.db import get_db
+        from core.services.generation_budget import budget
+        try:
+            with budget(6):
+                conn = get_db()
+                try:
+                    conn.execute("SELECT 1").fetchone()
+                finally:
+                    conn.close()
+            from core.services.job_runner import generation_backend
+            if generation_backend() == "rq":
+                from redis import Redis
+
+                import config
+                Redis.from_url(config.REDIS_URL, socket_timeout=2, socket_connect_timeout=2).ping()
+        except Exception:
+            return JSONResponse({"status": "unavailable"}, status_code=503)
         return {"status": "ok"}
 
     @app.get("/api/health")
@@ -133,6 +153,9 @@ def create_app() -> FastAPI:
 
     # --- Routers (one per former Flask blueprint) ---------------------------
     app.include_router(auth.router)
+    from .routers import account, admin
+    app.include_router(account.router)
+    app.include_router(admin.router)
     app.include_router(google_auth.router)
     app.include_router(github_auth.router)
     app.include_router(student.router)

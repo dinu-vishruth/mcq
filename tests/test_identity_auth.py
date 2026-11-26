@@ -58,12 +58,12 @@ def login(client, username):
 def test_signup_requires_a_non_email_username_and_rejects_case_variants(browser):
     client, conn = browser
     for username in ("friend@example.com", "friend＠example.com"):
-        response = client.post("/signup", data={"username": username, "password": PASSWORD})
+        response = client.post("/signup", data={"username": username, "password": PASSWORD, "email": "friend@gmail.com"})
         assert response.status_code == 200
         assert conn.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone() is None
 
-    assert client.post("/signup", data={"username": "Learner", "password": PASSWORD}).status_code == 302
-    response = client.post("/signup", data={"username": "LEARNER", "password": PASSWORD})
+    assert client.post("/signup", data={"username": "Learner", "password": PASSWORD, "email": "learner@gmail.com"}).status_code == 302
+    response = client.post("/signup", data={"username": "LEARNER", "password": PASSWORD, "email": "another@gmail.com"})
     assert "Username already exists" in response.text
     assert conn.execute("SELECT COUNT(*) FROM users WHERE LOWER(username)='learner'").fetchone()[0] == 1
 
@@ -138,5 +138,59 @@ def test_deleted_username_cannot_be_reclaimed(browser):
     assert client.post("/delete_account").status_code == 302
     assert conn.execute("SELECT 1 FROM users WHERE id=?", (user_id,)).fetchone() is None
 
-    response = client.post("/signup", data={"username": "deletedlearner", "password": PASSWORD})
+    response = client.post("/signup", data={"username": "deletedlearner", "password": PASSWORD, "email": "deleted@gmail.com"})
     assert "Username already exists" in response.text
+
+
+@pytest.mark.parametrize("email", [None, "", "  ", "not-an-email", "learner@gmail", "learner @gmail.com"])
+def test_signup_rejects_missing_or_invalid_email(browser, email):
+    client, conn = browser
+    fields = {"username": "new-learner", "password": PASSWORD}
+    if email is not None:
+        fields["email"] = email
+    response = client.post("/signup", data=fields)
+    assert response.status_code == 200
+    assert "required" in response.text if not email or not email.strip() else "valid email address" in response.text
+    assert conn.execute("SELECT 1 FROM users WHERE username='new-learner'").fetchone() is None
+
+
+@pytest.mark.parametrize("email", [" Learner@GMAIL.com ", " Learner@Example.com "])
+def test_signup_saves_email_without_treating_it_as_verified_and_can_sign_in(browser, email):
+    client, conn = browser
+    response = client.post("/signup", data={"username": "new-learner", "password": PASSWORD, "email": email})
+    assert response.status_code == 302
+    row = conn.execute("SELECT email, email_verified FROM users WHERE username='new-learner'").fetchone()
+    assert tuple(row) == (email.strip().lower(), 0)
+    assert login(client, "new-learner").status_code == 302
+
+
+def test_signup_rejects_duplicate_email_and_keeps_form_values(browser):
+    client, conn = browser
+    add_user(conn, "existing", "learner@gmail.com")
+    response = client.post("/signup", data={"username": "new-learner", "password": PASSWORD, "email": " LEARNER@GMAIL.COM "})
+    assert "email is already in use" in response.text
+    assert 'value="new-learner"' in response.text
+    assert 'value="learner@gmail.com"' in response.text
+    assert PASSWORD not in response.text
+    assert conn.execute("SELECT 1 FROM users WHERE username='new-learner'").fetchone() is None
+
+
+def test_signup_form_requires_an_email(browser):
+    client, _ = browser
+    from html.parser import HTMLParser
+
+    class Inputs(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.email = None
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "input" and attrs.get("name") == "email":
+                self.email = attrs
+
+    parser = Inputs()
+    parser.feed(client.get("/signup").text)
+    assert parser.email["type"] == "email"
+    assert "required" in parser.email
+    assert parser.email["autocomplete"] == "email"

@@ -230,7 +230,7 @@ class _AppTest(unittest.TestCase):
         try:
             conn.execute(
                 "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'teacher')",
-                (username, generate_password_hash("password123")),
+                (username, generate_password_hash("Cedar river orbit 42!")),
             )
             conn.commit()
             return conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()[0]
@@ -239,7 +239,7 @@ class _AppTest(unittest.TestCase):
 
     def _login(self, client, username: str):
         user_id = self._user(username)
-        response = client.post("/login", data={"username": username, "password": "password123"})
+        response = client.post("/login", data={"username": username, "password": "Cedar river orbit 42!"})
         self.assertEqual(response.status_code, 302)
         return user_id, response
 

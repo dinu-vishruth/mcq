@@ -31,6 +31,10 @@ def _owned_job(job_id: str, username: str) -> dict:
     job = job_repo.get_for_user(job_id, username)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
+    if job.get("recovered"):
+        from core.services.job_runner import enqueue_job, generation_backend
+        if generation_backend() == "rq":
+            enqueue_job(job_id)
     return job
 
 
@@ -53,7 +57,7 @@ async def job_events(job_id: str, user: CurrentApiUser):
     async def stream():
         last = None
         for _ in range(int(SSE_MAX_SECONDS / SSE_POLL_SECONDS)):
-            current = job_repo.get(job_id)
+            current = _owned_job(job_id, user.username)
             if current is None:
                 break
             view = job_repo.public_view(current)

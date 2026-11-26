@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Owner dashboard — Examly</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+{% from "partials/icons.html" import icon %}
+<div class="admin-app">
+  <aside class="admin-sidebar">
+    <a href="/admin" class="admin-brand"><span class="brand-mark">{{ icon("library") }}</span> Examly</a>
+    <span class="admin-eyebrow">Owner workspace</span>
+    <nav aria-label="Admin navigation">
+      <a href="/admin" class="admin-nav-current" aria-current="page">{{ icon("home") }} Overview</a>
+      <a href="#accounts">{{ icon("book") }} Accounts</a>
+      <a href="#activity">{{ icon("clock") }} Access activity</a>
+      <a href="#controls">{{ icon("settings") }} Application controls</a>
+    </nav>
+    <div class="admin-sidebar-note"><strong>A clear view.</strong><p>Keep your study space running smoothly, one decision at a time.</p></div>
+    <div class="admin-sidebar-footer"><span>{{ owner.username }}</span><small>Verified application owner</small><a href="/dashboard">Back to your study space</a><a href="/logout">Sign out</a></div>
+  </aside>
+  <main class="admin-main">
+    <header class="admin-header"><p>Your workspace <span>/</span> Administration</p><a href="/dashboard">Study space</a></header>
+    <div class="admin-content">
+      <p class="admin-eyebrow">A little clarity, a little control</p>
+      <h1>Your application, at a glance.</h1>
+      <p class="admin-intro">See who is joining, keep an eye on access, and make room for a better learning experience.</p>
+      {% for category, message in get_flashed_messages(with_categories=true) %}<p class="admin-notice" role="status">{{ message }}</p>{% endfor %}
+      {% if not can_manage %}<p class="admin-notice" role="status">You can browse this dashboard. <a href="/logout">Sign out</a> and sign back in to make changes.</p>{% endif %}
+
+      <dl class="admin-stats">
+        <div><dt>Total accounts</dt><dd>{{ stats.accounts }}</dd><small>{{ stats.demos or 0 }} demo accounts · {{ stats.disabled or 0 }} disabled</small></div>
+        <div><dt>Seen in the last 15 minutes</dt><dd>{{ stats.recent or 0 }}</dd><small>Authenticated activity, not a live connection count</small></div>
+        <div><dt>Sign-ins in the last 24 hours</dt><dd>{{ stats.sign_ins }}</dd><small>Successful password and provider sign-ins</small></div>
+        <div><dt>Generation jobs in progress</dt><dd>{{ stats.jobs }}</dd><small>Queued or running quiz requests</small></div>
+      </dl>
+
+      <section id="controls" class="admin-section">
+        <div class="admin-section-heading"><div><h2>Application controls</h2><p>Pausing a feature stops new requests. Existing quizzes and saved material remain available.</p></div>{{ icon("settings") }}</div>
+        <div class="admin-controls">
+        {% for name,label in controls.items() %}
+          <article class="admin-control"><div class="admin-control-title"><h3>{{ label }}</h3><span class="admin-pill {{ 'pill-success' if states[name] else 'pill-warning' }}">{{ 'Enabled' if states[name] else 'Paused' }}</span></div>
+            <p>{{ {'registration':'Control new password and provider account registrations.', 'demo':'Allow visitors to open a private sample workspace.', 'generation':'Accept new quiz generation requests. Work already running may finish.'}[name] }}</p>
+            <form action="/admin/controls/{{ name }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="value" value="{{ 0 if states[name] else 1 }}"><button class="admin-button" {% if not can_manage %}disabled{% endif %}>{{ 'Pause' if states[name] else 'Enable' }} {{ label | lower }}</button></form>
+          </article>
+        {% endfor %}
+        </div>
+      </section>
+
+      <section id="accounts" class="admin-section">
+        <div class="admin-section-heading"><div><h2>The people in your workspace</h2><p>Search accounts, check sign-in methods, and manage access.</p></div><span class="admin-count">{{ total }} accounts</span></div>
+        <form action="/admin#accounts" method="get" class="admin-search"><label for="account-search" class="sr-only">Search by username or email</label><input id="account-search" name="q" value="{{ q }}" maxlength="100" placeholder="Search by username or email"><button class="admin-button">Search</button>{% if q %}<a href="/admin#accounts">Clear</a>{% endif %}</form>
+        <div class="admin-table-wrap" role="region" aria-label="Account list" tabindex="0"><table class="admin-table"><thead><tr><th>Account</th><th>Sign-in</th><th>Status</th><th>Last seen</th><th>Access controls</th></tr></thead><tbody>
+        {% for account in accounts %}<tr>
+          <td><strong>{{ account.username }}</strong><span>{{ account.email or 'No email provided' }}</span><small>{{ 'Verified email' if account.email_verified else 'Email unverified' }} · Joined {{ account.created_at | admin_time }}</small></td>
+          <td>{{ account.auth_provider or 'local' }}</td>
+          <td><span class="admin-pill {{ 'pill-warning' if account.is_disabled else 'pill-success' }}">{{ 'Disabled' if account.is_disabled else 'Enabled' }}</span>{% if account.is_owner %}<small>Owner</small>{% endif %}</td>
+          <td>{{ account.last_seen_at | admin_time }}</td>
+          <td>{% if account.is_owner %}<span class="admin-protected">Owner account protected</span>{% else %}<div class="admin-row-actions">
+            <form action="/admin/accounts/{{ account.id }}/{{ 'enable' if account.is_disabled else 'disable' }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="admin-button {{ 'button-danger' if not account.is_disabled }}" {% if not can_manage %}disabled{% endif %}>{{ 'Enable access' if account.is_disabled else 'Disable access' }}</button></form>
+            <form action="/admin/accounts/{{ account.id }}/revoke" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="admin-text-button" {% if not can_manage %}disabled{% endif %}>Sign out sessions</button></form>
+          </div>{% endif %}</td>
+        </tr>{% else %}<tr><td colspan="5" class="admin-empty">No accounts match your search.</td></tr>{% endfor %}
+        </tbody></table></div>
+        <div class="admin-pagination"><span>Page {{ page }} of {{ pages }}</span><div>{% if page > 1 %}<a href="/admin?q={{ q | urlencode }}&amp;page={{ page-1 }}#accounts">Previous page</a>{% endif %}{% if page < pages %}<a href="/admin?q={{ q | urlencode }}&amp;page={{ page+1 }}#accounts">Next page</a>{% endif %}</div></div>
+      </section>
+
+      <div class="admin-columns">
+        <section id="activity" class="admin-section"><div class="admin-section-heading"><div><h2>Recent access activity</h2><p>Latest 20 events. Activity records are retained for 30 days.</p></div></div>
+          <div class="admin-list">{% for event in events %}<article><div><strong>{{ event.username }}</strong><span>{{ 'Demo workspace opened' if event.event == 'demo' else 'Successful sign-in' }} · {{ event.ip or 'Peer address unavailable' }}</span></div><time>{{ event.occurred_at | admin_time }}</time></article>{% else %}<p class="admin-empty">New sign-ins will appear here. Older activity cannot be reconstructed.</p>{% endfor %}</div>
+          <p class="admin-caption">Peer addresses can identify a proxy rather than a visitor. They do not establish a person's identity or location.</p>
+        </section>
+        <section class="admin-section"><div class="admin-section-heading"><div><h2>Your recent changes</h2><p>An audit trail of owner actions.</p></div></div>
+          <div class="admin-list">{% for entry in audit %}<article><div><strong>{{ entry.action | capitalize }} · {{ entry.target }}</strong><span>{{ entry.actor_email }}</span></div><time>{{ entry.occurred_at | admin_time }}</time></article>{% else %}<p class="admin-empty">Changes you make here will be recorded automatically.</p>{% endfor %}</div>
+        </section>
+      </div>
+      <section class="admin-section"><div class="admin-section-heading"><div><h2>Failed password sign-ins</h2><p>Latest 10 attempts. The username shown is what was submitted, not proof of who made the request.</p></div></div>
+        <div class="admin-list">{% for attempt in failures %}<article><div><strong>{{ attempt.username or 'No username supplied' }}</strong><span>{{ attempt.ip or 'Peer address unavailable' }}</span></div><time>{{ attempt.attempt_time | admin_time }}</time></article>{% else %}<p class="admin-empty">No failed password sign-ins recorded.</p>{% endfor %}</div>
+      </section>
+      <footer class="admin-footer">Examly · Owner workspace<span>Access is limited to your verified owner email.</span></footer>
+    </div>
+  </main>
+</div>
+</body>
+</html>

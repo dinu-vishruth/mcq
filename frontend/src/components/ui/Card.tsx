@@ -15,9 +15,9 @@ export function Card({ children, hover, pad = "md", className, ...rest }: Props)
   return (
     <motion.div
       className={cn(
-        "bg-card border rounded-lg relative",
-        "border-white/[0.07]",
-        hover && "transition-colors duration-200 hover:bg-card-hover hover:border-white/[0.11]",
+        "bg-card border rounded-lg relative shadow-sm",
+        "border-line",
+        hover && "transition-colors duration-200 hover:bg-card-hover hover:border-line-2",
         PAD[pad],
         className as string,
       )}

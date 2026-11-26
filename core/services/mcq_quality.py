@@ -47,7 +47,7 @@ def accept_candidates(raw, context: str, difficulty: str, *, topic: str | None =
                               "reason": "fact verification disabled"} for q in valid]
         return result
     with timed("fact_verification") as stage:
-        facts = FactVerificationAgent().run(valid, context, topic=topic)
+        facts = FactVerificationAgent().run(valid, context, topic=topic, excluded=excluded)
         stage.update(passed=len(facts.verified), rejected=len(facts.rejected), unverified=len(facts.unverified))
     result.rejected.extend(facts.rejected)
     result.unverified.extend(facts.unverified)

@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MCQ Generator — Sign In</title>
+  <title>Examly — Sign In</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -23,56 +23,30 @@
   {% endif %}
 
   <div class="authx">
-    <div class="authx-bg" aria-hidden="true">
-      <span class="authx-glow g1"></span>
-      <span class="authx-glow g2"></span>
-      <span class="authx-glow g3"></span>
-    </div>
-
-    <!-- Left hero (60%) -->
-    <section class="authx-hero">
+    <section class="authx-hero" aria-label="About Examly">
       <div class="authx-brand">
-        <span class="brand-mark">{{ icon("brain") }}</span>
-        <span class="brand-name">MCQ Generator</span>
+        <span class="brand-mark">{{ icon("library") }}</span>
+        <span class="brand-name">Examly</span>
       </div>
-
-      <span class="authx-badge"><span class="spk">{{ icon("spark") }}</span> AI Powered Learning Platform</span>
-
-      <h1 class="authx-headline">Turn your study material into <span class="grad">exam-ready mastery</span>.</h1>
-
-      <p class="authx-sub">Upload notes, books and PDFs. Generate adaptive quizzes, detailed explanations and personalized learning journeys powered by AI.</p>
-
-      <div class="authx-features">
-        <div class="authx-feature">
-          <span class="fi">{{ icon("brain") }}</span>
-          <h3>Adaptive MCQ Generation</h3>
-          <p>Questions tailored to your uploaded study material.</p>
-        </div>
-        <div class="authx-feature">
-          <span class="fi">{{ icon("bolt") }}</span>
-          <h3>Instant Explanations</h3>
-          <p>Understand every answer instead of memorizing.</p>
-        </div>
-        <div class="authx-feature">
-          <span class="fi">{{ icon("chart") }}</span>
-          <h3>Performance Analytics</h3>
-          <p>Track strengths, weak topics and learning progress.</p>
-        </div>
-        <div class="authx-feature">
-          <span class="fi">{{ icon("target") }}</span>
-          <h3>Personalized Learning</h3>
-          <p>AI recommends what to study next.</p>
-        </div>
-      </div>
-
+      <p class="authx-badge">Your space to understand</p>
+      <h1 class="authx-headline">A little focus.<br>A <span class="grad">clearer mind.</span></h1>
+      <p class="authx-sub">Turn the things you are studying into questions that help you learn. Your notes, your pace, one idea at a time.</p>
+      <aside class="auth-sample" aria-label="Example quiz question">
+        <div class="auth-sample-label"><span>FROM NOTES TO UNDERSTANDING</span>{{ icon("library") }}</div>
+        <h2>What helps you remember an idea for longer?</h2>
+        <div class="auth-sample-option"><span>A</span> Reading the same page again</div>
+        <div class="auth-sample-option correct"><span>B</span> Practising recall over time {{ icon("check") }}</div>
+        <p class="auth-sample-caption">Go beyond the answer. Read the explanation, revisit your notes, and try again.</p>
+      </aside>
+      <p class="authx-footnote">A short quiz. A useful explanation. A little more understanding.</p>
     </section>
 
     <!-- Right auth card (40%) -->
     <section class="authx-panel">
       <div class="authx-card">
-        <div class="logo-badge">{{ icon("brain") }}</div>
-        <h1>Welcome Back</h1>
-        <p class="subtitle">Continue your AI learning journey.</p>
+        <div class="logo-badge">{{ icon("library") }} Examly</div>
+        <h1>Welcome back.</h1>
+        <p class="subtitle">Your study space is right where you left it.</p>
 
         <form action="/login" method="post">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -92,10 +66,10 @@
 
           <div class="authx-row">
             <label class="authx-check"><input type="checkbox" name="remember"> Remember me</label>
-            <a href="/signup" class="authx-link">Forgot password?</a>
+            <a href="/account/recover" class="authx-link">Forgot password?</a>
           </div>
 
-          <button type="submit" class="btn btn-primary btn-lg" id="login-btn">Sign In {{ icon("arrow-right") }}</button>
+          <button type="submit" class="btn btn-primary btn-lg" id="login-btn">Sign in</button>
         </form>
 
         <div class="authx-divider"><span>or</span></div>
@@ -121,11 +95,11 @@
         <p class="authx-alt">Don't have an account? <a href="/signup" class="authx-link">Create Account</a></p>
 
         <div class="demo-hint">
-          <span class="dh-title">Explore as Demo Learner</span>
+          <span class="dh-title">A little look around?</span>
           <p>No sign-up or password needed. Sample study material is included.</p>
           <form action="/demo" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-primary btn-lg">Try Demo</button>
+            <button type="submit" class="btn btn-primary btn-lg">Explore the demo</button>
           </form>
         </div>
       </div>

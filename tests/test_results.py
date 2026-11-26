@@ -21,8 +21,8 @@ class TestSavedResults(Base):
     def setUp(self):
         super().setUp()
         self.c = self.client()
-        self._seed_user("results_learner", "password123", "student")
-        self._login(self.c, "results_learner", "password123")
+        self._seed_user("results_learner", "Cedar river orbit 42!", "student")
+        self._login(self.c, "results_learner", "Cedar river orbit 42!")
         self.key = create_session_key("results_learner", "easy", 600, FIXED_MCQS)
         self.c.post("/student_login", data={"session_key": self.key})
         analyse = patch("core.services.learning_service.analyse_submission")
@@ -48,7 +48,7 @@ class TestSavedResults(Base):
 
     def test_concurrent_submissions_create_one_result(self):
         other = self.client()
-        self._login(other, "results_learner", "password123")
+        self._login(other, "results_learner", "Cedar river orbit 42!")
         other.post("/student_login", data={"session_key": self.key})
         def explain(details):
             time.sleep(0.1)  # Keep the first submission active as the other arrives.
@@ -86,8 +86,8 @@ class TestSavedResults(Base):
         with patch("models.explanation_engine.explain_answers", return_value=["Explanation"] * 2):
             self.c.post("/submit", data={})
         other = self.client()
-        self._seed_user("another_results_learner", "password123", "student")
-        self._login(other, "another_results_learner", "password123")
+        self._seed_user("another_results_learner", "Cedar river orbit 42!", "student")
+        self._login(other, "another_results_learner", "Cedar river orbit 42!")
         self.assertEqual(other.get(f"/results/{self.key}").status_code, 404)
 
     def test_old_saved_result_can_be_recovered(self):

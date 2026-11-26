@@ -12,10 +12,20 @@ from datetime import datetime
 from core.models.db import get_db
 
 
-def create_session(teacher, difficulty, timer, mcqs, document_id=None) -> str:
+def create_session(teacher, difficulty, timer, mcqs, document_id=None, *, user_id=None) -> str:
     key = str(uuid.uuid4())[:8]
     conn = get_db()
     try:
+        if user_id is not None:
+            from core.services.account_identity import identity_write_lock
+            identity_write_lock(conn)
+            owner = conn.execute("SELECT username FROM users WHERE id=?", (user_id,)).fetchone()
+            if owner is None or owner["username"] != teacher:
+                raise ValueError("Account ownership changed during generation")
+            if document_id is not None:
+                document = conn.execute("SELECT owner FROM documents WHERE id=?", (document_id,)).fetchone()
+                if document is None or document["owner"] != teacher:
+                    raise ValueError("Source ownership changed during generation")
         # document_id column exists only after the Phase 2 migration; fall back
         # to the legacy insert if it isn't there yet.
         try:

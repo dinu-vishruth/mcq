@@ -16,11 +16,15 @@ from __future__ import annotations
 import json
 import logging
 import time
+import uuid
+from contextlib import contextmanager
+from threading import Event, Thread
 
 import config
 from core.observability import log_event, timed
 from core.repositories import job_repo
 from core.services.ai_safety import public_generation_error
+from core.services.generation_admission import GenerationBusy
 from core.services.generation_metrics import track_generation
 
 
@@ -85,6 +89,24 @@ def enqueue_job(job_id: str) -> bool:
         return False
 
 
+@contextmanager
+def worker_heartbeat(job_id, token):
+    stopped = Event()
+    def beat():
+        while not stopped.wait(10):
+            try:
+                job_repo.heartbeat(job_id, token)
+            except Exception:
+                log_event("job.heartbeat_failed", job_id=job_id)
+    thread = Thread(target=beat, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        thread.join(timeout=1)
+
+
 def run_generation_job(job_id: str) -> None:
     """Execute one generation job. Safe to call from the worker or inline."""
     job = job_repo.get(job_id)
@@ -92,7 +114,6 @@ def run_generation_job(job_id: str) -> None:
         return
 
     from core.services.mcq_pipeline import generate_from_document
-    from utils.session_manager import create_session_key
 
     params = json.loads(job.get("params_json") or "{}")
     num_questions = int(params.get("num_questions") or 5)
@@ -101,7 +122,8 @@ def run_generation_job(job_id: str) -> None:
     timer = int(params.get("timer") or 600)
     deadline = int(params.get("deadline_seconds") or config.GENERATION_JOB_DEADLINE_SECONDS)
 
-    if not job_repo.claim(job_id):
+    run_token = uuid.uuid4().hex
+    if not job_repo.claim(job_id, run_token):
         return
     started = time.perf_counter()
     log_event("job.started", job_id=job_id, document_id=job["document_id"],
@@ -109,7 +131,7 @@ def run_generation_job(job_id: str) -> None:
     try:
         from core.services.generation_admission import admission
         from core.services.generation_budget import budget, check
-        with budget(deadline), admission(job["username"], seconds=deadline, charge=False):
+        with worker_heartbeat(job_id, run_token), budget(deadline), admission(job["username"], seconds=deadline, charge=False):
             with timed("job.generate", job_id=job_id, document_id=job["document_id"]) as stage:
                 from core.services.personalization import learning_profile
                 with track_generation() as metrics, learning_profile(job["user_id"]):
@@ -119,23 +141,21 @@ def run_generation_job(job_id: str) -> None:
                         difficulty=difficulty,
                         topic=topic,
                         deadline_seconds=deadline,
-                        on_progress=lambda n: job_repo.set_progress(job_id, n),
+                        on_progress=lambda n: job_repo.set_progress(job_id, n, run_token),
                     )
                 stage["mcqs"] = len(mcqs)
             if not mcqs:
                 raise ValueError("No questions generated. Try different settings.")
 
             check(reserve=0)
-            session_key = create_session_key(
-                teacher=job["username"], difficulty=difficulty, timer=timer, mcqs=mcqs,
-                document_id=job["document_id"],
-            )
-            job_repo.set_done(job_id, metrics.result(session_key, count=len(mcqs), requested=num_questions))
+            job_repo.publish(job, run_token, mcqs, difficulty, timer, metrics)
             log_event("job.completed", job_id=job_id, document_id=job["document_id"],
                       count=len(mcqs),
                       duration_ms=round((time.perf_counter() - started) * 1000, 2))
+    except GenerationBusy:
+        job_repo.defer_busy(job_id, run_token)
     except Exception as exc:
-        job_repo.set_failed(job_id, public_generation_error(exc))
+        job_repo.set_failed(job_id, public_generation_error(exc), run_token)
         log_event("job.failed", level=logging.ERROR, job_id=job_id,
                   document_id=job["document_id"], error_type=type(exc).__name__,
                   error_type_only=type(exc).__name__,

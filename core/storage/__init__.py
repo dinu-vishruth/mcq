@@ -17,6 +17,7 @@ when a bucket is configured, so dev stays on disk with zero config.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import BinaryIO, Protocol
 
 import config
@@ -27,6 +28,7 @@ class UploadStore(Protocol):
     def open(self, key: str): ...
     def exists(self, key: str) -> bool: ...
     def delete(self, key: str) -> None: ...
+    def keys(self, prefix: str) -> list[str]: ...
 
 
 class LocalUploadStore:
@@ -36,9 +38,19 @@ class LocalUploadStore:
         self.folder = folder or config.UPLOAD_FOLDER
 
     def _path(self, key: str) -> str:
-        if os.path.isabs(key):
-            return key
-        return os.path.join(self.folder, key)
+        root = Path(self.folder).resolve()
+        path = (root / key).resolve()
+        if path == root or not path.is_relative_to(root):
+            raise ValueError("Upload key must stay within its storage directory")
+        return str(path)
+
+    def keys(self, prefix: str) -> list[str]:
+        path = Path(self._path(prefix))
+        if not path.exists():
+            return []
+        root = Path(self.folder).resolve()
+        return [item.relative_to(root).as_posix() for item in path.rglob("*")
+                if item.is_file() and item.resolve().is_relative_to(root)]
 
     def save(self, key: str, fileobj: BinaryIO, size_hint: int | None = None) -> str:
         path = self._path(key)
@@ -113,6 +125,11 @@ class S3UploadStore:
 
     def delete(self, key: str) -> None:
         self._get_client().delete_object(Bucket=self.bucket, Key=self._full_key(key))
+
+    def keys(self, prefix: str) -> list[str]:
+        pages = self._get_client().get_paginator("list_objects_v2").paginate(Bucket=self.bucket, Prefix=self._full_key(prefix))
+        strip = len(self.prefix) + 1 if self.prefix else 0
+        return [item["Key"][strip:] for page in pages for item in page.get("Contents", [])]
 
 
 _cached: UploadStore | None = None

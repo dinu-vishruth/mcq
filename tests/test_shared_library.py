@@ -42,7 +42,7 @@ class TestSharedLibrary(unittest.TestCase):
                 signed_in = [False]
                 token = csrf(client)
                 self.assertEqual(client.post("/signup", data={
-                    "username": "library_verifier", "password": "TestPassword123", "csrf_token": token,
+                    "username": "library_verifier", "email": "library@example.com", "password": "TestPassword123", "csrf_token": token,
                 }).status_code, 302)
                 login = client.post("/login", data={
                     "username": "library_verifier", "password": "TestPassword123", "csrf_token": token,
@@ -75,7 +75,8 @@ class TestSharedLibrary(unittest.TestCase):
                     {"label": "A", "text": "Chloroplasts"}, {"label": "B", "text": "Roots"},
                     {"label": "C", "text": "Nuclei"}, {"label": "D", "text": "Ribosomes"},
                 ], "answer_text": "Chloroplasts"}]
-                with patch("core.services.mcq_pipeline.generate_from_document", return_value=questions) as generate:
+                with patch("core.services.generation_status.generation_available", return_value=True), \
+                        patch("core.services.mcq_pipeline.generate_from_document", return_value=questions) as generate:
                     result = fresh.post("/api/practice/generate", json={"document_id": doc_id, "num_questions": 1},
                                         headers={"X-CSRFToken": token})
                 self.assertEqual(result.status_code, 200, result.text)

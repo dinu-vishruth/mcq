@@ -49,6 +49,14 @@ def persist_original_file(user: str, upload: UploadFile, source_ext: str) -> Non
         key = f"{user}/{uuid.uuid4().hex}-{os.path.basename(upload.filename)}"
         upload.file.seek(0)
         get_upload_store().save(key, upload.file, size_hint=size_of(upload))
+        from core.models.db import get_db
+        conn = get_db()
+        try:
+            conn.execute("INSERT INTO upload_objects(storage_key,user_id) "
+                         "SELECT ?, id FROM users WHERE username=?", (key, user))
+            conn.commit()
+        finally:
+            conn.close()
     except Exception as exc:
         print(f"[WARNING] Could not persist original upload: {type(exc).__name__}")
 

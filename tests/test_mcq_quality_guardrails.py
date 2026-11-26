@@ -37,7 +37,7 @@ class TestSharedQuality(unittest.TestCase):
             self.addCleanup(stub.stop)
         self.facts = Mock()
         self.facts.complete_json.side_effect = lambda messages, **kwargs: {
-            'results': [{'index': i, 'passed': True, "safe": True, 'confidence': 0.95} for i in range(30)]}
+            'results': [{'index': i, 'passed': True, "safe": True, 'semantic_duplicate': False, 'confidence': 0.95} for i in range(30)]}
         # Individual tests set complete per-batch verdicts. Out-of-range indices
         # must not be treated as approval, even in a test double.
         self.grades = Mock()
@@ -45,7 +45,7 @@ class TestSharedQuality(unittest.TestCase):
     def checkers(self, count=1, passed=True, level='medium'):
         self.facts.complete_json.side_effect = None
         self.facts.complete_json.return_value = {'results': [
-            {'index': i, 'passed': passed, 'safe': True, 'confidence': 0.95} for i in range(count)]}
+            {'index': i, 'passed': passed, 'safe': True, 'semantic_duplicate': False, 'confidence': 0.95} for i in range(count)]}
         self.grades.complete_json.return_value = {'grades': [
             {'index': i, 'matches_requested': True, 'level': level} for i in range(count)]}
         facts = patch('core.agents.fact_verification.get_llm', return_value=self.facts)
@@ -80,9 +80,9 @@ class TestSharedQuality(unittest.TestCase):
     def test_all_verifier_malformed_response_probes(self):
         malformed = [{}, {'results': []}, {'results': None}, {'results': [None]},
                      {'results': [{'index': 0}]}, {'results': 'bad'}, [], None,
-                     {'results': [{'index': 0, 'passed': 'false', "safe": True, 'confidence': 0.99}]}]
+                     {'results': [{'index': 0, 'passed': 'false', "safe": True, 'semantic_duplicate': False, 'confidence': 0.99}]}]
         for confidence in ['bad', '0.9', True, float('nan'), float('inf'), -1, 1.1, None]:
-            malformed.append({'results': [{'index': 0, 'passed': True, "safe": True, 'confidence': confidence}]})
+            malformed.append({'results': [{'index': 0, 'passed': True, "safe": True, 'semantic_duplicate': False, 'confidence': confidence}]})
         for data in malformed:
             with self.subTest(data=data), patch('core.agents.fact_verification.get_llm',
                                                return_value=Mock(complete_json=Mock(return_value=data))):
@@ -102,7 +102,7 @@ class TestSharedQuality(unittest.TestCase):
         self.assertEqual(len(result.rejected), 1)
         self.assertEqual(result.unverified, [])
         self.facts.complete_json.return_value['results'] += [
-            {'index': 0, 'passed': True, "safe": True, 'confidence': 1}]
+            {'index': 0, 'passed': True, "safe": True, 'semantic_duplicate': False, 'confidence': 1}]
         result = FactVerificationAgent().run([mcq()], SOURCE)
         self.assertEqual(result.verified, [])
         self.assertEqual(len(result.unverified), 1)
@@ -251,8 +251,8 @@ class TestSharedQuality(unittest.TestCase):
     def test_rejected_question_requires_successful_revalidation(self):
         self.checkers()
         self.facts.complete_json.side_effect = [
-            {'results': [{'index': 0, 'passed': False, "safe": True, 'confidence': 0.95}]},
-            {'results': [{'index': 0, 'passed': True, "safe": True, 'confidence': 0.95}]}]
+            {'results': [{'index': 0, 'passed': False, "safe": True, 'semantic_duplicate': False, 'confidence': 0.95}]},
+            {'results': [{'index': 0, 'passed': True, "safe": True, 'semantic_duplicate': False, 'confidence': 0.95}]}]
         with patch('models.mcq_generator.generate_legacy_candidates', return_value=[mcq()]):
             result = pipeline._legacy_fallback(SOURCE, 1, 'medium')
         self.assertEqual(len(result), 1)

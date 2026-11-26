@@ -1,0 +1,7 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Account security</title><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/static/css/style.css"></head><body class="utility-page"><main class="utility-card"><a class="utility-brand" href="/">Examly</a>
+<h1>Account security</h1><p>{{ contact.email or 'Add a contact email in Settings.' }}{% if contact.email_verified %} — verified{% endif %}</p>
+{% if contact.email and not contact.email_verified and mail_available %}<form action="/account/verify" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button>Verify email</button></form>{% endif %}
+<p>Sign in again before linking another provider. Existing accounts with their own data require a separate recovery review.</p>
+<p>After linking, use your provider to sign in. Password sign-in for this account will be disabled.</p>
+{% for provider in ['google','github'] %}<form action="/account/link/{{ provider }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Current password for password accounts <input type="password" name="password" autocomplete="current-password"></label><button>Link {{ provider }}</button></form>{% endfor %}
+<a href="/profile">Settings</a></main></body></html>

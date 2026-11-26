@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MCQ Generator — Create Account</title>
+  <title>Examly — Create Account</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
@@ -23,56 +23,30 @@
   {% endif %}
 
   <div class="authx">
-    <div class="authx-bg" aria-hidden="true">
-      <span class="authx-glow g1"></span>
-      <span class="authx-glow g2"></span>
-      <span class="authx-glow g3"></span>
-    </div>
-
-    <!-- Left hero (60%) -->
-    <section class="authx-hero">
+    <section class="authx-hero" aria-label="About Examly">
       <div class="authx-brand">
-        <span class="brand-mark">{{ icon("brain") }}</span>
-        <span class="brand-name">MCQ Generator</span>
+        <span class="brand-mark">{{ icon("library") }}</span>
+        <span class="brand-name">Examly</span>
       </div>
-
-      <span class="authx-badge"><span class="spk">{{ icon("spark") }}</span> AI Powered Learning Platform</span>
-
-      <h1 class="authx-headline">Start building your <span class="grad">exam-ready mastery</span> today.</h1>
-
-      <p class="authx-sub">Join learners who turn notes, books and PDFs into adaptive quizzes, detailed explanations and personalized learning journeys powered by AI.</p>
-
-      <div class="authx-features">
-        <div class="authx-feature">
-          <span class="fi">{{ icon("brain") }}</span>
-          <h3>Adaptive MCQ Generation</h3>
-          <p>Questions tailored to your uploaded study material.</p>
-        </div>
-        <div class="authx-feature">
-          <span class="fi">{{ icon("bolt") }}</span>
-          <h3>Instant Explanations</h3>
-          <p>Understand every answer instead of memorizing.</p>
-        </div>
-        <div class="authx-feature">
-          <span class="fi">{{ icon("chart") }}</span>
-          <h3>Performance Analytics</h3>
-          <p>Track strengths, weak topics and learning progress.</p>
-        </div>
-        <div class="authx-feature">
-          <span class="fi">{{ icon("target") }}</span>
-          <h3>Personalized Learning</h3>
-          <p>AI recommends what to study next.</p>
-        </div>
-      </div>
-
+      <p class="authx-badge">Your space to understand</p>
+      <h1 class="authx-headline">A fresh start<br>for <span class="grad">curious minds.</span></h1>
+      <p class="authx-sub">Turn the things you are studying into questions that help you learn. Your notes, your pace, one idea at a time.</p>
+      <aside class="auth-sample" aria-label="Example quiz question">
+        <div class="auth-sample-label"><span>FROM NOTES TO UNDERSTANDING</span>{{ icon("library") }}</div>
+        <h2>What helps you remember an idea for longer?</h2>
+        <div class="auth-sample-option"><span>A</span> Reading the same page again</div>
+        <div class="auth-sample-option correct"><span>B</span> Practising recall over time {{ icon("check") }}</div>
+        <p class="auth-sample-caption">Go beyond the answer. Read the explanation, revisit your notes, and try again.</p>
+      </aside>
+      <p class="authx-footnote">A short quiz. A useful explanation. A little more understanding.</p>
     </section>
 
     <!-- Right auth card (40%) -->
     <section class="authx-panel">
       <div class="authx-card">
-        <div class="logo-badge">{{ icon("spark") }}</div>
-        <h1>Create Account</h1>
-        <p class="subtitle">Start learning smarter, free.</p>
+        <div class="logo-badge">{{ icon("library") }} Examly</div>
+        <h1>Make yourself at home.</h1>
+        <p class="subtitle">Create your own space to learn and practise.</p>
 
         <form action="/signup" method="post">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -83,18 +57,24 @@
 
           <div class="input-group">
             <label for="su-username">Username</label>
-            <input type="text" name="username" id="su-username" placeholder="Choose a username" autocomplete="username" pattern="[^@]+" title="Choose a username without an @ sign" required autofocus>
+            <input type="text" name="username" id="su-username" value="{{ signup_username | default('') }}" placeholder="Choose a username" autocomplete="username" pattern="[^@]+" title="Choose a username without an @ sign" maxlength="64" required autofocus>
+          </div>
+
+          <div class="input-group">
+            <label for="su-email">Email address</label>
+            <input type="email" name="email" id="su-email" value="{{ signup_email | default('') }}" placeholder="you@gmail.com" autocomplete="email" maxlength="254" required>
           </div>
 
           <div class="input-group">
             <label for="su-password">Password</label>
             <div class="authx-input-wrap">
-              <input type="password" name="password" id="su-password" placeholder="At least 8 characters" autocomplete="new-password" required>
+              <input type="password" name="password" id="su-password" placeholder="At least {{ password_min_length }} characters" autocomplete="new-password" minlength="{{ password_min_length }}" maxlength="{{ password_max_length }}" aria-describedby="password-requirements" required>
               <button type="button" class="pw-toggle" data-pw-toggle="su-password" aria-label="Show password">{{ icon("eye") }}</button>
             </div>
+            <p id="password-requirements" class="password-help">{{ password_help }}</p>
           </div>
 
-          <button type="submit" class="btn btn-primary btn-lg">Create Account {{ icon("arrow-right") }}</button>
+          <button type="submit" class="btn btn-primary btn-lg">Create account</button>
         </form>
 
         <div class="authx-divider"><span>or</span></div>
@@ -120,7 +100,7 @@
         <p class="authx-alt">Already have an account? <a href="/" class="authx-link">Sign in</a></p>
         <form action="/demo" method="post">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-primary btn-lg">Try Demo</button>
+          <button type="submit" class="btn btn-primary btn-lg">Explore the demo</button>
         </form>
       </div>
     </section>

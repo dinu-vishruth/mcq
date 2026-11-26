@@ -89,6 +89,26 @@ def get_chunks(document_id) -> list[dict]:
         conn.close()
 
 
+def coverage_candidates(document_id, count, model, dim):
+    import numpy as np
+
+    from core.vectorstore.base import SearchHit
+    conn = get_db()
+    try:
+        bounds = conn.execute("SELECT max(chunk_index) AS last FROM chunks WHERE document_id=?", (document_id,)).fetchone()
+        if bounds is None or bounds["last"] is None:
+            return []
+        positions = sorted({round(i * bounds["last"] / max(1, count - 1)) for i in range(count)})
+        placeholders = ",".join("?" for _ in positions)
+        rows = conn.execute(f"SELECT c.chunk_index,c.content,e.vector FROM chunks c JOIN embeddings e "
+                            f"ON e.content_hash=c.content_hash WHERE c.document_id=? AND e.model=? "
+                            f"AND e.dim=? AND c.chunk_index IN ({placeholders})", (document_id, model, dim, *positions)).fetchall()
+        return [SearchHit(f"{document_id}:{r['chunk_index']}", document_id, r["chunk_index"], r["content"], 0,
+                          np.frombuffer(r["vector"], dtype="float32").tolist()) for r in rows]
+    finally:
+        conn.close()
+
+
 def list_by_owner(owner: str) -> list[dict]:
     """All documents uploaded by this user, newest first."""
     if not owner:

@@ -14,8 +14,8 @@ class TestUploadContract(Base):
         self.enterContext(patch.multiple("config", GENERATION_COOLDOWN_SECONDS=0, GENERATION_MAX_PER_5MIN=0))
         self.enterContext(patch("core.services.generation_status.generation_available", return_value=True))
         self.c = self.client()
-        self._seed_user("upload_contract", "password123", "student")
-        self._login(self.c, "upload_contract", "password123")
+        self._seed_user("upload_contract", "Cedar river orbit 42!", "student")
+        self._login(self.c, "upload_contract", "Cedar river orbit 42!")
 
     def test_generate_and_start_form_generates_instead_of_reopening_settings(self):
         with patch(_GENERATION, return_value=FIXED_MCQS) as generate:

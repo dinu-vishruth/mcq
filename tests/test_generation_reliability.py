@@ -152,8 +152,10 @@ class TestAtomicGeneration(Base):
 
     def test_duplicate_job_delivery_creates_exactly_one_session(self):
         from core.repositories import job_repo
+        from core.services.ingestion_service import ingest_document
         from core.services.job_runner import create_job, run_generation_job
-        job = create_job(user_id=1, username=self._testMethodName, document_id=1,
+        doc = ingest_document('Evidence for the isolated worker test. ' * 10, owner=self._testMethodName)
+        job = create_job(user_id=1, username=self._testMethodName, document_id=doc['document_id'],
                          num_questions=1, difficulty='medium', topic=None, timer=60)
         entered, release = Event(), Event()
 

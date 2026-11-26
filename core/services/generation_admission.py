@@ -17,6 +17,9 @@ def admission(username, *, seconds, charge=True):
     now = time.time()
     conn = get_db()
     try:
+        from core.services.admin_control import enabled
+        if charge and not enabled("generation", conn):
+            raise GenerationBusy("Quiz generation is currently paused by the site owner.")
         if is_postgres():
             conn.execute("SELECT id FROM generation_control WHERE id=1 FOR UPDATE")
         else:

@@ -15,6 +15,7 @@ from core.services.generation_budget import check, generation_scope, remaining
 from core.services.generation_metrics import current_metrics
 from core.services.ingestion_service import ingest_document
 from core.services.mcq_quality import accept_candidates
+from core.services.source_evidence import source_locations
 from models.mcq_generator import MCQGenerationError
 
 
@@ -152,7 +153,8 @@ def generate_mcqs_rag(text: str, num_questions: int = 5, difficulty: str = "medi
     context = ContextBuilderAgent().run(hits)
     # Recovery keeps this exact evidence context, including constraints, rather
     # than letting previously rejected questions escape into a weaker contract.
-    return _generate_checked(context, num_questions, difficulty, topic=topic)
+    with source_locations(hits):
+        return _generate_checked(context, num_questions, difficulty, topic=topic)
 
 
 @generation_scope
@@ -176,11 +178,13 @@ def generate_from_document(document_id: int, num_questions: int = 5,
         raise ValueError("This knowledge source has no indexed content to practice from yet.")
     log_event("retrieval.complete", document_id=document_id, **retriever.assess(hits))
     context = ContextBuilderAgent().run(hits)
-    if config.AI_PIPELINE != "rag":
-        return _legacy_from_context(context, num_questions, difficulty, topic=topic,
-                                    deadline_seconds=deadline_seconds, on_progress=on_progress)
-    return _generate_checked(context, num_questions, difficulty, topic=topic,
-                             deadline_seconds=deadline_seconds, on_progress=on_progress)
+    with source_locations(hits):
+        if config.AI_PIPELINE != "rag":
+            return _legacy_from_context(context, num_questions, difficulty, topic=topic,
+                                        deadline_seconds=deadline_seconds, on_progress=on_progress)
+        return _generate_checked(context, num_questions, difficulty, topic=topic,
+                                 deadline_seconds=deadline_seconds, on_progress=on_progress)
+
 
 
 @generation_scope

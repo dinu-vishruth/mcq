@@ -4,34 +4,51 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
   body {
     @apply bg-bg text-text font-sans antialiased;
     letter-spacing: -0.011em;
+    line-height: 1.6;
   }
   h1, h2, h3 {
     @apply font-display tracking-tight;
+  }
+  :focus-visible {
+    outline: 2px solid #2855d9;
+    outline-offset: 4px;
+  }
+  ::selection {
+    background: #dfe7ff;
+    color: #202d3b;
   }
 }
 
 @layer components {
   .glass-card {
     @apply bg-card border rounded-lg;
-    border-color: rgba(255, 255, 255, 0.07);
+    @apply border-line shadow-sm;
   }
 }
 
-/* Ambient glow to match the server-rendered pages */
+/* A quiet paper surface shared by the study screens. */
 .app-glow::before {
   content: "";
   position: fixed;
   inset: 0;
-  background:
-    radial-gradient(900px 500px at 78% -10%, rgba(59, 130, 246, 0.1), transparent 60%),
-    radial-gradient(700px 420px at 10% 0%, rgba(139, 92, 246, 0.06), transparent 55%);
+  background: radial-gradient(900px 500px at 90% 0%, rgba(233, 231, 220, 0.3), transparent 70%);
   pointer-events: none;
   z-index: 0;
+}
+
+.study-notebook {
+  background: repeating-linear-gradient(transparent 0 27px, #dfe5eb 27px 28px), #fffefa;
+  box-shadow: 8px 10px 0 #e8eddf, 9px 11px 0 #d9e0cf, 0 20px 38px rgba(32,45,59,0.07);
+}
+
+.study-page-title {
+  @apply font-editorial font-normal tracking-tight;
+  line-height: 1.12;
 }
 
 @media (prefers-reduced-motion: reduce) {

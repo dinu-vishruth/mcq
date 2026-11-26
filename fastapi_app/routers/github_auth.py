@@ -24,6 +24,7 @@ from core.services.account_identity import (
     claim_verified_email,
     establish_session,
     identity_write_lock,
+    link_provider,
     normalize_email,
     unique_oauth_username,
 )
@@ -113,13 +114,20 @@ async def github_callback(
     if type(profile.get("id")) is not int or profile["id"] <= 0:
         return fail("GitHub did not return a complete account profile. Please try again.")
     try:
-        user = _upsert_github_user(conn, profile)
+        linked = link_provider(conn, request, "github", str(profile["id"]),
+                               profile.get("email") if profile.get("email_verified") is True else None)
+        user = linked if linked is not None else _upsert_github_user(conn, profile)
     except sqlite3.IntegrityError:
         conn.rollback()
         log_event("oauth.github.failed", level=logging.WARNING, stage="account", reason="identity_conflict")
         return fail("This GitHub account could not be used to sign in. Try another sign-in method.")
-    establish_session(request, user)
-    return RedirectResponse("/dashboard", status_code=302)
+    except ValueError as exc:
+        conn.rollback()
+        return fail(str(exc))
+    user = conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+    establish_session(request, user, conn)
+    from core.services.admin_control import is_owner
+    return RedirectResponse("/admin" if is_owner(user) else "/dashboard", status_code=302)
 
 
 async def _fetch_github_profile(code: str, redirect_uri: str) -> dict:
@@ -201,6 +209,9 @@ def _upsert_github_user(conn, profile: dict) -> dict:
         conn.commit()
         return {"id": existing["id"], "username": existing["username"]}
 
+    from core.services.admin_control import enabled
+    if not enabled("registration", conn):
+        raise ValueError("New account signup is currently paused.")
     if email and not claim_verified_email(conn, email):
         raise sqlite3.IntegrityError("GitHub email already claimed")
     picture = profile.get("avatar_url")

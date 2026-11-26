@@ -17,6 +17,25 @@ from core.services.job_runner import generation_backend
 
 def main() -> None:
     configure_logging()
+    import sys
+    if "--maintenance" in sys.argv:
+        from core.models.db import get_db
+        from core.repositories import job_repo
+        from core.services.account_deletion import process_deletions
+        from core.services.job_runner import enqueue_job
+        from fastapi_app.database import init_db
+        init_db()
+        process_deletions()
+        conn = get_db()
+        try:
+            rows = conn.execute("SELECT id FROM generation_jobs WHERE status IN ('queued','running') LIMIT 100").fetchall()
+        finally:
+            conn.close()
+        for row in rows:
+            job = job_repo.get(row["id"])
+            if job and job["status"] == "queued" and generation_backend() == "rq":
+                enqueue_job(job["id"])
+        return
     if not config.REDIS_URL:
         raise SystemExit("REDIS_URL must be set to run the generation worker.")
     try:
@@ -42,7 +61,7 @@ def main() -> None:
 
     connection = Redis.from_url(config.REDIS_URL)
     queues = [Queue(config.QUEUE_NAME, connection=connection)]
-    print(f"[worker] listening on queue '{config.QUEUE_NAME}' at {config.REDIS_URL}")
+    print(f"[worker] listening on queue '{config.QUEUE_NAME}'")
     Worker(queues, connection=connection).work()
 
 

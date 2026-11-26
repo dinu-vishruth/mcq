@@ -78,6 +78,13 @@ def render(request: Request, template_name: str, /, **context: Any) -> HTMLRespo
     validation.
     """
     context.setdefault("request", request)
+    from core.services.password_policy import (
+        MAX_PASSWORD_LENGTH,
+        MIN_PASSWORD_LENGTH,
+        PASSWORD_HELP,
+    )
+    context.update(password_min_length=MIN_PASSWORD_LENGTH, password_max_length=MAX_PASSWORD_LENGTH,
+                   password_help=PASSWORD_HELP)
     context["session"] = dict(request.session)
     if request.session.get("is_demo"):
         context["session"]["username"] = "Demo Learner"

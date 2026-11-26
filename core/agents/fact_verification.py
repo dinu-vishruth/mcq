@@ -25,7 +25,7 @@ class VerificationResult:
 class FactVerificationAgent(Agent):
     name = "fact_verification"
 
-    def run(self, mcqs: list[dict], context: str, *, topic: str | None = None) -> VerificationResult:
+    def run(self, mcqs: list[dict], context: str, *, topic: str | None = None, excluded=()) -> VerificationResult:
         result = VerificationResult()
         if not mcqs:
             return result
@@ -39,7 +39,7 @@ class FactVerificationAgent(Agent):
                             "explanation": q.get("explanation", "")} for i, q in enumerate(mcqs)]
                 data = get_llm().complete_json([
                     {"role": "system", "content": prompts.SYSTEM},
-                    {"role": "user", "content": prompts.verify_prompt(payload, context, topic=topic)},
+                    {"role": "user", "content": prompts.verify_prompt(payload, context, topic=topic, excluded=excluded)},
                 ], temperature=config.LLM_GENERATION_TEMPERATURE)
                 verdicts = indexed_verdicts(data, "results", FactVerdict, len(mcqs))
             except Exception:
@@ -51,6 +51,9 @@ class FactVerificationAgent(Agent):
             if verdict is None:
                 result.unverified.append({"question": q.get("question", "?"),
                                           "reason": reason, "status": "unverified"})
+            elif verdict.semantic_duplicate:
+                result.rejected.append({"question": q["question"], "reason": "semantic duplicate",
+                                        "status": "rejected"})
             elif not verdict.safe:
                 result.rejected.append({"question": q["question"], "reason": "content safety policy",
                                         "status": "rejected"})

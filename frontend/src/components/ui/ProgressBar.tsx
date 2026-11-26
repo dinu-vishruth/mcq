@@ -9,7 +9,7 @@ export function ProgressBar({ pct, tone = "accent", className }: { pct: number; 
     success: "bg-success",
   }[tone];
   return (
-    <div className={cn("h-2 rounded-full bg-white/[0.06] overflow-hidden", className)}>
+    <div className={cn("h-2 rounded-full bg-inset overflow-hidden", className)}>
       <motion.div
         className={cn("h-full rounded-full", fill)}
         initial={{ width: 0 }}

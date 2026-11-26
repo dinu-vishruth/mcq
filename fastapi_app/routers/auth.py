@@ -10,6 +10,7 @@ noting while reading:
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
 import unicodedata
 from datetime import datetime, timedelta
@@ -29,6 +30,12 @@ from core.services.account_identity import (
     rename_username_owned_rows,
     username_exists,
 )
+from core.services.admin_control import enabled, is_owner
+from core.services.password_policy import (
+    MAX_PASSWORD_LENGTH,
+    needs_password_upgrade,
+    validate_password,
+)
 
 from ..deps import CurrentUser, Db
 from ..templating import flash, render
@@ -38,7 +45,6 @@ router = APIRouter(tags=["auth"])
 #: Failed logins allowed per IP/username before a temporary lockout.
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_WINDOW = timedelta(minutes=5)
-MIN_PASSWORD_LENGTH = 8
 
 
 def _has_current_session(request: Request) -> bool:
@@ -66,12 +72,16 @@ async def signup_form(request: Request):
 async def start_demo(request: Request, conn: Db):
     if _has_current_session(request):
         return RedirectResponse("/dashboard", status_code=302)
+    if not enabled("demo", conn):
+        return render(request, "login.html", error="The demo is currently paused. Please sign in or try again later.")
     from core.services.demo_service import create_demo_workspace
     try:
         user = create_demo_workspace(conn)
     except Exception:
+        logging.getLogger(__name__).exception("Could not prepare demo workspace")
         return render(request, "login.html", error="The demo could not start. Please try again.")
-    establish_session(request, user)
+    user = conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+    establish_session(request, user, conn)
     request.session["is_demo"] = True
     return RedirectResponse("/dashboard", status_code=302)
 
@@ -82,33 +92,38 @@ async def signup(
     conn: Db,
     username: Annotated[str, Form()] = "",
     password: Annotated[str, Form()] = "",
+    email: Annotated[str, Form()] = "",
 ):
-    username, password = username.strip(), password.strip()
+    username, email = username.strip(), email.strip()
 
-    if not username or not password:
-        return render(request, "signup.html", error="All fields are required.")
-    if len(password) < MIN_PASSWORD_LENGTH:
-        return render(
-            request, "signup.html",
-            error=f"Password must be at least {MIN_PASSWORD_LENGTH} characters long.",
-        )
+    def invalid(message):
+        return render(request, "signup.html", error=message,
+                      signup_username=username, signup_email=email)
 
+    if not enabled("registration", conn):
+        return invalid("New account signup is currently paused. Existing accounts can still sign in.")
+    if not username or not password or not email:
+        return invalid("Username, email, and password are required.")
     try:
         username = normalize_username(username)
+        email = normalize_email(email)
+        validate_password(password, username=username, email=email)
         identity_write_lock(conn)
         if username_exists(conn, username):
             raise ValueError("Username already exists.")
+        if conn.execute("SELECT 1 FROM users WHERE lower(trim(email))=?", (email,)).fetchone():
+            raise ValueError("This email is already in use. Sign in or recover your existing account.")
         conn.execute(
-            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-            (username, generate_password_hash(password), "user"),
+            "INSERT INTO users (username, password_hash, role, email, email_verified) VALUES (?, ?, ?, ?, 0)",
+            (username, generate_password_hash(password), "user", email),
         )
         conn.commit()
     except ValueError as exc:
         conn.rollback()
-        return render(request, "signup.html", error=str(exc))
+        return invalid(str(exc))
     except sqlite3.IntegrityError:
         conn.rollback()
-        return render(request, "signup.html", error="Username already exists.")
+        return invalid("This username or email address is already in use.")
 
     return RedirectResponse("/", status_code=302)
 
@@ -117,10 +132,10 @@ async def signup(
 async def login(
     request: Request,
     conn: Db,
-    username: Annotated[str, Form()] = "",
-    password: Annotated[str, Form()] = "",
+    username: Annotated[str, Form(max_length=254)] = "",
+    password: Annotated[str, Form(max_length=1024)] = "",
 ):
-    username, password = username.strip(), password.strip()
+    username = username.strip()
     ip = request.client.host if request.client else None
 
     window_start = (datetime.utcnow() - LOCKOUT_WINDOW).isoformat()
@@ -139,7 +154,7 @@ async def login(
         )
 
     user = conn.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-    ok = bool(user and password_signin_allowed(user) and user["password_hash"]
+    ok = bool(user and len(password) <= MAX_PASSWORD_LENGTH and password_signin_allowed(user) and user["password_hash"]
               and check_password_hash(user["password_hash"], password))
 
     conn.execute(
@@ -151,7 +166,13 @@ async def login(
     if not ok:
         return render(request, "login.html", error="Invalid username or password")
 
-    establish_session(request, user)
+    establish_session(request, user, conn)
+    request.session["password_upgrade_required"] = needs_password_upgrade(
+        password, username=user["username"], email=user["email"] or "")
+    if request.session["password_upgrade_required"]:
+        return RedirectResponse("/profile", status_code=302)
+    if is_owner(user):
+        return RedirectResponse("/admin", status_code=302)
     if "@" in unicodedata.normalize("NFKC", user["username"]):
         return RedirectResponse("/profile", status_code=302)
     from ..services.dashboard import load_prefs
@@ -180,7 +201,8 @@ def _profile_response(request, row, error=None):
     password_enabled = password_signin_allowed(row)
     return render(request, "profile.html", user=row, error=error or "",
                   email_locked=not password_enabled or bool(row["email_verified"]),
-                  password_enabled=password_enabled)
+                  password_enabled=password_enabled, is_admin=is_owner(row),
+                  password_upgrade_required=bool(request.session.get("password_upgrade_required")))
 
 
 @router.post("/profile")
@@ -191,6 +213,7 @@ async def profile(
     username: Annotated[str, Form()] = "",
     email: Annotated[str | None, Form()] = None,
     password: Annotated[str, Form()] = "",
+    current_password: Annotated[str, Form()] = "",
 ):
     # FastAPI applies the default to empty form strings. Preserve the difference
     # between clearing an optional contact address and leaving it unchanged.
@@ -202,7 +225,7 @@ async def profile(
         conn.rollback()
         return _profile_response(request, row)
 
-    new_username, new_password = username.strip(), password.strip()
+    new_username, new_password = username.strip(), password
     old_username, old_email = row["username"], row["email"]
     password_enabled = password_signin_allowed(row)
     email_locked = not password_enabled or bool(row["email_verified"])
@@ -214,8 +237,12 @@ async def profile(
                 raise ValueError("Username already exists.")
         if new_password and not password_enabled:
             raise ValueError("Use your sign-in provider to manage your password.")
-        if new_password and len(new_password) < MIN_PASSWORD_LENGTH:
-            raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long.")
+        if request.session.get("password_upgrade_required") and not new_password:
+            raise ValueError("Set a stronger password before continuing.")
+        if new_password:
+            validate_password(new_password, username=new_username, email=row["email"] or "")
+            if not check_password_hash(row["password_hash"], current_password):
+                raise ValueError("Enter your current password to change it.")
 
         new_email = old_email
         if email is not None:
@@ -237,6 +264,9 @@ async def profile(
         )
         if new_username != old_username:
             rename_username_owned_rows(conn, old_username, new_username)
+        if new_password:
+            conn.execute("UPDATE users SET session_epoch=session_epoch+1 WHERE id=?", (user.id,))
+            conn.execute("DELETE FROM account_tokens WHERE user_id=?", (user.id,))
         conn.commit()
     except ValueError as exc:
         conn.rollback()
@@ -246,39 +276,22 @@ async def profile(
         return _profile_response(request, row, error="That username or email is already in use.")
 
     request.session["username"] = new_username
+    if new_password:
+        request.session["session_epoch"] = row["session_epoch"] + 1
+        request.session["password_upgrade_required"] = False
     flash(request, "Profile updated successfully!", "success")
     return RedirectResponse("/", status_code=302)
 
 
 @router.post("/delete_account")
 async def delete_account(request: Request, user: CurrentUser, conn: Db):
-    identity_write_lock(conn)
-    row = conn.execute("SELECT username FROM users WHERE id=?", (user.id,)).fetchone()
-    if row is None:
-        conn.rollback()
-        request.session.clear()
-        return RedirectResponse("/", status_code=302)
-    username = row["username"]
-    conn.execute("INSERT INTO retired_usernames (name) VALUES (lower(?)) ON CONFLICT (name) DO NOTHING",
-                 (username,))
-    # A single user may own generated sessions (by username) and quiz results
-    # (by user_id), plus learning data. Remove all of it.
-    conn.execute(
-        "DELETE FROM results WHERE session_key IN "
-        "(SELECT session_key FROM sessions WHERE teacher=?)",
-        (username,),
-    )
-    conn.execute("DELETE FROM sessions WHERE teacher=?", (username,))
-    for table in ("results", "learning_history", "weak_topics", "user_prefs", "quiz_uploads",
-                  "identity_email_conflicts"):
-        try:
-            conn.execute(f"DELETE FROM {table} WHERE user_id=?", (user.id,))
-        except sqlite3.OperationalError:
-            pass  # additive table not present on an older database
-    conn.execute("DELETE FROM users WHERE id=?", (user.id,))
-    conn.commit()
+    from starlette.concurrency import run_in_threadpool
 
+    from core.services.account_deletion import delete_account_data, process_deletions
+
+    task_id = delete_account_data(conn, user.id)
     request.session.clear()
-    # flash() writes to the session, so it must come after clear().
+    if task_id:
+        await run_in_threadpool(process_deletions, task_id)
     flash(request, "Your account has been deleted.", "success")
     return RedirectResponse("/", status_code=302)

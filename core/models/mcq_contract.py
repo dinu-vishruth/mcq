@@ -80,6 +80,7 @@ class FactVerdict(ConfidenceContract):
     index: Annotated[StrictInt, Field(ge=0)]
     passed: StrictBool
     safe: StrictBool
+    semantic_duplicate: StrictBool
     issue: StrictStr = ""
 
 

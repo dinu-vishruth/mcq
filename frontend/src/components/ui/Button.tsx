@@ -16,8 +16,8 @@ const VARIANTS: Record<Variant, string> = {
   primary:
     "bg-accent text-white hover:bg-accent-strong shadow-glow border border-transparent",
   secondary:
-    "bg-card-2 text-text hover:bg-card-hover border border-white/10",
-  ghost: "bg-transparent text-text-2 hover:text-text hover:bg-white/5 border border-transparent",
+    "bg-card-2 text-text hover:bg-card-hover border border-line",
+  ghost: "bg-transparent text-text-2 hover:text-text hover:bg-card-2 border border-transparent",
 };
 
 const SIZES: Record<Size, string> = {
@@ -35,7 +35,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
       ref={ref}
       className={cn(
         "inline-flex items-center justify-center font-medium transition-all duration-200 ease-smooth",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
         "disabled:opacity-50 disabled:pointer-events-none",
         VARIANTS[variant],
         SIZES[size],

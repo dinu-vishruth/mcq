@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Settings — MCQ Generator</title>
+  <title>Settings — Examly</title>
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ frontend_asset('css') }}">
@@ -25,6 +25,11 @@
          "email": user["email"] or "",
          "email_locked": email_locked,
          "password_enabled": password_enabled,
+         "is_admin": is_admin,
+         "password_upgrade_required": password_upgrade_required,
+         "password_min_length": password_min_length,
+         "password_max_length": password_max_length,
+         "password_help": password_help,
          "error": error | default(""),
          "flash": (_flash[0] if _flash else "")
        } | tojson }}'></div>
