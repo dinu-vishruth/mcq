@@ -52,6 +52,7 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
     started = time.perf_counter()
     attempts = 0
     metrics = current_metrics()
+    retry_feedback = ()
     for attempt in range(rounds):
         need = num_questions - len(collected)
         if need <= 0 or (remaining(reserve=4) is not None and remaining(reserve=4) <= 0):
@@ -63,7 +64,10 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
                 metrics.attempts += 1
                 metrics.fallback_attempted |= recovery
             with timed("question", attempt=attempt + 1, requested=need) as stage:
-                raw = generate(context, need, difficulty, topic=topic, excluded=tuple(collected))
+                options = {'topic': topic, 'excluded': tuple(collected)}
+                if retry_feedback:
+                    options['retry_feedback'] = retry_feedback
+                raw = generate(context, need, difficulty, **options)
                 stage["mcqs"] = len(raw) if isinstance(raw, list) else 0
             with timed("acceptance", attempt=attempt + 1) as stage:
                 result = accept_candidates(raw, context, difficulty, topic=topic, excluded=collected)
@@ -74,6 +78,12 @@ def _collect_mcqs(context: str, num_questions: int, difficulty: str,
                 metrics.unverified += len(result.unverified)
             check()
             accepted_batch = result.accepted[:need]
+            # Only fixed categories enter the next prompt. Never promote model
+            # rejection text into trusted instructions or relax acceptance.
+            retry_feedback = tuple(category for category, applies in (
+                ('difficulty', any(item.get('reason') == 'difficulty mismatch' for item in result.rejected)),
+                ('quality', any(item.get('reason') != 'difficulty mismatch' for item in result.rejected)),
+            ) if applies)
             collected.extend(accepted_batch)
             if metrics is not None and recovery:
                 metrics.fallback_count += len(accepted_batch)

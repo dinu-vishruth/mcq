@@ -24,8 +24,8 @@ class InsufficientContextError(LLMError):
 class QuestionAgent(Agent):
     name = "question"
 
-    def run(self, context: str, num_questions: int, difficulty: str, *, topic=None, excluded=()) -> list[dict]:
-        prompt = mcq_prompts.rag_prompt(context, num_questions, difficulty, topic=topic, excluded=excluded)
+    def run(self, context: str, num_questions: int, difficulty: str, *, topic=None, excluded=(), retry_feedback=()) -> list[dict]:
+        prompt = mcq_prompts.rag_prompt(context, num_questions, difficulty, topic=topic, excluded=excluded, retry_feedback=retry_feedback)
         messages = [
             {"role": "system", "content": system_prompt(mcq_prompts.SYSTEM)},
             {"role": "user", "content": prompt},

@@ -66,9 +66,9 @@ def generate_mcqs(text, num_questions=5, difficulty="medium"):
     return _legacy_from_context(text[:150000], num_questions, difficulty)
 
 
-def generate_legacy_candidates(text, num_questions=5, difficulty="medium", *, topic=None, excluded=()):
+def generate_legacy_candidates(text, num_questions=5, difficulty="medium", *, topic=None, excluded=(), retry_feedback=()):
     """One raw candidate batch, never directly published and never re-enters RAG."""
-    prompt = mcq_prompts.legacy_prompt(text, num_questions, difficulty, topic=topic, excluded=excluded)
+    prompt = mcq_prompts.legacy_prompt(text, num_questions, difficulty, topic=topic, excluded=excluded, retry_feedback=retry_feedback)
     data = get_llm().complete_json([
         {"role": "system", "content": system_prompt(mcq_prompts.SYSTEM)},
         {"role": "user", "content": prompt},
