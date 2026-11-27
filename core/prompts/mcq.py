@@ -91,6 +91,10 @@ GROUNDING RULES (critical):
   to hypothetical inputs explicitly stated in the stem. Hypothetical inputs are
   task conditions, not new claims about the real world. Every inference must
   follow from the source plus those inputs, without unstated assumptions.
+- Hypothetical inputs may supply numbers or instances of entities already in
+  the source. They MUST NOT introduce new technical entities, mechanisms,
+  intervention effects, or causal claims. Do not assume that increasing a
+  participating quantity increases an outcome unless the source says so.
 - Every question must be answerable purely from the CONTEXT.
 - The correct answer must be directly supported by the CONTEXT.
 
