@@ -48,6 +48,10 @@
         <h1>Welcome back.</h1>
         <p class="subtitle">Your study space is right where you left it.</p>
 
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+        <p class="auth-notice" role="status">{{ message }}</p>
+        {% endfor %}
+
         <form action="/login" method="post">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 

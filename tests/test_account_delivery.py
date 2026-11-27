@@ -24,6 +24,7 @@ def test_signup_verification_then_recovery_and_token_replay(workspace, monkeypat
     assert client.post('/signup', data={'username': 'new-person', 'email': 'new@example.com', 'password': PASSWORD}).status_code == 302
     email, token, purpose = sender.call_args.args
     assert (email, purpose) == ('new@example.com', 'verify')
+    assert b'Check your email to verify' in client.get('/').data
     assert conn.execute("SELECT email_verified FROM users WHERE username='new-person'").fetchone()[0] == 0
     assert client.get('/account/confirm?token=' + token).status_code == 200
     assert conn.execute("SELECT email_verified FROM users WHERE username='new-person'").fetchone()[0] == 0
