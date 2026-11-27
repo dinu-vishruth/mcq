@@ -1,5 +1,6 @@
 """Single-use email proof bound to an account and its current contact address."""
 import hashlib
+import logging
 import secrets
 import smtplib
 import ssl
@@ -38,7 +39,7 @@ async def deliver_account_token(conn, user, purpose):
         conn.execute("DELETE FROM account_tokens WHERE digest=?",
                      (hashlib.sha256(token.encode()).hexdigest(),))
         conn.commit()
-        log_event("account.mail_failed", purpose=purpose, error_type=type(exc).__name__)
+        log_event("account.mail_failed", level=logging.ERROR, purpose=purpose, error_type=type(exc).__name__)
         return "failed"
     log_event("account.mail_sent", purpose=purpose)
     return "sent"
