@@ -5,6 +5,9 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -35,6 +38,9 @@ jobs:
 
       - name: Tests
         run: pytest -q
+
+      - name: Evaluation harness regression (offline; does not measure model accuracy)
+        run: python -m evals.run_eval --dry-run
 
   frontend:
     runs-on: ubuntu-latest

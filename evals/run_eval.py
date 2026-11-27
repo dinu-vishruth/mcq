@@ -388,7 +388,7 @@ def _main(argv: list[str] | None = None) -> int:
     summary = report["summary"]
     print(f"[eval] {summary['passed']}/{summary['cases']} cases passed; "
           f"wrote {args.output} and {args.markdown}")
-    return 0
+    return 0 if all(result['passed'] for result in results) else 1
 
 
 if __name__ == "__main__":

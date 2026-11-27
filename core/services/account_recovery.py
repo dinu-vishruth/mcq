@@ -17,7 +17,31 @@ from core.services.password_policy import validate_password
 def mail_configured():
     url = urlsplit(config.PUBLIC_BASE_URL)
     return bool(config.SMTP_HOST and config.SMTP_FROM and url.scheme == "https" and url.netloc
-                and not url.username and not url.query and not url.fragment)
+                and not url.username and not url.query and not url.fragment
+                and url.path in ('', '/') and config.SMTP_STARTTLS
+                and bool(config.SMTP_USERNAME) == bool(config.SMTP_PASSWORD))
+
+
+async def deliver_account_token(conn, user, purpose):
+    """Deliver without logging secrets; a failed send must allow an immediate retry."""
+    from starlette.concurrency import run_in_threadpool
+
+    from core.observability import log_event
+    if not mail_configured():
+        return "unavailable"
+    token = issue_token(conn, user, purpose)
+    if not token:
+        return "limited"
+    try:
+        await run_in_threadpool(send_token, user['email'], token, purpose)
+    except Exception as exc:
+        conn.execute("DELETE FROM account_tokens WHERE digest=?",
+                     (hashlib.sha256(token.encode()).hexdigest(),))
+        conn.commit()
+        log_event("account.mail_failed", purpose=purpose, error_type=type(exc).__name__)
+        return "failed"
+    log_event("account.mail_sent", purpose=purpose)
+    return "sent"
 
 
 def issue_token(conn, user, purpose):

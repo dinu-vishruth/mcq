@@ -1,6 +1,7 @@
 """Real PostgreSQL tests use only the explicitly named isolated CI database."""
 import os
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -27,12 +28,18 @@ def test_concurrent_boot_and_identity_uniqueness(monkeypatch):
             # Production has historical migrations with reused version numbers.
             # Their names must not suppress the newer account/control upgrades.
             with psycopg.connect(config.DATABASE_URL) as legacy:
+                migrations = Path(__file__).resolve().parents[1] / 'database' / 'migrations'
+                legacy.execute((migrations / '001_postgres_init.sql').read_text())
+                legacy.execute("INSERT INTO users(username,password_hash,role,email) VALUES ('legacy-owner','preserved','teacher','legacy@example.com')")
+                legacy.execute("INSERT INTO documents(id,owner,title) VALUES (900,'legacy-owner','preserved material')")
                 legacy.execute("CREATE TABLE sql_migrations (name TEXT PRIMARY KEY, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)")
                 legacy.execute("INSERT INTO sql_migrations(name) VALUES ('006_postgres_immutable_ownership.sql'), ('007_postgres_generation_reservations.sql')")
             with ThreadPoolExecutor(max_workers=3) as pool:
                 list(pool.map(lambda _: init_db(), range(3)))
             conn = get_db()
             try:
+                assert conn.execute("SELECT password_hash FROM users WHERE username='legacy-owner'").fetchone()[0] == 'preserved'
+                assert conn.execute("SELECT title FROM documents WHERE id=900").fetchone()[0] == 'preserved material'
                 conn.execute("INSERT INTO users(username,password_hash,role,email) VALUES ('one','x','user','A@example.com')")
                 conn.commit()
                 import sqlite3

@@ -134,10 +134,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("packet", type=Path, help="Fill question ratings and coverage_rating in a copy of this JSON file.")
     parser.add_argument("key", type=Path, help="Separate key generated with the packet; hide it from reviewers.")
     parser.add_argument("--output", type=Path, help="Write report JSON instead of printing it.")
+    parser.add_argument("--require-quality", action="store_true", help="Fail unless a complete live review meets the release criteria.")
     args = parser.parse_args(argv)
     try:
         report = score_review_packet(json.loads(args.packet.read_text(encoding="utf-8")),
                                      json.loads(args.key.read_text(encoding="utf-8")))
+        report['release_quality'] = release_quality(report)
         output = json.dumps(report, indent=2) + "\n"
         if args.output:
             if args.output.resolve() in (args.packet.resolve(), args.key.resolve()):
@@ -147,7 +149,30 @@ def main(argv: list[str] | None = None) -> int:
             print(output, end="")
     except (OSError, ValueError) as exc:
         parser.exit(2, f"Review could not be scored: {exc}\n")
-    return 0
+    return 1 if args.require_quality and not report['release_quality']['passed'] else 0
+
+
+def release_quality(report: dict) -> dict:
+    """Conservative review criteria; automated or incomplete reviews cannot pass."""
+    failures = []
+    if report.get('mode') != 'live':
+        failures.append('A live provider run and independent human review are required.')
+    strategies = report.get('strategies', {})
+    if not strategies:
+        failures.append('No reviewed strategies.')
+    for name, strategy in strategies.items():
+        if strategy['questions'] < 20 or strategy['quizzes'] < 3:
+            failures.append(f'{name}: review at least 20 questions across 3 quizzes.')
+        for dimension in (*QUESTION_RUBRIC, BATCH_DIMENSION):
+            score = strategy['dimensions'].get(dimension)
+            if not score or score['rated'] != score['expected'] or not score['rated']:
+                failures.append(f'{name}: {dimension} is incomplete.')
+                continue
+            critical = dimension in ('factual_correctness', 'evidence_support', 'unambiguous')
+            if (critical and score['counts']['2'] != score['rated']) or (not critical and score['mean'] < 1.6):
+                failures.append(f'{name}: {dimension} is below the release threshold.')
+    return {'passed': not failures, 'failures': failures,
+            'scope': 'Human review only; also require automated contract, duplicate and source quote checks.'}
 
 
 if __name__ == "__main__":

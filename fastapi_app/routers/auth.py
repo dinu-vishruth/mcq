@@ -125,6 +125,13 @@ async def signup(
         conn.rollback()
         return invalid("This username or email address is already in use.")
 
+    from core.services.account_recovery import deliver_account_token
+    row = conn.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+    delivery = await deliver_account_token(conn, row, "verify")
+    if delivery == "sent":
+        flash(request, "Account created. Check your email to verify your address before using password recovery.", "success")
+    else:
+        flash(request, "Account created. Sign in and open Account security to verify your email when email delivery is available.", "success")
     return RedirectResponse("/", status_code=302)
 
 

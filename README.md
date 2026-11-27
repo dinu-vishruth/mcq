@@ -63,6 +63,11 @@ npm run build
 
 ## Deployment
 
+Production email configuration and the CI release gate are documented in
+[production release setup](docs/production-release.md). Configure the deployment
+secret before merging changes to the release workflow. The live quiz accuracy
+benchmark and independent review criteria are in [evals](evals/README.md).
+
 Vercel uses `vercel.json` and `app.py`; Render uses the `Procfile`.
 Set environment variables in the hosting platform and redeploy after changes.
 

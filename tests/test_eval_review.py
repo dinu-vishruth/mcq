@@ -6,6 +6,28 @@ import pytest
 from evals.review import QUESTION_RUBRIC, build_review_packets, main, score_review_packet
 
 
+def test_quality_gate_rejects_stub_incomplete_small_and_incorrect_reviews():
+    import copy
+
+    from evals.review import release_quality
+    dimensions = {name: {'expected': 20, 'rated': 20, 'counts': {'0': 0, '1': 0, '2': 20}, 'mean': 2.0}
+                  for name in (*QUESTION_RUBRIC, 'source_coverage')}
+    report = {'mode': 'live', 'strategies': {'primary': {'questions': 20, 'quizzes': 3, 'dimensions': dimensions}}}
+    assert release_quality(report)['passed']
+    for mutate in ('stub', 'incomplete', 'small', 'incorrect'):
+        bad = copy.deepcopy(report)
+        strategy = bad['strategies']['primary']
+        if mutate == 'stub':
+            bad['mode'] = 'stub'
+        elif mutate == 'small':
+            strategy['questions'] = 19
+        elif mutate == 'incomplete':
+            strategy['dimensions']['unambiguous']['rated'] = 19
+        else:
+            strategy['dimensions']['factual_correctness']['counts'] = {'0': 0, '1': 1, '2': 19}
+        assert not release_quality(bad)['passed']
+
+
 def _runs():
     question = {
         "question": "Which rule applies to reservations?",

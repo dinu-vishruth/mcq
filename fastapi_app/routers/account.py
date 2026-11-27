@@ -5,11 +5,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from starlette.concurrency import run_in_threadpool
 from werkzeug.security import check_password_hash
 
 from core.services.account_identity import identity_write_lock, password_signin_allowed
-from core.services.account_recovery import consume_token, issue_token, mail_configured, send_token
+from core.services.account_recovery import consume_token, deliver_account_token, mail_configured
 
 from ..deps import CurrentUser, Db
 from ..templating import render
@@ -44,12 +43,7 @@ async def recover(request: Request, conn: Db, email: Annotated[str, Form()] = ""
         return render(request, "account_recover.html", notice=_GENERIC, mail_available=mail_configured())
     row = conn.execute("SELECT * FROM users WHERE lower(trim(email))=? AND email_verified=1", (email.strip().lower(),)).fetchone()
     if mail_configured() and row and password_signin_allowed(row):
-        token = issue_token(conn, row, "reset")
-        if token:
-            try:
-                await run_in_threadpool(send_token, row["email"], token, "reset")
-            except Exception:
-                pass
+        await deliver_account_token(conn, row, "reset")
     return render(request, "account_recover.html", notice=_GENERIC, mail_available=mail_configured())
 
 
@@ -59,12 +53,9 @@ async def verify(request: Request, user: CurrentUser, conn: Db):
         raise HTTPException(503, "Email delivery is not configured. Contact the site owner.")
     row = conn.execute("SELECT * FROM users WHERE id=?", (user.id,)).fetchone()
     if row["email"] and not row["email_verified"]:
-        token = issue_token(conn, row, "verify")
-        if token:
-            try:
-                await run_in_threadpool(send_token, row["email"], token, "verify")
-            except Exception:
-                raise HTTPException(503, "Email could not be delivered. Please try later.") from None
+        status = await deliver_account_token(conn, row, "verify")
+        if status == "failed":
+            raise HTTPException(503, "Email could not be delivered. Please try again.")
     return RedirectResponse("/account", status_code=303)
 
 
